@@ -1,0 +1,37 @@
+{
+  "CallerReference": "unique-string-001",
+  "Comment": "Training files distribution with OAC",
+  "Enabled": true,
+  "Origins": {
+    "Quantity": 1,
+    "Items": [
+      {
+        "Id": "S3-cse-training-bucket",
+        "DomainName": "cse-training-bucket.s3.ap-southeast-1.amazonaws.com",
+        "S3OriginConfig": {
+          "OriginAccessIdentity": ""
+        },
+        "OriginAccessControlId": "E2O3W7T6WISCC7"
+      }
+    ]
+  },
+  "DefaultCacheBehavior": {
+    "TargetOriginId": "S3-cse-training-bucket",
+    "ViewerProtocolPolicy": "redirect-to-https",
+    "AllowedMethods": {
+      "Quantity": 2,
+      "Items": ["GET", "HEAD"],
+      "CachedMethods": {
+        "Quantity": 2,
+        "Items": ["GET", "HEAD"]
+      }
+    },
+    "ForwardedValues": {
+      "QueryString": false,
+      "Cookies": { "Forward": "none" }
+    },
+    "DefaultTTL": 86400,
+    "MinTTL": 0,
+    "MaxTTL": 31536000
+  }
+}

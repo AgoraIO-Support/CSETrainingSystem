@@ -1,0 +1,607 @@
+// This is your Prisma schema file for Agora CSE Training System
+// Learn more: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+generator backendClient {
+  provider = "prisma-client-js"
+  output   = "../backend/node_modules/.prisma/client"
+  binaryTargets = ["native"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// USER MANAGEMENT
+// ============================================================================
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+model User {
+  id            String      @id @default(uuid())
+  email         String      @unique
+  name          String
+  password      String?     // Hashed password for local auth
+  avatar        String?
+  role          UserRole    @default(USER)
+  status        UserStatus  @default(ACTIVE)
+  
+  // Supabase Auth integration
+  supabaseId    String?     @unique
+  
+  // Profile
+  bio           String?
+  title         String?
+  department    String?
+  
+  // Timestamps
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  lastLoginAt   DateTime?
+  
+  // Relations
+  enrollments   Enrollment[]
+  progress      LessonProgress[]
+  quizAttempts  QuizAttempt[]
+  achievements  UserAchievement[]
+  discussions   Discussion[]
+  aiConversations AIConversation[]
+  
+  // Admin-created courses (if instructor)
+  createdCourses Course[]   @relation("CourseInstructor")
+  
+  @@index([email])
+  @@index([role])
+  @@index([status])
+  @@map("users")
+}
+
+// ============================================================================
+// COURSE MANAGEMENT
+// ============================================================================
+
+enum CourseLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum CourseStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model Course {
+  id              String        @id @default(uuid())
+  title           String
+  slug            String        @unique
+  description     String        @db.Text
+  thumbnail       String?       // S3 URL
+  
+  // Course metadata
+  level           CourseLevel
+  status          CourseStatus  @default(DRAFT)
+  category        String
+  tags            String[]
+  learningOutcomes String[]   @default([])
+  requirements     String[]   @default([])
+  duration        Int           // Total duration in seconds
+  
+  // Instructor
+  instructorId    String
+  instructor      User          @relation("CourseInstructor", fields: [instructorId], references: [id])
+  
+  // Stats
+  enrolledCount   Int           @default(0)
+  rating          Float         @default(0.0)
+  reviewCount     Int           @default(0)
+  
+  // Timestamps
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  publishedAt     DateTime?
+  
+  // Relations
+  chapters        Chapter[]
+  enrollments     Enrollment[]
+  quizzes         Quiz[]
+  discussions     Discussion[]
+  reviews         CourseReview[]
+  assets          CourseAsset[] @relation("CourseAssets")
+  
+  @@index([slug])
+  @@index([status])
+  @@index([category])
+  @@index([instructorId])
+  @@map("courses")
+}
+
+model Chapter {
+  id          String    @id @default(uuid())
+  courseId    String
+  course      Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  
+  title       String
+  description String?   @db.Text
+  order       Int       @default(0)
+  
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  // Relations
+  lessons     Lesson[]
+  
+  @@index([courseId])
+  @@index([order])
+  @@map("chapters")
+}
+
+model Lesson {
+  id          String    @id @default(uuid())
+  chapterId   String
+  chapter     Chapter   @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  
+  title       String
+  description String?   @db.Text
+  order       Int       @default(0)
+  duration    Int       // Duration in seconds
+  
+  // Video files (S3)
+  videoUrl    String?   // S3 key or CloudFront URL
+  videoKey    String?   // S3 key for management
+  subtitleUrl String?   // VTT file URL
+  subtitleKey String?   // S3 key
+  
+  // Transcript for AI
+  transcript  String?   @db.Text
+  
+  // Content
+  content     String?   @db.Text // Additional notes/materials
+  
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  // Relations
+  progress    LessonProgress[]
+  assets      LessonAsset[]
+  
+  @@index([chapterId])
+  @@index([order])
+  @@map("lessons")
+}
+
+// ============================================================================
+// ENROLLMENT & PROGRESS
+// ============================================================================
+
+enum EnrollmentStatus {
+  ACTIVE
+  COMPLETED
+  DROPPED
+}
+
+model Enrollment {
+  id              String           @id @default(uuid())
+  userId          String
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId        String
+  course          Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  
+  status          EnrollmentStatus @default(ACTIVE)
+  progress        Float            @default(0.0) // Percentage 0-100
+  
+  // Timestamps
+  enrolledAt      DateTime         @default(now())
+  completedAt     DateTime?
+  lastAccessedAt  DateTime?
+  
+  @@unique([userId, courseId])
+  @@index([userId])
+  @@index([courseId])
+  @@index([status])
+  @@map("enrollments")
+}
+
+model LessonProgress {
+  id              String    @id @default(uuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId        String
+  lesson          Lesson    @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  
+  completed       Boolean   @default(false)
+  watchedDuration Int       @default(0) // Seconds watched
+  lastTimestamp   Int       @default(0) // Last position in video
+  
+  // Timestamps
+  startedAt       DateTime  @default(now())
+  completedAt     DateTime?
+  updatedAt       DateTime  @updatedAt
+  
+  @@unique([userId, lessonId])
+  @@index([userId])
+  @@index([lessonId])
+  @@index([completed])
+  @@map("lesson_progress")
+}
+
+// ============================================================================
+// QUIZ & ASSESSMENT
+// ============================================================================
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  FILL_IN_BLANK
+  ESSAY
+}
+
+model Quiz {
+  id              String        @id @default(uuid())
+  courseId        String
+  course          Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  
+  title           String
+  description     String?       @db.Text
+  passingScore    Int           @default(70) // Percentage
+  timeLimit       Int?          // Time limit in seconds (null = no limit)
+  randomizeQ      Boolean       @default(false) // Randomize question order
+  
+  // Timestamps
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  // Relations
+  questions       Question[]
+  attempts        QuizAttempt[]
+  
+  @@index([courseId])
+  @@map("quizzes")
+}
+
+model Question {
+  id              String        @id @default(uuid())
+  quizId          String
+  quiz            Quiz          @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  
+  type            QuestionType
+  question        String        @db.Text
+  options         Json?         // For multiple choice: ["option1", "option2", ...]
+  correctAnswer   String        @db.Text // Index for MC, "true"/"false" for TF, text for fill-in
+  explanation     String?       @db.Text
+  points          Int           @default(1)
+  order           Int           @default(0)
+  
+  // Timestamps
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  @@index([quizId])
+  @@index([order])
+  @@map("questions")
+}
+
+model QuizAttempt {
+  id              String    @id @default(uuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quizId          String
+  quiz            Quiz      @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  
+  answers         Json      // { questionId: answer, ... }
+  score           Float     // Percentage score
+  passed          Boolean
+  
+  // Timestamps
+  startedAt       DateTime  @default(now())
+  completedAt     DateTime?
+  
+  @@index([userId])
+  @@index([quizId])
+  @@index([passed])
+  @@map("quiz_attempts")
+}
+
+// ============================================================================
+// ACHIEVEMENTS & CERTIFICATIONS
+// ============================================================================
+
+model Achievement {
+  id          String            @id @default(uuid())
+  title       String
+  description String            @db.Text
+  icon        String            // Emoji or image URL
+  criteria    Json              // { type: "course_complete", courseId: "..." }
+  
+  // Timestamps
+  createdAt   DateTime          @default(now())
+  
+  // Relations
+  users       UserAchievement[]
+  
+  @@map("achievements")
+}
+
+model UserAchievement {
+  id            String      @id @default(uuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievementId String
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  
+  earnedAt      DateTime    @default(now())
+  
+  @@unique([userId, achievementId])
+  @@index([userId])
+  @@index([achievementId])
+  @@map("user_achievements")
+}
+
+model Certificate {
+  id          String    @id @default(uuid())
+  userId      String
+  courseId    String
+  
+  certificateNumber String  @unique
+  issueDate   DateTime  @default(now())
+  pdfUrl      String?   // S3 URL for generated PDF
+  
+  @@index([userId])
+  @@index([courseId])
+  @@map("certificates")
+}
+
+// ============================================================================
+// DISCUSSION & REVIEWS
+// ============================================================================
+
+model Discussion {
+  id          String    @id @default(uuid())
+  courseId    String
+  course      Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  title       String?
+  content     String    @db.Text
+  
+  // Thread management
+  parentId    String?
+  parent      Discussion? @relation("DiscussionReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies     Discussion[] @relation("DiscussionReplies")
+  
+  likes       Int       @default(0)
+  isPinned    Boolean   @default(false)
+  
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  @@index([courseId])
+  @@index([userId])
+  @@index([parentId])
+  @@map("discussions")
+}
+
+model CourseReview {
+  id          String    @id @default(uuid())
+  courseId    String
+  course      Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  userId      String
+  
+  rating      Int       // 1-5
+  comment     String?   @db.Text
+  
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  @@unique([courseId, userId])
+  @@index([courseId])
+  @@index([rating])
+  @@map("course_reviews")
+}
+
+// ============================================================================
+// AI ASSISTANT
+// ============================================================================
+
+model AIConversation {
+  id          String      @id @default(uuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  courseId    String?     // Context: which course
+  lessonId    String?     // Context: which lesson
+  
+  // Timestamps
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  // Relations
+  messages    AIMessage[]
+  
+  @@index([userId])
+  @@index([courseId])
+  @@map("ai_conversations")
+}
+
+model AIMessage {
+  id              String          @id @default(uuid())
+  conversationId  String
+  conversation    AIConversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  
+  role            String          // "user" or "assistant"
+  content         String          @db.Text
+  
+  // Context
+  videoTimestamp  Int?            // If asked during video, what timestamp
+  context         Json?           // Additional context data
+  
+  // Metadata
+  tokens          Int?            // Token usage for this message
+  model           String?         // Which AI model was used
+  
+  // Timestamps
+  createdAt       DateTime        @default(now())
+  
+  @@index([conversationId])
+  @@index([createdAt])
+  @@map("ai_messages")
+}
+
+model AIPromptTemplate {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?   @db.Text
+  template    String    @db.Text
+  variables   String[]  // List of variable names used in template
+  
+  isActive    Boolean   @default(true)
+  
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  @@map("ai_prompt_templates")
+}
+
+// ============================================================================
+// ANALYTICS & REPORTING
+// ============================================================================
+
+model LearningReport {
+  id                  String    @id @default(uuid())
+  userId              String
+  courseId            String
+  
+  // Report data
+  completedLessons    Int
+  totalLessons        Int
+  averageQuizScore    Float?
+  totalLearningTime   Int       // Seconds
+  
+  knowledgePoints     String[]  // Key topics covered
+  recommendations     Json      // Recommended courses
+  aiSummary           String?   @db.Text
+  
+  // Export URLs
+  pdfUrl              String?
+  htmlUrl             String?
+  
+  // Timestamps
+  generatedAt         DateTime  @default(now())
+  
+  @@index([userId])
+  @@index([courseId])
+  @@map("learning_reports")
+}
+
+model SystemAnalytics {
+  id              String    @id @default(uuid())
+  date            DateTime  @db.Date
+  
+  // Metrics
+  activeUsers     Int       @default(0)
+  newEnrollments  Int       @default(0)
+  completedCourses Int      @default(0)
+  totalViews      Int       @default(0)
+  aiInteractions  Int       @default(0)
+  
+  // Timestamps
+  createdAt       DateTime  @default(now())
+  
+  @@unique([date])
+  @@index([date])
+  @@map("system_analytics")
+}
+
+// ============================================================================
+// NOTIFICATIONS
+// ============================================================================
+
+enum NotificationType {
+  COURSE_UPDATE
+  QUIZ_REMINDER
+  ACHIEVEMENT
+  ANNOUNCEMENT
+  SYSTEM
+}
+
+model Notification {
+  id          String            @id @default(uuid())
+  userId      String?           // null = broadcast to all
+  
+  type        NotificationType
+  title       String
+  message     String            @db.Text
+  link        String?           // Deep link to related content
+  
+  read        Boolean           @default(false)
+  
+  // Timestamps
+  createdAt   DateTime          @default(now())
+  
+  @@index([userId])
+  @@index([read])
+  @@index([createdAt])
+  @@map("notifications")
+}
+enum LessonAssetType {
+  VIDEO
+  DOCUMENT
+  PRESENTATION
+  TEXT
+  AUDIO
+  OTHER
+}
+
+model LessonAsset {
+  id          String          @id @default(uuid())
+  lessonId    String
+  lesson      Lesson          @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  type        LessonAssetType
+  title       String
+  description String?
+  url         String
+  s3Key       String
+  contentType String?
+
+  createdAt   DateTime        @default(now())
+
+  @@index([lessonId])
+  @@map("lesson_assets")
+}
+model CourseAsset {
+  id          String    @id @default(uuid())
+  courseId    String
+  course      Course    @relation("CourseAssets", fields: [courseId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  type        LessonAssetType
+  url         String
+  s3Key       String
+  contentType String?
+
+  createdAt   DateTime  @default(now())
+
+  @@index([courseId])
+  @@map("course_assets")
+}

@@ -1,0 +1,58 @@
+```yaml
+version: '3.8'
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres123@db:5432/cse_training
+      - NEXT_PUBLIC_SUPABASE_URL=https://placeholder-project.supabase.co
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder-key
+      - SUPABASE_SERVICE_ROLE_KEY=placeholder-key
+      - JWT_SECRET=local-dev-secret-key-change-in-prod
+      - NODE_ENV=production
+      - AWS_REGION=${AWS_REGION}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME}
+      - AWS_CLOUDFRONT_DOMAIN=${AWS_CLOUDFRONT_DOMAIN}
+      - JWT_SECRET=${JWT_SECRET}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - cse-training-network
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis (optional - for caching and rate limiting)
+  redis:
+    image: redis:7-alpine
+    container_name: cse-training-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - cse-training-network
+    command: redis-server --appendonly yes
+
+networks:
+  cse-training-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+    driver: local

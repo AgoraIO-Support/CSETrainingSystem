@@ -1,0 +1,22 @@
+{
+  "name": "training-infra-cdk",
+  "version": "1.0.0",
+  "private": true,
+  "bin": {
+    "training-infra-cdk": "bin/app.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "cdk": "cdk"
+  },
+  "devDependencies": {
+    "aws-cdk": "^2.153.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.153.0",
+    "constructs": "^10.3.0"
+  }
+}
