@@ -4,26 +4,29 @@ import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { VideoPlayer } from '@/components/video/video-player'
-import { TranscriptPanel } from '@/components/video/transcript-panel'
+import { VideoJSPlayer } from '@/components/video/videojs-player'
 import { AIChatPanel } from '@/components/ai/ai-chat-panel'
-import { CourseOutline } from '@/components/course/course-outline'
+import { KnowledgeAnchors } from '@/components/ai/knowledge-anchors'
+import { CourseContentPanel } from '@/components/learning/course-content-panel'
+import { AssetViewer } from '@/components/learning/asset-viewer'
 import { ApiClient } from '@/lib/api-client'
-import type { Course, Lesson, LessonProgress } from '@/types'
+import type { Course, Lesson, LessonProgress, CourseAsset } from '@/types'
 import {
     ChevronLeft,
     ChevronRight,
-    BookOpen,
     CheckCircle,
     Home,
     Loader2,
     AlertTriangle,
+    MessageSquare,
+    X,
+    PanelLeftClose,
+    PanelLeft,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 type CourseDetail = Course & {
     isEnrolled: boolean
@@ -48,8 +51,75 @@ export default function LessonPage({
     const [error, setError] = useState<string | null>(null)
     const [progressError, setProgressError] = useState<string | null>(null)
 
+    // New state for asset viewing
+    const [selectedAsset, setSelectedAsset] = useState<CourseAsset | null>(null)
+    const [showAIChat, setShowAIChat] = useState(false)
+    const [showSidebar, setShowSidebar] = useState(true)
+
     const syncThrottleRef = useRef(0)
     const maxWatchedRef = useRef(0)
+    const videoPlayerRef = useRef<any>(null)
+
+    const DEFAULT_AI_PANEL_WIDTH = 384
+    const AI_PANEL_WIDTH_STORAGE_KEY = 'cse.aiPanelWidth'
+    const [aiPanelWidth, setAiPanelWidth] = useState(DEFAULT_AI_PANEL_WIDTH)
+    const [isResizingAiPanel, setIsResizingAiPanel] = useState(false)
+    const aiPanelResizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null)
+
+    useEffect(() => {
+        try {
+            const stored = localStorage.getItem(AI_PANEL_WIDTH_STORAGE_KEY)
+            const parsed = stored ? Number.parseInt(stored, 10) : NaN
+            if (Number.isFinite(parsed) && parsed >= 280 && parsed <= 1200) {
+                setAiPanelWidth(parsed)
+            }
+        } catch {
+            // ignore
+        }
+    }, [])
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(AI_PANEL_WIDTH_STORAGE_KEY, String(aiPanelWidth))
+        } catch {
+            // ignore
+        }
+    }, [aiPanelWidth])
+
+    useEffect(() => {
+        if (!isResizingAiPanel) return
+
+        const prevCursor = document.body.style.cursor
+        const prevUserSelect = document.body.style.userSelect
+        document.body.style.cursor = 'col-resize'
+        document.body.style.userSelect = 'none'
+
+        const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
+        const onMove = (e: PointerEvent) => {
+            const s = aiPanelResizeStateRef.current
+            if (!s) return
+            const minWidth = 320
+            const maxWidth = clamp(window.innerWidth - 360, 360, 800)
+            const next = clamp(s.startWidth + (s.startX - e.clientX), minWidth, maxWidth)
+            setAiPanelWidth(next)
+        }
+
+        const onUp = () => {
+            aiPanelResizeStateRef.current = null
+            setIsResizingAiPanel(false)
+        }
+
+        window.addEventListener('pointermove', onMove)
+        window.addEventListener('pointerup', onUp)
+        window.addEventListener('pointercancel', onUp)
+        return () => {
+            window.removeEventListener('pointermove', onMove)
+            window.removeEventListener('pointerup', onUp)
+            window.removeEventListener('pointercancel', onUp)
+            document.body.style.cursor = prevCursor
+            document.body.style.userSelect = prevUserSelect
+        }
+    }, [isResizingAiPanel])
 
     useEffect(() => {
         let cancelled = false
@@ -67,6 +137,13 @@ export default function LessonPage({
                     setError('Lesson not found in this course')
                 } else {
                     setLesson(locatedLesson)
+                    // Auto-select primary video asset if available
+                    const videoAsset = (locatedLesson.assets || []).find(
+                        (a: any) => a.type === 'VIDEO' || (a.mimeType?.startsWith?.('video/') ?? false)
+                    )
+                    if (videoAsset) {
+                        setSelectedAsset(videoAsset as CourseAsset)
+                    }
                 }
             } catch (err) {
                 if (!cancelled) {
@@ -208,6 +285,60 @@ export default function LessonPage({
         syncProgress(currentTime)
     }, [currentTime, lesson, progressLoading, syncProgress])
 
+    // Handle lesson selection from sidebar
+    const handleLessonSelect = useCallback((selectedLesson: Lesson) => {
+        router.push(`/learn/${courseId}/${selectedLesson.id}`)
+    }, [courseId, router])
+
+    // Handle asset selection from sidebar
+    const handleAssetSelect = useCallback((asset: CourseAsset, parentLesson: Lesson) => {
+        if (parentLesson.id !== lessonId) {
+            // Navigate to the lesson containing the asset
+            router.push(`/learn/${courseId}/${parentLesson.id}`)
+        }
+        setSelectedAsset(asset)
+    }, [courseId, lessonId, router])
+
+    // Handle seeking to timestamp from AI sources
+    // MUST be before early returns to maintain hook order
+    const handleSeekToTimestamp = useCallback((timestamp: string) => {
+        if (!videoPlayerRef.current) return
+
+        // Parse timestamp format: "MM:SS-MM:SS" or "HH:MM:SS-HH:MM:SS"
+        // Extract the start time (before the dash)
+        const startTime = timestamp.split('-')[0].trim()
+        const parts = startTime.split(':').map(Number)
+
+        let seconds = 0
+        if (parts.length === 2) {
+            // MM:SS format
+            seconds = parts[0] * 60 + parts[1]
+        } else if (parts.length === 3) {
+            // HH:MM:SS format
+            seconds = parts[0] * 3600 + parts[1] * 60 + parts[2]
+        }
+
+        // Seek to the timestamp
+        if (Number.isFinite(seconds) && seconds >= 0) {
+            videoPlayerRef.current.currentTime(seconds)
+
+            // Auto-play after seeking
+            if (videoPlayerRef.current.paused()) {
+                videoPlayerRef.current.play()
+            }
+        }
+    }, [])
+
+    // Stable callbacks for VideoJSPlayer to prevent re-initialization
+    // MUST be defined before any early returns to comply with Rules of Hooks
+    const handleVideoReady = useCallback((player: any) => {
+        videoPlayerRef.current = player
+    }, [])
+
+    const handleVideoEnded = useCallback(() => {
+        setLessonCompleted(true)
+    }, [])
+
     if (loading) {
         return (
             <div className="flex h-screen items-center justify-center">
@@ -228,116 +359,203 @@ export default function LessonPage({
         )
     }
 
+    // Prefer assets to determine video and subtitle URLs
+    const videoAsset = (lesson.assets || []).find(
+        (a: any) => a.type === 'VIDEO' || (a.mimeType?.startsWith?.('video/') ?? false)
+    )
+    const subtitleAsset = (lesson.assets || []).find(
+        (a: any) =>
+            (a.mimeType === 'text/vtt' || a.url?.toLowerCase?.().endsWith?.('.vtt')) &&
+            (videoAsset?.title ? a.title === videoAsset.title : true)
+    )
+    const resolvedVideoUrl = videoAsset?.url || lesson.videoUrl || null
+    const resolvedSubtitleUrl = subtitleAsset?.url || lesson.subtitleUrl
+
     const handleMarkComplete = async () => {
         setLessonCompleted(true)
         await syncProgress(lesson.duration || currentTime, { force: true, completed: true })
     }
 
+    // Determine what to show in main content area
+    const renderMainContent = () => {
+        // If a non-video asset is selected, show asset viewer
+        if (selectedAsset && selectedAsset.type !== 'VIDEO') {
+            return (
+                <AssetViewer
+                    asset={selectedAsset}
+                    onClose={() => {
+                        // Go back to video if available
+                        if (videoAsset) {
+                            setSelectedAsset(videoAsset as CourseAsset)
+                        } else {
+                            setSelectedAsset(null)
+                        }
+                    }}
+                />
+            )
+        }
+
+        // Default: show video player or placeholder
+        if (resolvedVideoUrl) {
+            return (
+                <div className="space-y-4">
+                    <VideoJSPlayer
+                        videoUrl={resolvedVideoUrl}
+                        subtitleUrl={resolvedSubtitleUrl}
+                        onTimeUpdate={setCurrentTime}
+                        initialTime={initialTimestamp}
+                        onReady={handleVideoReady}
+                        onEnded={handleVideoEnded}
+                    />
+                    <KnowledgeAnchors
+                        lessonId={lesson.id}
+                        currentTime={currentTime}
+                        onSeekToTimestamp={handleSeekToTimestamp}
+                    />
+                </div>
+            )
+        }
+
+        return (
+            <div className="aspect-video bg-muted rounded-lg flex items-center justify-center">
+                <div className="text-center">
+                    <AlertTriangle className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
+                    <p className="text-muted-foreground">No video available for this lesson</p>
+                    {lesson.assets && lesson.assets.length > 0 && (
+                        <p className="text-sm text-muted-foreground mt-2">
+                            Select a resource from the sidebar to view
+                        </p>
+                    )}
+                </div>
+            </div>
+        )
+    }
+
     return (
         <div className="h-screen flex flex-col bg-background">
-            <div className="border-b bg-card">
-                <div className="flex items-center justify-between p-4">
-                    <div className="flex items-center space-x-4">
+            {/* Header */}
+            <div className="border-b bg-card flex-shrink-0">
+                <div className="flex items-center justify-between p-3">
+                    <div className="flex items-center space-x-3">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="lg:hidden"
+                            onClick={() => setShowSidebar(!showSidebar)}
+                        >
+                            {showSidebar ? <PanelLeftClose className="h-5 w-5" /> : <PanelLeft className="h-5 w-5" />}
+                        </Button>
                         <Link href="/">
                             <Button variant="ghost" size="icon">
                                 <Home className="h-5 w-5" />
                             </Button>
                         </Link>
-                        <div>
-                            <h1 className="font-semibold text-lg line-clamp-1">{lesson.title}</h1>
-                            <p className="text-sm text-muted-foreground">{course.title}</p>
+                        <div className="hidden sm:block">
+                            <h1 className="font-semibold text-sm line-clamp-1">{lesson.title}</h1>
+                            <p className="text-xs text-muted-foreground line-clamp-1">{course.title}</p>
                         </div>
                     </div>
-                    <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-3">
                         <div className="hidden md:flex items-center space-x-2">
-                            <span className="text-sm text-muted-foreground">Course Progress:</span>
-                            <Progress value={course.progress} className="w-32" />
-                            <span className="text-sm font-medium">{Math.round(course.progress)}%</span>
+                            <Progress value={course.progress} className="w-24" />
+                            <span className="text-xs font-medium">{Math.round(course.progress)}%</span>
                         </div>
-                        <Link href={`/courses/${courseId}`}>
-                            <Button variant="outline" size="sm">
-                                <BookOpen className="h-4 w-4 mr-2" />
-                                Course Outline
+
+                        {/* Lesson completion status */}
+                        {lessonCompleted ? (
+                            <Badge className="bg-green-500 hidden sm:flex">
+                                <CheckCircle className="h-3 w-3 mr-1" />
+                                Completed
+                            </Badge>
+                        ) : (
+                            <Button size="sm" variant="outline" onClick={handleMarkComplete}>
+                                <CheckCircle className="h-4 w-4 mr-1" />
+                                <span className="hidden sm:inline">Mark Complete</span>
                             </Button>
-                        </Link>
+                        )}
+
+                        {/* AI Chat toggle */}
+                        <Button
+                            variant={showAIChat ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setShowAIChat(!showAIChat)}
+                        >
+                            <MessageSquare className="h-4 w-4" />
+                            <span className="hidden sm:inline ml-1">AI Assistant</span>
+                        </Button>
                     </div>
                 </div>
             </div>
 
-            <div className="flex-1 overflow-hidden">
-                <div className="h-full grid lg:grid-cols-[1fr,400px] gap-0">
-                    <div className="flex flex-col overflow-y-auto">
-                        <div className="p-6 space-y-6">
+            {/* Main Content */}
+            <div className="flex-1 min-h-0 flex overflow-hidden">
+                {/* Sidebar - Course Content Panel */}
+                <div
+                    className={cn(
+                        "w-80 flex-shrink-0 border-r bg-card overflow-hidden transition-all duration-300",
+                        showSidebar ? "translate-x-0" : "-translate-x-full lg:translate-x-0 lg:w-0 lg:border-0"
+                    )}
+                >
+                    <CourseContentPanel
+                        chapters={course.chapters || []}
+                        currentLessonId={lesson.id}
+                        currentAssetId={selectedAsset?.id}
+                        completedLessons={completedLessons}
+                        onLessonSelect={handleLessonSelect}
+                        onAssetSelect={handleAssetSelect}
+                        className="h-full"
+                    />
+                </div>
+
+                {/* Main Content Area */}
+                <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
+                    <div className="flex-1 overflow-y-auto">
+                        <div className="p-4 lg:p-6 space-y-4">
                             {progressError && (
                                 <Alert variant="destructive">
                                     <AlertDescription>{progressError}</AlertDescription>
                                 </Alert>
                             )}
 
-                            <div>
-                                <VideoPlayer
-                                    videoUrl={lesson.videoUrl || '/videos/sample.mp4'}
-                                    subtitleUrl={lesson.subtitleUrl}
-                                    onTimeUpdate={setCurrentTime}
-                                    initialTime={initialTimestamp}
-                                />
+                            {/* Main Content (Video/Asset Viewer) */}
+                            <div className="rounded-lg overflow-hidden">
+                                {renderMainContent()}
                             </div>
 
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <h2 className="text-2xl font-bold">{lesson.title}</h2>
-                                    <p className="text-muted-foreground mt-1">
-                                        {course.chapters?.find(ch => ch.lessons.some(l => l.id === lesson.id))?.title}
-                                    </p>
+                            {/* Lesson Info */}
+                            <div className="space-y-2">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div>
+                                        <h2 className="text-xl font-bold">{lesson.title}</h2>
+                                        <p className="text-sm text-muted-foreground">
+                                            {course.chapters?.find(ch => ch.lessons.some(l => l.id === lesson.id))?.title}
+                                        </p>
+                                    </div>
                                 </div>
-                                {!lessonCompleted ? (
-                                    <Button onClick={handleMarkComplete}>
-                                        <CheckCircle className="h-4 w-4 mr-2" />
-                                        Mark as Complete
-                                    </Button>
-                                ) : (
-                                    <Badge className="bg-green-500">
-                                        <CheckCircle className="h-4 w-4 mr-1" />
-                                        Completed
-                                    </Badge>
+
+                                {lesson.description && (
+                                    <p className="text-muted-foreground text-sm">{lesson.description}</p>
+                                )}
+
+                                {lesson.learningObjectives && lesson.learningObjectives.length > 0 && (
+                                    <div className="mt-4">
+                                        <h3 className="text-sm font-semibold mb-2">Learning Objectives</h3>
+                                        <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
+                                            {lesson.learningObjectives.map((obj, idx) => (
+                                                <li key={`objective-${idx}-${obj.substring(0, 20)}`}>{obj}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
                                 )}
                             </div>
 
-                            <Tabs defaultValue="transcript" className="w-full">
-                                <TabsList>
-                                    <TabsTrigger value="transcript">Transcript</TabsTrigger>
-                                    <TabsTrigger value="notes">Notes</TabsTrigger>
-                                    <TabsTrigger value="resources">Resources</TabsTrigger>
-                                </TabsList>
-                                <TabsContent value="transcript" className="mt-4">
-                                    <TranscriptPanel currentTime={currentTime} />
-                                </TabsContent>
-                                <TabsContent value="notes" className="mt-4">
-                                    <Card>
-                                        <CardContent className="p-6">
-                                            <p className="text-muted-foreground">
-                                                Take notes while watching the lesson. Your notes will be saved automatically.
-                                            </p>
-                                        </CardContent>
-                                    </Card>
-                                </TabsContent>
-                                <TabsContent value="resources" className="mt-4">
-                                    <Card>
-                                        <CardContent className="p-6">
-                                            <p className="text-muted-foreground">
-                                                Additional resources and downloadable materials will appear here.
-                                            </p>
-                                        </CardContent>
-                                    </Card>
-                                </TabsContent>
-                            </Tabs>
-
-                            <div className="flex items-center justify-between pt-6 border-t">
+                            {/* Navigation */}
+                            <div className="flex items-center justify-between pt-4 border-t">
                                 {prevLesson ? (
                                     <Link href={`/learn/${courseId}/${prevLesson.id}`}>
-                                        <Button variant="outline">
-                                            <ChevronLeft className="h-4 w-4 mr-2" />
-                                            Previous Lesson
+                                        <Button variant="outline" size="sm">
+                                            <ChevronLeft className="h-4 w-4 mr-1" />
+                                            <span className="hidden sm:inline">Previous</span>
                                         </Button>
                                     </Link>
                                 ) : (
@@ -345,30 +563,67 @@ export default function LessonPage({
                                 )}
                                 {nextLesson ? (
                                     <Link href={`/learn/${courseId}/${nextLesson.id}`}>
-                                        <Button variant="outline">
-                                            Next Lesson
-                                            <ChevronRight className="h-4 w-4 ml-2" />
+                                        <Button variant="outline" size="sm">
+                                            <span className="hidden sm:inline">Next</span>
+                                            <ChevronRight className="h-4 w-4 ml-1" />
                                         </Button>
                                     </Link>
                                 ) : (
                                     <span />
                                 )}
                             </div>
-
-                            <CourseOutline
-                                chapters={course.chapters || []}
-                                courseId={course.id}
-                                completedLessons={completedLessons}
-                            />
                         </div>
                     </div>
-                    <div className="border-l bg-card">
-                        <AIChatPanel
-                            courseId={courseId}
-                            lessonId={lesson.id}
-                            lessonTitle={lesson.title}
-                            currentTime={currentTime}
+                </div>
+
+                {/* AI Chat Panel - Slide-in */}
+                <div
+                    className={cn(
+                        "relative flex-shrink-0 border-l bg-card overflow-hidden transition-[transform,width] duration-300",
+                        isResizingAiPanel ? "transition-none" : null,
+                        showAIChat ? "translate-x-0" : "translate-x-full border-0"
+                    )}
+                    style={{ width: showAIChat ? aiPanelWidth : 0 }}
+                >
+                    {showAIChat && (
+                        <div
+                            role="separator"
+                            aria-label="Resize AI panel"
+                            aria-orientation="vertical"
+                            tabIndex={0}
+                            className="absolute left-0 top-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-border/60 focus:outline-none focus:ring-2 focus:ring-ring"
+                            onPointerDown={(e) => {
+                                if (e.button !== 0) return
+                                aiPanelResizeStateRef.current = { startX: e.clientX, startWidth: aiPanelWidth }
+                                setIsResizingAiPanel(true)
+                            }}
+                            onKeyDown={(e) => {
+                                const delta = e.key === 'ArrowLeft' ? 20 : e.key === 'ArrowRight' ? -20 : 0
+                                if (!delta) return
+                                e.preventDefault()
+                                const minWidth = 320
+                                const maxWidth = Math.max(360, Math.min(800, window.innerWidth - 360))
+                                const next = Math.max(minWidth, Math.min(maxWidth, aiPanelWidth + delta))
+                                setAiPanelWidth(next)
+                            }}
                         />
+                    )}
+                    <div className="h-full min-h-0 flex flex-col">
+                        <div className="p-3 border-b flex items-center justify-between">
+                            <h3 className="font-semibold text-sm">AI Learning Assistant</h3>
+                            <Button variant="ghost" size="icon" onClick={() => setShowAIChat(false)}>
+                                <X className="h-4 w-4" />
+                            </Button>
+                        </div>
+                        <div className="flex-1 min-h-0 overflow-hidden">
+                            <AIChatPanel
+                                courseId={courseId}
+                                lessonId={lesson.id}
+                                lessonTitle={lesson.title}
+                                currentTime={currentTime}
+                                onSeekToTimestamp={handleSeekToTimestamp}
+                            />
+                        </div>
                     </div>
                 </div>
             </div>

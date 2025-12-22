@@ -9,14 +9,7 @@ export class LessonAssetService {
         })
     }
 
-    static async addAsset(lessonId: string, data: {
-        title: string
-        description?: string
-        url: string
-        s3Key: string
-        contentType?: string
-        type: LessonAssetType
-    }) {
+    static async addAsset(lessonId: string, courseAssetId: string) {
         const lesson = await prisma.lesson.findUnique({
             where: { id: lessonId },
             select: { id: true },
@@ -29,7 +22,7 @@ export class LessonAssetService {
         return prisma.lessonAsset.create({
             data: {
                 lessonId,
-                ...data,
+                courseAssetId,
             },
         })
     }

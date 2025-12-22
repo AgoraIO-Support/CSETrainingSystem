@@ -1,236 +1,39 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Progress } from '@/components/ui/progress'
-import { mockCourses } from '@/lib/mock-data'
-import { BookOpen, ClipboardList, GraduationCap, TrendingUp } from 'lucide-react'
-import { formatDate } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { ApiClient } from '@/lib/api-client'
+import {
+    Search,
+    Plus,
+    Edit,
+    Trash2,
+    Loader2,
+    FileQuestion,
+    Users,
+    BarChart3,
+    Clock,
+    CheckCircle,
+    AlertCircle,
+    Send,
+    ClipboardList,
+    BookOpen,
+    GraduationCap,
+    TrendingUp,
+} from 'lucide-react'
+import Link from 'next/link'
+import type { Exam, ExamStatus } from '@/types'
 
-const DEFAULT_EXAMS = [
-    {
-        id: 'exam-1',
-        courseId: '1',
-        title: 'Agora SDK Fundamentals - Final Assessment',
-        status: 'Scheduled',
-        type: 'Final',
-        duration: 45,
-        attempts: 48,
-        passRate: 82,
-        lastRun: '2025-12-01',
-    },
-    {
-        id: 'exam-2',
-        courseId: '2',
-        title: 'Advanced RTC Optimization - Midterm',
-        status: 'Active',
-        type: 'Midterm',
-        duration: 30,
-        attempts: 32,
-        passRate: 75,
-        lastRun: '2025-11-28',
-    },
-    {
-        id: 'exam-3',
-        courseId: '3',
-        title: 'Live Streaming Essentials - Knowledge Check',
-        status: 'Draft',
-        type: 'Quiz',
-        duration: 20,
-        attempts: 0,
-        passRate: null,
-        lastRun: null,
-    },
-]
-
-export default function AdminExamsPage() {
-    const [exams, setExams] = useState(DEFAULT_EXAMS)
-    const [showCreate, setShowCreate] = useState(false)
-    const [creating, setCreating] = useState(false)
-    const [createError, setCreateError] = useState<string | null>(null)
-    const [form, setForm] = useState({
-        title: '',
-        courseId: mockCourses[0]?.id ?? '',
-        type: 'Final',
-        duration: 45,
-    })
-
-    const courseLookup = useMemo(
-        () =>
-            mockCourses.reduce<Record<string, (typeof mockCourses)[number]>>((acc, course) => {
-                acc[course.id] = course
-                return acc
-            }, {}),
-        []
-    )
-
-    const activeExams = exams.filter(exam => exam.status !== 'Draft')
-    const draftExams = exams.filter(exam => exam.status === 'Draft')
-
-    const stats = {
-        total: exams.length,
-        active: activeExams.length,
-        draft: draftExams.length,
-        avgPassRate: Math.round(
-            activeExams.reduce((total, exam) => total + (exam.passRate ?? 0), 0) / Math.max(activeExams.length, 1)
-        ),
-    }
-
-    const handleCreateExam = (event: React.FormEvent<HTMLFormElement>) => {
-        event.preventDefault()
-        if (!form.title.trim()) {
-            setCreateError('Exam title is required')
-            return
-        }
-        if (!form.courseId) {
-            setCreateError('Please select a course')
-            return
-        }
-        setCreating(true)
-        setCreateError(null)
-        setTimeout(() => {
-            setExams(prev => [
-                {
-                    id: `exam-${prev.length + 1}`,
-                    courseId: form.courseId,
-                    title: form.title.trim(),
-                    status: 'Draft',
-                    type: form.type,
-                    duration: Number(form.duration) || 30,
-                    attempts: 0,
-                    passRate: null,
-                    lastRun: null,
-                },
-                ...prev,
-            ])
-            setForm({
-                title: '',
-                courseId: mockCourses[0]?.id ?? '',
-                type: 'Final',
-                duration: 45,
-            })
-            setShowCreate(false)
-            setCreating(false)
-        }, 400)
-    }
-
-    return (
-        <DashboardLayout>
-            <div className="space-y-6">
-                <div className="flex items-center justify-between flex-wrap gap-4">
-                    <div>
-                        <h1 className="text-3xl font-bold">Exam Management</h1>
-                        <p className="text-muted-foreground mt-1">
-                            Schedule, monitor, and iterate on course exams and certifications
-                        </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Button variant="outline">Import Blueprint</Button>
-                        <Button onClick={() => setShowCreate(current => !current)}>{showCreate ? 'Close' : 'Create Exam'}</Button>
-                    </div>
-                </div>
-
-                {showCreate && (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>New Exam</CardTitle>
-                            <CardDescription>Provide the essential details to draft a new exam configuration.</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <form className="space-y-4" onSubmit={handleCreateExam}>
-                                <div className="grid gap-4 md:grid-cols-2">
-                                    <div>
-                                        <label className="text-sm font-medium">Title</label>
-                                        <Input
-                                            value={form.title}
-                                            onChange={event => setForm(prev => ({ ...prev, title: event.target.value }))}
-                                            placeholder="e.g. Advanced RTC Final"
-                                            className="mt-1"
-                                            required
-                                        />
-                                    </div>
-                                    <div>
-                                            <label className="text-sm font-medium">Course</label>
-                                            <select
-                                                className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
-                                                value={form.courseId}
-                                                onChange={event => setForm(prev => ({ ...prev, courseId: event.target.value }))}
-                                            >
-                                                {mockCourses.map(course => (
-                                                    <option key={course.id} value={course.id}>
-                                                        {course.title}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                </div>
-                                <div className="grid gap-4 md:grid-cols-2">
-                                    <div>
-                                        <label className="text-sm font-medium">Exam Type</label>
-                                        <select
-                                            className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
-                                            value={form.type}
-                                            onChange={event => setForm(prev => ({ ...prev, type: event.target.value }))}
-                                        >
-                                            <option value="Final">Final</option>
-                                            <option value="Midterm">Midterm</option>
-                                            <option value="Quiz">Quiz</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="text-sm font-medium">Duration (minutes)</label>
-                                        <Input
-                                            type="number"
-                                            min={10}
-                                            value={form.duration}
-                                            onChange={event => setForm(prev => ({ ...prev, duration: Number(event.target.value) }))}
-                                            className="mt-1"
-                                        />
-                                    </div>
-                                </div>
-                                {createError && <p className="text-sm text-destructive">{createError}</p>}
-                                <div className="flex items-center gap-3">
-                                    <Button type="submit" disabled={creating}>
-                                        {creating ? 'Creating...' : 'Create Draft'}
-                                    </Button>
-                                    <Button type="button" variant="ghost" onClick={() => setShowCreate(false)}>
-                                        Cancel
-                                    </Button>
-                                </div>
-                            </form>
-                        </CardContent>
-                    </Card>
-                )}
-
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                    <StatCard title="Total Exams" value={stats.total} helper="Across all courses" icon={ClipboardList} />
-                    <StatCard title="Active" value={stats.active} helper="Currently available" icon={BookOpen} />
-                    <StatCard title="Drafts" value={stats.draft} helper="Needs configuration" icon={GraduationCap} />
-                    <StatCard title="Avg. Pass Rate" value={`${stats.avgPassRate}%`} helper="Rolling 30 days" icon={TrendingUp} />
-                </div>
-
-                <Tabs defaultValue="active" className="w-full">
-                    <TabsList>
-                        <TabsTrigger value="active">Active Exams</TabsTrigger>
-                        <TabsTrigger value="drafts">Drafts</TabsTrigger>
-                    </TabsList>
-
-                    <TabsContent value="active" className="mt-6">
-                        <ExamTable exams={activeExams} courseLookup={courseLookup} emptyLabel="No active exams yet." />
-                    </TabsContent>
-
-                    <TabsContent value="drafts" className="mt-6">
-                        <ExamTable exams={draftExams} courseLookup={courseLookup} emptyLabel="No drafts available." />
-                    </TabsContent>
-                </Tabs>
-            </div>
-        </DashboardLayout>
-    )
+const statusConfig: Record<ExamStatus, { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }> = {
+    DRAFT: { label: 'Draft', variant: 'secondary' },
+    PENDING_REVIEW: { label: 'Pending Review', variant: 'outline' },
+    APPROVED: { label: 'Approved', variant: 'default' },
+    PUBLISHED: { label: 'Published', variant: 'default' },
+    CLOSED: { label: 'Closed', variant: 'destructive' },
 }
 
 interface StatCardProps {
@@ -255,81 +58,256 @@ function StatCard({ title, value, helper, icon: Icon }: StatCardProps) {
     )
 }
 
-interface ExamTableProps {
-    exams: typeof DEFAULT_EXAMS
-    courseLookup: Record<string, (typeof mockCourses)[number]>
-    emptyLabel: string
-}
+export default function AdminExamsPage() {
+    const [exams, setExams] = useState<Exam[]>([])
+    const [searchQuery, setSearchQuery] = useState('')
+    const [statusFilter, setStatusFilter] = useState<ExamStatus | 'ALL'>('ALL')
+    const [loading, setLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
 
-function ExamTable({ exams, courseLookup, emptyLabel }: ExamTableProps) {
-    if (!exams.length) {
-        return (
-            <Card>
-                <CardContent className="p-6 text-sm text-muted-foreground">{emptyLabel}</CardContent>
-            </Card>
+    useEffect(() => {
+        let cancelled = false
+        const loadExams = async () => {
+            setLoading(true)
+            setError(null)
+            try {
+                const params: Record<string, string | number> = { limit: 50 }
+                if (statusFilter !== 'ALL') {
+                    params.status = statusFilter
+                }
+                const response = await ApiClient.getAdminExams(params)
+                if (!cancelled) {
+                    setExams(response.data)
+                }
+            } catch (err) {
+                if (!cancelled) {
+                    setError(err instanceof Error ? err.message : 'Failed to load exams')
+                }
+            } finally {
+                if (!cancelled) {
+                    setLoading(false)
+                }
+            }
+        }
+
+        loadExams()
+        return () => {
+            cancelled = true
+        }
+    }, [statusFilter])
+
+    const filteredExams = useMemo(() => {
+        const query = searchQuery.toLowerCase().trim()
+        return exams.filter(exam =>
+            !query ||
+            exam.title.toLowerCase().includes(query) ||
+            exam.description?.toLowerCase().includes(query) ||
+            exam.course?.title?.toLowerCase().includes(query)
         )
+    }, [exams, searchQuery])
+
+    const stats = useMemo(() => {
+        const total = exams.length
+        const published = exams.filter(e => e.status === 'PUBLISHED').length
+        const draft = exams.filter(e => e.status === 'DRAFT').length
+        const totalAttempts = exams.reduce((sum, e) => sum + (e._count?.attempts ?? 0), 0)
+        return { total, published, draft, totalAttempts }
+    }, [exams])
+
+    const handleDelete = async (examId: string) => {
+        const confirmed = window.confirm('Are you sure you want to delete this exam? This action cannot be undone.')
+        if (!confirmed) return
+
+        try {
+            await ApiClient.deleteExam(examId)
+            setExams(prev => prev.filter(exam => exam.id !== examId))
+        } catch (err) {
+            alert(err instanceof Error ? err.message : 'Failed to delete exam')
+        }
+    }
+
+    const formatDate = (date: string | Date | null | undefined) => {
+        if (!date) return '-'
+        return new Date(date).toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+        })
     }
 
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle>Exam Overview</CardTitle>
-                <CardDescription>Key metrics for each exam</CardDescription>
-            </CardHeader>
-            <CardContent className="overflow-x-auto">
-                <table className="w-full text-sm">
-                    <thead>
-                        <tr className="text-left text-muted-foreground border-b">
-                            <th className="py-3 pr-4 font-medium">Exam</th>
-                            <th className="py-3 pr-4 font-medium">Course</th>
-                            <th className="py-3 pr-4 font-medium">Type</th>
-                            <th className="py-3 pr-4 font-medium">Status</th>
-                            <th className="py-3 pr-4 font-medium">Duration</th>
-                            <th className="py-3 pr-4 font-medium">Attempts</th>
-                            <th className="py-3 pr-4 font-medium">Pass Rate</th>
-                            <th className="py-3 font-medium">Last Run</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {exams.map(exam => {
-                            const course = courseLookup[exam.courseId]
-                            return (
-                                <tr key={exam.id} className="border-b last:border-none">
-                                    <td className="py-3 pr-4 font-medium">{exam.title}</td>
-                                    <td className="py-3 pr-4">
-                                        <div>
-                                            <p className="font-medium">{course?.title ?? '—'}</p>
-                                            <p className="text-xs text-muted-foreground">{course?.instructor?.name ?? '—'}</p>
-                                        </div>
-                                    </td>
-                                    <td className="py-3 pr-4">
-                                        <Badge variant="outline">{exam.type}</Badge>
-                                    </td>
-                                    <td className="py-3 pr-4">
-                                        <Badge variant={exam.status === 'Active' ? 'default' : 'secondary'}>{exam.status}</Badge>
-                                    </td>
-                                    <td className="py-3 pr-4">{exam.duration} min</td>
-                                    <td className="py-3 pr-4">{exam.attempts}</td>
-                                    <td className="py-3 pr-4">
-                                        {exam.passRate ? (
-                                            <div className="space-y-1">
-                                                <div className="flex items-center justify-between text-xs">
-                                                    <span>{exam.passRate}%</span>
-                                                    <span>{exam.passRate >= 80 ? 'On track' : 'Review'}</span>
-                                                </div>
-                                                <Progress value={exam.passRate} />
+        <DashboardLayout>
+            <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h1 className="text-3xl font-bold">Exam Management</h1>
+                        <p className="text-muted-foreground mt-1">
+                            Create and manage exams with AI-powered question generation
+                        </p>
+                    </div>
+                    <Link href="/admin/exams/create">
+                        <Button>
+                            <Plus className="h-4 w-4 mr-2" />
+                            Create Exam
+                        </Button>
+                    </Link>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                    <StatCard title="Total Exams" value={stats.total} helper="Across all courses" icon={ClipboardList} />
+                    <StatCard title="Published" value={stats.published} helper="Currently available" icon={BookOpen} />
+                    <StatCard title="Drafts" value={stats.draft} helper="Needs configuration" icon={GraduationCap} />
+                    <StatCard title="Total Attempts" value={stats.totalAttempts} helper="All time" icon={TrendingUp} />
+                </div>
+
+                <Card>
+                    <CardContent className="p-4">
+                        <div className="flex items-center gap-4">
+                            <div className="relative flex-1">
+                                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <Input
+                                    placeholder="Search exams..."
+                                    className="pl-10"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                />
+                            </div>
+                            <select
+                                className="h-10 px-3 border rounded-md bg-background"
+                                value={statusFilter}
+                                onChange={(e) => setStatusFilter(e.target.value as ExamStatus | 'ALL')}
+                            >
+                                <option value="ALL">All Status</option>
+                                <option value="DRAFT">Draft</option>
+                                <option value="PENDING_REVIEW">Pending Review</option>
+                                <option value="APPROVED">Approved</option>
+                                <option value="PUBLISHED">Published</option>
+                                <option value="CLOSED">Closed</option>
+                            </select>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>All Exams ({filteredExams.length})</CardTitle>
+                        <CardDescription>Manage your exam library</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        {loading ? (
+                            <div className="flex items-center justify-center py-12">
+                                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                            </div>
+                        ) : error ? (
+                            <div className="text-center py-12">
+                                <AlertCircle className="h-10 w-10 text-destructive mx-auto mb-2" />
+                                <p className="font-medium mb-2">Unable to load exams</p>
+                                <p className="text-sm text-muted-foreground">{error}</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                {filteredExams.map(exam => (
+                                    <div
+                                        key={exam.id}
+                                        className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent transition-colors"
+                                    >
+                                        <div className="flex-1">
+                                            <div className="flex items-center gap-3 mb-2">
+                                                <h4 className="font-semibold">{exam.title}</h4>
+                                                <Badge variant={statusConfig[exam.status].variant}>
+                                                    {statusConfig[exam.status].label}
+                                                </Badge>
+                                                <Badge variant="outline">
+                                                    {exam.examType === 'COURSE_BASED' ? 'Course-Based' : 'Standalone'}
+                                                </Badge>
                                             </div>
-                                        ) : (
-                                            <span className="text-muted-foreground text-xs">No data</span>
-                                        )}
-                                    </td>
-                                    <td className="py-3">{exam.lastRun ? formatDate(exam.lastRun) : '—'}</td>
-                                </tr>
-                            )
-                        })}
-                    </tbody>
-                </table>
-            </CardContent>
-        </Card>
+                                            {exam.description && (
+                                                <p className="text-sm text-muted-foreground mb-2 line-clamp-1">
+                                                    {exam.description}
+                                                </p>
+                                            )}
+                                            <div className="flex items-center gap-6 text-sm text-muted-foreground">
+                                                <span className="flex items-center gap-1">
+                                                    <FileQuestion className="h-4 w-4" />
+                                                    {exam._count?.questions ?? 0} questions
+                                                </span>
+                                                <span className="flex items-center gap-1">
+                                                    <Users className="h-4 w-4" />
+                                                    {exam._count?.attempts ?? 0} attempts
+                                                </span>
+                                                {exam.timeLimit && (
+                                                    <span className="flex items-center gap-1">
+                                                        <Clock className="h-4 w-4" />
+                                                        {exam.timeLimit} min
+                                                    </span>
+                                                )}
+                                                <span className="flex items-center gap-1">
+                                                    <CheckCircle className="h-4 w-4" />
+                                                    Pass: {exam.passingScore}/{exam.totalScore}
+                                                </span>
+                                                {exam.deadline && (
+                                                    <span>Deadline: {formatDate(exam.deadline)}</span>
+                                                )}
+                                            </div>
+                                            {exam.course && (
+                                                <div className="mt-2">
+                                                    <Badge variant="secondary" className="text-xs">
+                                                        Course: {exam.course.title}
+                                                    </Badge>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <Link href={`/admin/exams/${exam.id}/questions`}>
+                                                <Button variant="ghost" size="icon" title="Manage Questions">
+                                                    <FileQuestion className="h-4 w-4" />
+                                                </Button>
+                                            </Link>
+                                            <Link href={`/admin/exams/${exam.id}/invitations`}>
+                                                <Button variant="ghost" size="icon" title="Manage Invitations">
+                                                    <Send className="h-4 w-4" />
+                                                </Button>
+                                            </Link>
+                                            <Link href={`/admin/exams/${exam.id}/attempts`}>
+                                                <Button variant="ghost" size="icon" title="View Attempts">
+                                                    <Users className="h-4 w-4" />
+                                                </Button>
+                                            </Link>
+                                            <Link href={`/admin/exams/${exam.id}/analytics`}>
+                                                <Button variant="ghost" size="icon" title="View Analytics">
+                                                    <BarChart3 className="h-4 w-4" />
+                                                </Button>
+                                            </Link>
+                                            <Link href={`/admin/exams/${exam.id}/edit`}>
+                                                <Button variant="ghost" size="icon" title="Edit Exam">
+                                                    <Edit className="h-4 w-4" />
+                                                </Button>
+                                            </Link>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="text-red-500 hover:text-red-600"
+                                                onClick={() => handleDelete(exam.id)}
+                                                title="Delete Exam"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ))}
+                                {filteredExams.length === 0 && (
+                                    <div className="text-center py-12">
+                                        <FileQuestion className="h-10 w-10 text-muted-foreground mx-auto mb-2" />
+                                        <p className="text-sm text-muted-foreground">
+                                            {searchQuery ? 'No exams match your search.' : 'No exams yet. Create your first exam!'}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            </div>
+        </DashboardLayout>
     )
 }

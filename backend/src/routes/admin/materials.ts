@@ -1,12 +1,13 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { requireRole } from '../../middleware/auth.js'
+import { LessonAssetType } from '@prisma/client'
 
 const createSchema = z.object({
     courseId: z.string().uuid(),
     title: z.string().min(1),
     description: z.string().optional(),
-    type: z.enum(['VIDEO', 'DOCUMENT', 'IMAGE', 'AUDIO', 'OTHER']),
+    type: z.nativeEnum(LessonAssetType),
     s3Key: z.string().min(1),
     cloudfrontUrl: z.string().url(),
     mimeType: z.string().min(1),

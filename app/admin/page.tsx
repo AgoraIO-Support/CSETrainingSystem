@@ -1,37 +1,76 @@
 'use client'
 
+import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Users, BookOpen, GraduationCap, TrendingUp, Plus, ArrowUp } from 'lucide-react'
-import Link from 'next/link'
+import { ApiClient } from '@/lib/api-client'
+import { Users, BookOpen, TrendingUp, Plus, RefreshCcw } from 'lucide-react'
 
 export default function AdminDashboardPage() {
-    // Mock admin data
-    const stats = {
-        totalUsers: 1250,
-        activeCourses: 12,
-        completedCertifications: 458,
-        averageCompletionRate: 76,
+    const [loading, setLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
+    const [refreshIndex, setRefreshIndex] = useState(0)
+
+    const [summary, setSummary] = useState<any | null>(null)
+    const [recentCourses, setRecentCourses] = useState<any[]>([])
+    const [recentUsers, setRecentUsers] = useState<any[]>([])
+
+    useEffect(() => {
+        let cancelled = false
+
+        const load = async () => {
+            setLoading(true)
+            setError(null)
+            try {
+                const [analyticsRes, coursesRes, usersRes] = await Promise.all([
+                    ApiClient.getAnalytics(),
+                    ApiClient.getAdminCourses({ page: 1, limit: 3 }),
+                    ApiClient.getUsers({ page: 1, limit: 3 }),
+                ])
+
+                if (cancelled) return
+                setSummary(analyticsRes.data)
+                setRecentCourses(Array.isArray(coursesRes.data) ? coursesRes.data : [])
+                setRecentUsers(Array.isArray(usersRes.data?.users) ? usersRes.data.users : [])
+            } catch (err) {
+                if (!cancelled) {
+                    setError(err instanceof Error ? err.message : 'Failed to load dashboard data')
+                }
+            } finally {
+                if (!cancelled) {
+                    setLoading(false)
+                }
+            }
+        }
+
+        load()
+        return () => {
+            cancelled = true
+        }
+    }, [refreshIndex])
+
+    const stats = useMemo(() => {
+        return {
+            totalUsers: summary?.totalUsers ?? 0,
+            totalCourses: summary?.totalCourses ?? 0,
+            totalEnrollments: summary?.totalEnrollments ?? 0,
+            completionRate: summary?.completionRate ?? 0,
+        }
+    }, [summary])
+
+    const formatShortDate = (value: string | Date | null | undefined) => {
+        if (!value) return '-'
+        const d = new Date(value)
+        if (Number.isNaN(d.getTime())) return '-'
+        return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
     }
-
-    const recentCourses = [
-        { id: '1', title: 'Agora SDK Fundamentals', students: 450, completion: 82 },
-        { id: '2', title: 'Advanced Video Calling Features', students: 320, completion: 68 },
-        { id: '3', title: 'Cloud Recording with Agora', students: 280, completion: 75 },
-    ]
-
-    const recentUsers = [
-        { id: '1', name: 'Alice Chen', email: 'alice@agora.io', courses: 3, joined: '2 days ago' },
-        { id: '2', name: 'Bob Smith', email: 'bob@agora.io', courses: 2, joined: '5 days ago' },
-        { id: '3', name: 'Carol Zhang', email: 'carol@agora.io', courses: 4, joined: '1 week ago' },
-    ]
 
     return (
         <DashboardLayout>
             <div className="space-y-6">
-                {/* Page Header */}
                 <div className="flex items-center justify-between">
                     <div>
                         <h1 className="text-3xl font-bold">Admin Dashboard</h1>
@@ -40,6 +79,14 @@ export default function AdminDashboardPage() {
                         </p>
                     </div>
                     <div className="flex space-x-2">
+                        <Button
+                            variant="outline"
+                            onClick={() => setRefreshIndex(prev => prev + 1)}
+                            disabled={loading}
+                        >
+                            <RefreshCcw className="h-4 w-4 mr-2" />
+                            Refresh
+                        </Button>
                         <Link href="/admin/courses/create">
                             <Button>
                                 <Plus className="h-4 w-4 mr-2" />
@@ -49,7 +96,12 @@ export default function AdminDashboardPage() {
                     </div>
                 </div>
 
-                {/* Stats Cards */}
+                {error && (
+                    <div className="p-4 bg-destructive/10 text-destructive rounded-lg">
+                        {error}
+                    </div>
+                )}
+
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -58,41 +110,29 @@ export default function AdminDashboardPage() {
                         </CardHeader>
                         <CardContent>
                             <div className="text-2xl font-bold">{stats.totalUsers.toLocaleString()}</div>
-                            <p className="text-xs text-muted-foreground flex items-center mt-1">
-                                <ArrowUp className="h-3 w-3 mr-1 text-green-500" />
-                                <span className="text-green-500">+12%</span>
-                                <span className="ml-1">from last month</span>
-                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">All accounts</p>
                         </CardContent>
                     </Card>
 
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-sm font-medium">Active Courses</CardTitle>
+                            <CardTitle className="text-sm font-medium">Courses</CardTitle>
                             <BookOpen className="h-4 w-4 text-muted-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">{stats.activeCourses}</div>
-                            <p className="text-xs text-muted-foreground flex items-center mt-1">
-                                <ArrowUp className="h-3 w-3 mr-1 text-green-500" />
-                                <span className="text-green-500">+2</span>
-                                <span className="ml-1">added this month</span>
-                            </p>
+                            <div className="text-2xl font-bold">{stats.totalCourses.toLocaleString()}</div>
+                            <p className="text-xs text-muted-foreground mt-1">Total courses</p>
                         </CardContent>
                     </Card>
 
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-sm font-medium">Certifications</CardTitle>
-                            <GraduationCap className="h-4 w-4 text-muted-foreground" />
+                            <CardTitle className="text-sm font-medium">Enrollments</CardTitle>
+                            <Users className="h-4 w-4 text-muted-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">{stats.completedCertifications}</div>
-                            <p className="text-xs text-muted-foreground flex items-center mt-1">
-                                <ArrowUp className="h-3 w-3 mr-1 text-green-500" />
-                                <span className="text-green-500">+38</span>
-                                <span className="ml-1">this month</span>
-                            </p>
+                            <div className="text-2xl font-bold">{stats.totalEnrollments.toLocaleString()}</div>
+                            <p className="text-xs text-muted-foreground mt-1">Active + completed</p>
                         </CardContent>
                     </Card>
 
@@ -102,80 +142,81 @@ export default function AdminDashboardPage() {
                             <TrendingUp className="h-4 w-4 text-muted-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">{stats.averageCompletionRate}%</div>
-                            <p className="text-xs text-muted-foreground flex items-center mt-1">
-                                <ArrowUp className="h-3 w-3 mr-1 text-green-500" />
-                                <span className="text-green-500">+3%</span>
-                                <span className="ml-1">from last month</span>
-                            </p>
+                            <div className="text-2xl font-bold">{stats.completionRate}%</div>
+                            <p className="text-xs text-muted-foreground mt-1">Completed enrollments</p>
                         </CardContent>
                     </Card>
                 </div>
 
                 <div className="grid gap-6 lg:grid-cols-2">
-                    {/* Popular Courses */}
                     <Card>
                         <CardHeader>
-                            <CardTitle>Popular Courses</CardTitle>
-                            <CardDescription>Most enrolled courses this month</CardDescription>
+                            <CardTitle>Recent Courses</CardTitle>
+                            <CardDescription>Latest courses</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <div className="space-y-4">
-                                {recentCourses.map(course => (
-                                    <div key={course.id} className="flex items-center justify-between">
-                                        <div className="flex-1">
-                                            <p className="font-medium">{course.title}</p>
-                                            <div className="flex items-center space-x-4 mt-1">
-                                                <span className="text-sm text-muted-foreground">
-                                                    {course.students} students
-                                                </span>
-                                                <Badge variant="secondary" className="text-xs">
-                                                    {course.completion}% completion
-                                                </Badge>
+                            {recentCourses.length ? (
+                                <div className="space-y-4">
+                                    {recentCourses.map(course => (
+                                        <div key={course.id} className="flex items-center justify-between">
+                                            <div className="flex-1">
+                                                <p className="font-medium">{course.title}</p>
+                                                <div className="flex items-center space-x-4 mt-1">
+                                                    <span className="text-sm text-muted-foreground">{course.status}</span>
+                                                    <Badge variant="secondary" className="text-xs">
+                                                        {formatShortDate(course.createdAt)}
+                                                    </Badge>
+                                                </div>
                                             </div>
+                                            <Link href={`/admin/courses/${course.id}/edit`}>
+                                                <Button variant="ghost" size="sm">
+                                                    Edit
+                                                </Button>
+                                            </Link>
                                         </div>
-                                        <Link href={`/admin/courses/${course.id}`}>
-                                            <Button variant="ghost" size="sm">
-                                                View
-                                            </Button>
-                                        </Link>
-                                    </div>
-                                ))}
-                            </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-sm text-muted-foreground">No courses yet</p>
+                            )}
                         </CardContent>
                     </Card>
 
-                    {/* Recent Users */}
                     <Card>
                         <CardHeader>
                             <CardTitle>Recent Users</CardTitle>
-                            <CardDescription>New registrations</CardDescription>
+                            <CardDescription>Latest registrations</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <div className="space-y-4">
-                                {recentUsers.map(user => (
-                                    <div key={user.id} className="flex items-center justify-between">
-                                        <div className="flex items-center space-x-3">
-                                            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                                                <span className="font-semibold text-primary">{user.name.charAt(0)}</span>
+                            {recentUsers.length ? (
+                                <div className="space-y-4">
+                                    {recentUsers.map(user => (
+                                        <div key={user.id} className="flex items-center justify-between">
+                                            <div className="flex items-center space-x-3">
+                                                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                                                    <span className="font-semibold text-primary">
+                                                        {(user.name || user.email || '?').charAt(0)}
+                                                    </span>
+                                                </div>
+                                                <div>
+                                                    <p className="font-medium">{user.name || '—'}</p>
+                                                    <p className="text-sm text-muted-foreground">{user.email}</p>
+                                                </div>
                                             </div>
-                                            <div>
-                                                <p className="font-medium">{user.name}</p>
-                                                <p className="text-sm text-muted-foreground">{user.email}</p>
+                                            <div className="text-right">
+                                                <p className="text-sm font-medium">{user.role}</p>
+                                                <p className="text-xs text-muted-foreground">{formatShortDate(user.createdAt)}</p>
                                             </div>
                                         </div>
-                                        <div className="text-right">
-                                            <p className="text-sm font-medium">{user.courses} courses</p>
-                                            <p className="text-xs text-muted-foreground">{user.joined}</p>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-sm text-muted-foreground">No users yet</p>
+                            )}
                         </CardContent>
                     </Card>
                 </div>
 
-                {/* Quick Actions */}
                 <Card>
                     <CardHeader>
                         <CardTitle>Quick Actions</CardTitle>
@@ -208,3 +249,4 @@ export default function AdminDashboardPage() {
         </DashboardLayout>
     )
 }
+

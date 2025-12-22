@@ -9,6 +9,14 @@ import type {
     UserProgressOverview,
     UserProfile,
     UpdateProfilePayload,
+    Exam,
+    ExamQuestion,
+    ExamAttempt,
+    ExamInvitation,
+    ExamAnalytics,
+    ExamStatus,
+    ExamType,
+    ExamQuestionType,
 } from '@/types'
 
 // Types
@@ -74,7 +82,7 @@ export class ApiClient {
         }
     }
 
-    private static async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    public static async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
         const token = this.getToken()
 
         const { headers: requestHeaders, ...restOptions } = options
@@ -146,7 +154,7 @@ export class ApiClient {
         })
     }
 
-    // Courses
+    // Courses (public)
     static async getCourses(params: Record<string, string | number | undefined> = {}): Promise<{
         success: boolean
         data: {
@@ -170,8 +178,33 @@ export class ApiClient {
         return this.request(`/courses${search}`)
     }
 
+    // Admin Courses (ALL statuses by default)
+    static async getAdminCourses(params: Record<string, string | number | undefined> = {}): Promise<{
+        success: boolean
+        data: Course[]
+        pagination: {
+            page: number
+            limit: number
+            total: number
+            totalPages: number
+        }
+    }> {
+        const query = new URLSearchParams()
+        Object.entries(params).forEach(([key, value]) => {
+            if (value !== undefined && value !== null) {
+                query.set(key, String(value))
+            }
+        })
+        const search = query.toString() ? `?${query.toString()}` : ''
+        return this.request(`/admin/courses${search}`)
+    }
+
     static async getCourse(id: string): Promise<{ success: boolean; data: Course & { isEnrolled: boolean; progress: number } }> {
         return this.request(`/courses/${id}`)
+    }
+
+    static async getCourseContent(id: string) {
+        return this.request(`/courses/${id}/content`)
     }
 
     static async enrollInCourse(courseId: string) {
@@ -199,6 +232,91 @@ export class ApiClient {
         return this.request(`/admin/courses/${courseId}`, {
             method: 'DELETE',
         })
+    }
+
+    // Course structure (Step 2)
+    static async createChapter(courseId: string, payload: { title: string; description?: string; order?: number }) {
+        return this.request(`/admin/courses/${courseId}/chapters`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async updateChapter(courseId: string, chapterId: string, payload: Partial<{ title: string; description?: string; order?: number }>) {
+        return this.request(`/admin/courses/${courseId}/chapters/${chapterId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async deleteChapter(courseId: string, chapterId: string) {
+        return this.request(`/admin/courses/${courseId}/chapters/${chapterId}`, { method: 'DELETE' })
+    }
+
+    static async reorderChapters(courseId: string, chapterOrder: string[]) {
+        return this.request(`/admin/courses/${courseId}/chapters/reorder`, {
+            method: 'PATCH',
+            body: JSON.stringify({ chapterOrder }),
+        })
+    }
+
+    static async createLesson(courseId: string, chapterId: string, payload: {
+        title: string
+        description?: string
+        durationMinutes?: number
+        lessonType?: 'VIDEO' | 'DOC' | 'QUIZ' | 'OTHER'
+        learningObjectives?: string[]
+        completionRule?: 'VIEW_ASSETS' | 'MANUAL' | 'QUIZ'
+        order?: number
+    }) {
+        return this.request(`/admin/courses/${courseId}/chapters/${chapterId}/lessons`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async updateLesson(courseId: string, chapterId: string, lessonId: string, payload: Partial<{
+        title: string
+        description?: string
+        durationMinutes?: number
+        lessonType?: 'VIDEO' | 'DOC' | 'QUIZ' | 'OTHER'
+        learningObjectives?: string[]
+        completionRule?: 'VIEW_ASSETS' | 'MANUAL' | 'QUIZ'
+        order?: number
+    }>) {
+        return this.request(`/admin/courses/${courseId}/chapters/${chapterId}/lessons/${lessonId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async deleteLesson(courseId: string, chapterId: string, lessonId: string) {
+        return this.request(`/admin/courses/${courseId}/chapters/${chapterId}/lessons/${lessonId}`, { method: 'DELETE' })
+    }
+
+    static async reorderLessons(courseId: string, chapterId: string, lessonOrder: string[]) {
+        return this.request(`/admin/courses/${courseId}/chapters/${chapterId}/lessons/reorder`, {
+            method: 'PATCH',
+            body: JSON.stringify({ lessonOrder }),
+        })
+    }
+
+    static async replaceLessonAssets(courseId: string, chapterId: string, lessonId: string, courseAssetIds: string[]) {
+        return this.request(`/admin/courses/${courseId}/chapters/${chapterId}/lessons/${lessonId}/assets`, {
+            method: 'POST',
+            body: JSON.stringify({ courseAssetIds }),
+        })
+    }
+
+    static async uploadLessonAsset(courseId: string, chapterId: string, lessonId: string, payload: { filename: string; contentType: string; type: 'VIDEO' | 'DOCUMENT' | 'PRESENTATION' | 'TEXT' | 'AUDIO' | 'OTHER' }) {
+        return this.request(`/admin/courses/${courseId}/chapters/${chapterId}/lessons/${lessonId}/assets/upload`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async deleteLessonAsset(courseId: string, chapterId: string, lessonId: string, courseAssetId: string) {
+        return this.request(`/admin/courses/${courseId}/chapters/${chapterId}/lessons/${lessonId}/assets/${courseAssetId}`, { method: 'DELETE' })
     }
 
     static async getInstructors(): Promise<{ success: boolean; data: Array<{ id: string; name: string; email: string; title?: string }> }> {
@@ -316,5 +434,620 @@ export class ApiClient {
             method: 'POST',
             body: JSON.stringify(payload),
         })
+    }
+
+    // ========== Admin Exams ==========
+
+    static async getAdminExams(params: Record<string, string | number | undefined> = {}): Promise<{
+        success: boolean
+        data: Exam[]
+        pagination: {
+            page: number
+            limit: number
+            total: number
+            totalPages: number
+        }
+    }> {
+        const query = new URLSearchParams()
+        Object.entries(params).forEach(([key, value]) => {
+            if (value !== undefined && value !== null) {
+                query.set(key, String(value))
+            }
+        })
+        const search = query.toString() ? `?${query.toString()}` : ''
+        return this.request(`/admin/exams${search}`)
+    }
+
+    static async getAdminExam(examId: string): Promise<{ success: boolean; data: Exam }> {
+        return this.request(`/admin/exams/${examId}`)
+    }
+
+    static async createExam(payload: {
+        title: string
+        examType: ExamType
+        courseId?: string
+        description?: string
+        instructions?: string
+        timeLimit?: number
+        totalScore?: number
+        passingScore?: number
+        maxAttempts?: number
+        randomizeQuestions?: boolean
+        randomizeOptions?: boolean
+        showResultsImmediately?: boolean
+        allowReview?: boolean
+        availableFrom?: string
+        deadline?: string
+    }): Promise<{ success: boolean; data: Exam }> {
+        return this.request('/admin/exams', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async updateExam(examId: string, payload: Partial<{
+        title: string
+        description: string | null
+        instructions: string | null
+        timeLimit: number | null
+        totalScore: number
+        passingScore: number
+        maxAttempts: number
+        randomizeQuestions: boolean
+        randomizeOptions: boolean
+        showResultsImmediately: boolean
+        allowReview: boolean
+        availableFrom: string | null
+        deadline: string | null
+    }>): Promise<{ success: boolean; data: Exam }> {
+        return this.request(`/admin/exams/${examId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async deleteExam(examId: string): Promise<{ success: boolean; message: string }> {
+        return this.request(`/admin/exams/${examId}`, {
+            method: 'DELETE',
+        })
+    }
+
+    static async updateExamStatus(examId: string, status: ExamStatus): Promise<{ success: boolean; data: Exam }> {
+        return this.request(`/admin/exams/${examId}/status`, {
+            method: 'POST',
+            body: JSON.stringify({ status }),
+        })
+    }
+
+    static async publishExam(examId: string, payload: { userIds: string[]; sendEmail?: boolean }): Promise<{ success: boolean; data: Exam; meta?: { invited: number; skipped: number; emailsSent: number; emailsFailed: number } }> {
+        return this.request(`/admin/exams/${examId}/publish`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    // Exam Questions
+    static async getExamQuestions(examId: string): Promise<{ success: boolean; data: ExamQuestion[] }> {
+        return this.request(`/admin/exams/${examId}/questions`)
+    }
+
+    static async createExamQuestion(examId: string, payload: {
+        type: ExamQuestionType
+        question: string
+        options?: string[]
+        correctAnswer?: string
+        explanation?: string
+        points: number
+        order?: number
+        difficulty?: 'EASY' | 'MEDIUM' | 'HARD'
+        maxWords?: number
+        rubric?: string
+        sampleAnswer?: string
+    }): Promise<{ success: boolean; data: ExamQuestion }> {
+        return this.request(`/admin/exams/${examId}/questions`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async updateExamQuestion(examId: string, questionId: string, payload: Partial<{
+        type: ExamQuestionType
+        question: string
+        options: string[]
+        correctAnswer: string
+        explanation: string
+        points: number
+        order: number
+        difficulty: 'EASY' | 'MEDIUM' | 'HARD'
+        maxWords: number
+        rubric: string
+        sampleAnswer: string
+    }>): Promise<{ success: boolean; data: ExamQuestion }> {
+        return this.request(`/admin/exams/${examId}/questions/${questionId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async deleteExamQuestion(examId: string, questionId: string): Promise<{ success: boolean; message: string }> {
+        return this.request(`/admin/exams/${examId}/questions/${questionId}`, {
+            method: 'DELETE',
+        })
+    }
+
+    static async reorderExamQuestions(examId: string, questionOrder: string[]): Promise<{ success: boolean; data: ExamQuestion[] }> {
+        return this.request(`/admin/exams/${examId}/questions/reorder`, {
+            method: 'PATCH',
+            body: JSON.stringify({ questionOrder }),
+        })
+    }
+
+    static async generateExamQuestions(examId: string, config: {
+        questionCounts: {
+            multipleChoice?: number
+            trueFalse?: number
+            fillInBlank?: number
+            essay?: number
+        }
+        difficulty?: 'EASY' | 'MEDIUM' | 'HARD' | 'mixed'
+        lessonIds?: string[]
+        topics?: string[]
+    }): Promise<{ success: boolean; data: ExamQuestion[] }> {
+        return this.request(`/admin/exams/${examId}/generate-questions`, {
+            method: 'POST',
+            body: JSON.stringify(config),
+        })
+    }
+
+    static async getExamKnowledgeContexts(examId: string): Promise<{
+        success: boolean
+        data: {
+            courseId: string | null
+            lessons: Array<{
+                lessonId: string
+                lessonTitle: string
+                chapterTitle: string
+                chapterOrder: number
+                lessonOrder: number
+                knowledgeStatus: string
+                anchorCount: number
+                processedAt: string | null
+                hasTranscript: boolean
+            }>
+        }
+    }> {
+        return this.request(`/admin/exams/${examId}/knowledge-contexts`)
+    }
+
+    // Exam Invitations
+    static async getExamInvitations(examId: string): Promise<{ success: boolean; data: ExamInvitation[] }> {
+        return this.request(`/admin/exams/${examId}/invitations`)
+    }
+
+    static async createExamInvitations(examId: string, userIds: string[], opts?: { sendEmail?: boolean }): Promise<{ success: boolean; data: { invited: number; skipped: number } }> {
+        return this.request(`/admin/exams/${examId}/invitations`, {
+            method: 'POST',
+            body: JSON.stringify({ userIds, sendEmail: opts?.sendEmail ?? false }),
+        })
+    }
+
+    static async sendExamInvitationEmails(examId: string, userIds?: string[]): Promise<{ success: boolean; data: { sent: number; failed: number } }> {
+        return this.request(`/admin/exams/${examId}/invitations/send`, {
+            method: 'POST',
+            body: JSON.stringify({ userIds }),
+        })
+    }
+
+    // Exam Attempts (Admin)
+    static async getExamAttempts(examId: string, params: Record<string, string | number | undefined> = {}): Promise<{
+        success: boolean
+        data: ExamAttempt[]
+        pagination: {
+            page: number
+            limit: number
+            total: number
+            totalPages: number
+        }
+    }> {
+        const query = new URLSearchParams()
+        Object.entries(params).forEach(([key, value]) => {
+            if (value !== undefined && value !== null) {
+                query.set(key, String(value))
+            }
+        })
+        const search = query.toString() ? `?${query.toString()}` : ''
+        return this.request(`/admin/exams/${examId}/attempts${search}`)
+    }
+
+    static async getExamAttemptDetail(examId: string, attemptId: string): Promise<{
+        success: boolean
+        data: ExamAttempt & {
+            answers: Array<{
+                id: string
+                questionId: string
+                answer?: string | null
+                selectedOption?: number | null
+                gradingStatus: string
+                isCorrect?: boolean | null
+                pointsAwarded?: number | null
+                aiSuggestedScore?: number | null
+                aiFeedback?: string | null
+                adminScore?: number | null
+                adminFeedback?: string | null
+                question: ExamQuestion
+            }>
+        }
+    }> {
+        return this.request(`/admin/exams/${examId}/attempts/${attemptId}`)
+    }
+
+    // Essay Grading
+    static async getEssaysToGrade(examId: string): Promise<{
+        success: boolean
+        data: Array<{
+            attemptId: string
+            answerId: string
+            userId: string
+            userName: string
+            questionId: string
+            question: string
+            answer: string
+            points: number
+            aiSuggestedScore?: number | null
+            aiFeedback?: string | null
+            rubric?: string | null
+            sampleAnswer?: string | null
+        }>
+    }> {
+        return this.request(`/admin/exams/${examId}/essays`)
+    }
+
+    static async gradeEssay(examId: string, attemptId: string, answerId: string, payload: {
+        score: number
+        feedback?: string
+    }): Promise<{ success: boolean; data: { answerId: string; score: number } }> {
+        return this.request(`/admin/exams/${examId}/attempts/${attemptId}/grade-essay`, {
+            method: 'POST',
+            body: JSON.stringify({ answerId, ...payload }),
+        })
+    }
+
+    static async triggerAutoGrade(examId: string, attemptId: string): Promise<{ success: boolean; data: ExamAttempt }> {
+        return this.request(`/admin/exams/${examId}/attempts/${attemptId}/grade`, {
+            method: 'POST',
+        })
+    }
+
+    // Exam Analytics
+    static async getExamAnalytics(examId: string): Promise<{ success: boolean; data: ExamAnalytics }> {
+        const response: any = await this.request(`/admin/exams/${examId}/analytics`)
+        const raw = response?.data
+
+        // Backward/forward compatibility:
+        // - Some API versions return a flat `ExamAnalytics` object
+        // - The current backend returns a comprehensive object: `{ examId, examTitle, summary: {...} }`
+        if (raw?.summary) {
+            return {
+                ...response,
+                data: {
+                    examId: raw.examId ?? examId,
+                    totalAttempts: raw.summary.totalAttempts ?? 0,
+                    uniqueUsers: raw.summary.uniqueUsers ?? 0,
+                    avgScore: raw.summary.averageScore ?? 0,
+                    medianScore: raw.summary.medianScore ?? null,
+                    highestScore: raw.summary.maxScore ?? 0,
+                    lowestScore: raw.summary.minScore ?? 0,
+                    passCount: raw.summary.passedCount ?? 0,
+                    failCount: raw.summary.failedCount ?? 0,
+                    avgCompletionTime: raw.summary.averageCompletionTime ?? null,
+                    lastUpdatedAt: new Date().toISOString(),
+                } satisfies ExamAnalytics,
+            }
+        }
+
+        return response
+    }
+
+    static async exportExamResults(examId: string): Promise<Blob> {
+        const token = this.getToken()
+        const response = await fetch(`/api/admin/exams/${examId}/export`, {
+            headers: {
+                Authorization: token ? `Bearer ${token}` : '',
+            },
+        })
+
+        if (!response.ok) {
+            throw new Error('Failed to export results')
+        }
+
+        return response.blob()
+    }
+
+    static async getExamLeaderboard(examId: string, limit?: number): Promise<{
+        success: boolean
+        data: {
+            examId: string
+            examTitle: string
+            leaderboard: Array<{
+                rank: number
+                userId: string
+                userName: string
+                score: number
+                percentageScore: number
+                completedAt: string
+            }>
+        }
+    }> {
+        const query = limit ? `?limit=${limit}` : ''
+        const response: any = await this.request(`/admin/exams/${examId}/leaderboard${query}`)
+        const leaderboard = Array.isArray(response?.data?.leaderboard) ? response.data.leaderboard : []
+        const normalized = leaderboard.map((entry: any) => ({
+            rank: entry.rank,
+            userId: entry.userId,
+            userName: entry.userName,
+            score: entry.score ?? entry.bestScore ?? 0,
+            percentageScore: entry.percentageScore ?? entry.bestScore ?? entry.score ?? 0,
+            completedAt: entry.completedAt,
+        }))
+
+        return {
+            ...response,
+            data: {
+                examId: response?.data?.examId ?? examId,
+                examTitle: response?.data?.examTitle ?? '',
+                leaderboard: normalized,
+            },
+        }
+    }
+
+    // ========== User Exams ==========
+
+    static async getAvailableExams(): Promise<{
+        success: boolean
+        data: Array<Exam & {
+            userAttempts: number
+            bestScore: number | null
+            hasPassed: boolean
+        }>
+    }> {
+        return this.request('/exams')
+    }
+
+    static async getExamDetails(examId: string): Promise<{
+        success: boolean
+        data: Exam & {
+            questionsCount: number
+            userAttempts: Array<{
+                id: string
+                attemptNumber: number
+                status: string
+                percentageScore: number | null
+                passed: boolean | null
+                submittedAt: string | null
+            }>
+            canAttempt: boolean
+            remainingAttempts: number
+        }
+    }> {
+        return this.request(`/exams/${examId}`)
+    }
+
+    static async startExamAttempt(examId: string): Promise<{
+        success: boolean
+        data: {
+            attemptId: string
+            examId: string
+            attemptNumber: number
+            startedAt: string
+            expiresAt: string | null
+            timeLimit: number | null
+            totalQuestions: number
+            questions: Array<{
+                id: string
+                type: ExamQuestionType
+                question: string
+                options: string[] | null
+                points: number
+                order: number
+                maxWords?: number
+            }>
+        }
+    }> {
+        return this.request(`/exams/${examId}/start`, {
+            method: 'POST',
+        })
+    }
+
+    static async saveExamAnswer(examId: string, payload: {
+        attemptId: string
+        questionId: string
+        answer?: string
+        selectedOption?: number
+    }): Promise<{ success: boolean }> {
+        return this.request(`/exams/${examId}/answer`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async submitExam(examId: string, attemptId: string): Promise<{
+        success: boolean
+        data: {
+            attemptId: string
+            status: string
+            rawScore: number | null
+            percentageScore: number | null
+            passed: boolean | null
+            totalQuestions: number
+            correctAnswers: number
+            showResults: boolean
+        }
+    }> {
+        return this.request(`/exams/${examId}/submit`, {
+            method: 'POST',
+            body: JSON.stringify({ attemptId }),
+        })
+    }
+
+    static async getExamResult(examId: string, attemptId?: string): Promise<{
+        success: boolean
+        data: {
+            attemptId: string
+            examTitle: string
+            attemptNumber: number
+            status: string
+            startedAt: string
+            submittedAt: string | null
+            rawScore: number | null
+            percentageScore: number | null
+            passed: boolean | null
+            totalScore: number
+            passingScore: number
+            allowReview: boolean
+            answers?: Array<{
+                questionId: string
+                question: string
+                type: ExamQuestionType
+                userAnswer: string | null
+                selectedOption: number | null
+                correctAnswer: string | null
+                isCorrect: boolean | null
+                pointsAwarded: number | null
+                maxPoints: number
+                explanation: string | null
+            }>
+        }
+    }> {
+        const query = attemptId ? `?attemptId=${attemptId}` : ''
+        return this.request(`/exams/${examId}/result${query}`)
+    }
+
+    static async getUserExamAttempts(examId: string): Promise<{
+        success: boolean
+        data: Array<{
+            id: string
+            attemptNumber: number
+            status: string
+            startedAt: string
+            submittedAt: string | null
+            percentageScore: number | null
+            passed: boolean | null
+        }>
+    }> {
+        return this.request(`/exams/${examId}/attempts`)
+    }
+
+    static async getCurrentAttempt(examId: string): Promise<{
+        success: boolean
+        data: {
+            attemptId: string
+            examId: string
+            attemptNumber: number
+            startedAt: string
+            expiresAt: string | null
+            timeLimit: number | null
+            totalQuestions: number
+            questions: Array<{
+                id: string
+                type: ExamQuestionType
+                question: string
+                options: string[] | null
+                points: number
+                order: number
+                maxWords?: number
+            }>
+            existingAnswers: Record<string, {
+                answer: string | null
+                selectedOption: number | null
+            }>
+        } | null
+    }> {
+        return this.request(`/exams/${examId}/current`)
+    }
+
+    // ========== Certificates ==========
+
+    static async getUserCertificates(): Promise<{
+        success: boolean
+        data: Array<{
+            id: string
+            certificateNumber: string
+            userId: string
+            userName: string
+            examId: string | null
+            examTitle: string
+            score: number
+            totalScore: number
+            percentageScore: number
+            issueDate: string
+            pdfUrl: string | null
+        }>
+    }> {
+        return this.request('/certificates')
+    }
+
+    static async getCertificate(certificateId: string): Promise<{
+        success: boolean
+        data: {
+            id: string
+            certificateNumber: string
+            userId: string
+            userName: string
+            examId: string | null
+            examTitle: string
+            score: number
+            totalScore: number
+            percentageScore: number
+            issueDate: string
+            pdfUrl: string | null
+        }
+    }> {
+        return this.request(`/certificates/${certificateId}`)
+    }
+
+    static async generateCertificate(attemptId: string, sendEmail = true): Promise<{
+        success: boolean
+        data: {
+            certificate: {
+                id: string
+                certificateNumber: string
+                userName: string
+                examTitle: string
+                score: number
+                totalScore: number
+                percentageScore: number
+                issueDate: string
+                pdfUrl: string | null
+            }
+            pdfUrl: string
+            emailSent: boolean
+        }
+    }> {
+        return this.request('/certificates', {
+            method: 'POST',
+            body: JSON.stringify({ attemptId, sendEmail }),
+        })
+    }
+
+    static async verifyCertificate(certificateNumber: string): Promise<{
+        success: boolean
+        data: {
+            valid: boolean
+            message?: string
+            certificate?: {
+                certificateNumber: string
+                userName: string
+                examTitle: string
+                issueDate: string
+                percentageScore: number
+            }
+        }
+    }> {
+        return this.request(`/certificates/verify/${encodeURIComponent(certificateNumber)}`)
+    }
+
+    static downloadCertificateUrl(certificateId: string): string {
+        // Returns the redirect URL for the PDF
+        return `/api/certificates/${certificateId}/download`
     }
 }

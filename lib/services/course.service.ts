@@ -1,5 +1,6 @@
 import prisma from '@/lib/prisma'
 import { CourseLevel, CourseStatus, Prisma } from '@prisma/client'
+import { resolveAssetUrl, resolveMediaUrl } from './asset-url-resolver'
 
 export class CourseService {
     /**
@@ -102,7 +103,16 @@ export class CourseService {
                     include: {
                         lessons: {
                             include: {
-                                assets: true,
+                                assets: {
+                                    include: { courseAsset: true },
+                                    orderBy: { createdAt: 'asc' },
+                                },
+                                transcripts: {
+                                    where: { status: 'READY' },
+                                    select: { url: true, language: true },
+                                    orderBy: { createdAt: 'desc' },
+                                    take: 1,
+                                },
                             },
                             orderBy: { order: 'asc' },
                         },
@@ -140,6 +150,30 @@ export class CourseService {
 
         return {
             ...course,
+            chapters: course.chapters.map(ch => ({
+                ...ch,
+                lessons: ch.lessons.map(lesson => {
+                    // Prefer transcript URL from transcript_assets if available (already processed VTT)
+                    // Otherwise fall back to legacy subtitleUrl/subtitleKey fields
+                    const transcriptUrl = lesson.transcripts?.[0]?.url
+                    const legacySubtitleUrl = resolveMediaUrl(lesson.subtitleUrl, lesson.subtitleKey)
+
+                    return {
+                        ...lesson,
+                        videoUrl: resolveMediaUrl(lesson.videoUrl, lesson.videoKey),
+                        subtitleUrl: transcriptUrl || legacySubtitleUrl,
+                        assets: lesson.assets.map(binding => {
+                            const asset = binding.courseAsset
+                            return {
+                                ...asset,
+                                id: asset.id,
+                                url: resolveAssetUrl(asset),
+                                mimeType: asset.mimeType ?? asset.contentType,
+                            }
+                        }),
+                    }
+                }),
+            })),
             isEnrolled,
             progress,
         }
@@ -167,7 +201,23 @@ export class CourseService {
         })
 
         if (existing) {
-            throw new Error('SLUG_EXISTS')
+            // Auto-resolve slug conflicts by appending an incremental suffix: slug-2, slug-3, ...
+            const base = data.slug
+            let suffix = 2
+            let candidate = `${base}-${suffix}`
+            // Cap attempts to avoid infinite loop in pathological cases
+            while (suffix < 1000) {
+                const conflict = await prisma.course.findUnique({ where: { slug: candidate } })
+                if (!conflict) {
+                    data.slug = candidate
+                    break
+                }
+                suffix += 1
+                candidate = `${base}-${suffix}`
+            }
+            if (suffix >= 1000) {
+                throw new Error('SLUG_EXISTS')
+            }
         }
 
         return await prisma.course.create({
@@ -238,12 +288,13 @@ export class CourseService {
      * Enroll user in course
      */
     static async enrollUser(userId: string, courseId: string) {
-        // Check if course exists (allow enrollment for any non-archived course to enable testing/admin scenarios)
+        // Check if course exists and is published. Only PUBLISHED courses are enrollable.
         const course = await prisma.course.findUnique({
             where: { id: courseId },
+            select: { id: true, status: true },
         })
 
-        if (!course || course.status === 'ARCHIVED') {
+        if (!course || course.status !== 'PUBLISHED') {
             throw new Error('COURSE_NOT_FOUND')
         }
 

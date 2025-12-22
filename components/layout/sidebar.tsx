@@ -15,7 +15,6 @@ import {
     BarChart3,
     Bot,
     GraduationCap,
-    Layers,
 } from 'lucide-react'
 
 interface NavItem {
@@ -29,6 +28,7 @@ const navItems: NavItem[] = [
     { title: 'Dashboard', href: '/', icon: Home },
     { title: 'Courses', href: '/courses', icon: BookOpen },
     { title: 'My Progress', href: '/progress', icon: TrendingUp },
+    { title: 'My Exams', href: '/exams', icon: GraduationCap },
     { title: 'Reports', href: '/reports', icon: FileText },
     { title: 'Profile', href: '/profile', icon: User },
 ]
@@ -36,7 +36,6 @@ const navItems: NavItem[] = [
 const adminNavItems: NavItem[] = [
     { title: 'Admin Dashboard', href: '/admin', icon: LayoutDashboard, adminOnly: true },
     { title: 'Course Management', href: '/admin/courses', icon: BookOpen, adminOnly: true },
-    { title: 'Curricula', href: '/admin/curricula', icon: Layers, adminOnly: true },
     { title: 'User Management', href: '/admin/users', icon: Users, adminOnly: true },
     { title: 'Analytics', href: '/admin/analytics', icon: BarChart3, adminOnly: true },
     { title: 'AI Configuration', href: '/admin/ai-config', icon: Bot, adminOnly: true },

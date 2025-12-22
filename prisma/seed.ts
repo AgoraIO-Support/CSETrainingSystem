@@ -29,7 +29,34 @@ async function main() {
 
     console.log('✅ Created admin user:', adminUser.email)
 
-    // Create instructor users
+    // Create sample regular user
+    const regularUser = await prisma.user.upsert({
+        where: { email: 'user@agora.io' },
+        update: {
+            password: passwordHash,
+        },
+        create: {
+            email: 'user@agora.io',
+            name: 'Test User',
+            password: passwordHash,
+            role: 'USER',
+            status: 'ACTIVE',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=User',
+            department: 'CSE',
+        },
+    })
+
+    console.log('✅ Created regular user')
+
+    // Demo content is opt-in. By default, we only seed the minimal accounts above.
+    const seedDemo = process.env.CSE_SEED_DEMO_DATA === '1'
+    if (!seedDemo) {
+        console.log('ℹ️  Skipping demo data (set CSE_SEED_DEMO_DATA=1 to seed sample courses/content).')
+        console.log('🎉 Database seeding completed successfully!')
+        return
+    }
+
+    // Create instructor users (demo)
     const instructor1 = await prisma.user.upsert({
         where: { email: 'john.smith@agora.io' },
         update: {
@@ -67,25 +94,6 @@ async function main() {
     })
 
     console.log('✅ Created instructor users')
-
-    // Create sample regular user
-    const regularUser = await prisma.user.upsert({
-        where: { email: 'user@agora.io' },
-        update: {
-            password: passwordHash,
-        },
-        create: {
-            email: 'user@agora.io',
-            name: 'Test User',
-            password: passwordHash,
-            role: 'USER',
-            status: 'ACTIVE',
-            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=User',
-            department: 'CSE',
-        },
-    })
-
-    console.log('✅ Created regular user')
 
     // Create courses
     const course1 = await prisma.course.upsert({

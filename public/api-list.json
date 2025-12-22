@@ -1,0 +1,58 @@
+{
+  "version": "2025-01-01",
+  "notes": "All routes are relative to /api. Admin routes require Bearer token for an ADMIN user.",
+  "public": [
+    { "method": "POST", "path": "/auth/login", "description": "Login with email/password, returns access token" },
+    { "method": "POST", "path": "/auth/register", "description": "Register a user (local auth)" },
+    { "method": "GET",  "path": "/auth/me", "description": "Get current authenticated user" },
+    { "method": "GET",  "path": "/profile", "description": "Get profile of current user" },
+    { "method": "PUT",  "path": "/profile", "description": "Update profile of current user" },
+
+    { "method": "GET",  "path": "/courses", "description": "List published courses (filterable)" },
+    { "method": "GET",  "path": "/courses/:id", "description": "Get course detail (includes chapters/lessons/assets)" },
+    { "method": "GET",  "path": "/courses/:id/content", "description": "Structured course content (chapters/lessons/assets)" },
+    { "method": "POST", "path": "/courses/:id/enroll", "description": "Enroll current user in a course" },
+
+    { "method": "GET",  "path": "/curricula", "description": "List published curricula (mapped from courses)" },
+    { "method": "GET",  "path": "/curricula/:slug", "description": "Get published curriculum by slug" },
+
+    { "method": "GET",  "path": "/progress/overview", "description": "User’s overall learning progress" },
+    { "method": "GET",  "path": "/progress/courses/:courseId", "description": "Course-level progress detail" },
+    { "method": "POST", "path": "/progress/lessons/:lessonId", "description": "Update lesson progress (watched duration/completion)" },
+
+    { "method": "POST", "path": "/ai/conversations", "description": "Create AI conversation (optional course/lesson context)" },
+    { "method": "GET",  "path": "/ai/conversations/:id/messages", "description": "List messages in a conversation" },
+    { "method": "POST", "path": "/ai/conversations/:id/messages", "description": "Send a message to AI (with optional video timestamp/context)" }
+  ],
+  "admin": [
+    { "method": "GET",    "path": "/admin/courses", "description": "List courses (all statuses)" },
+    { "method": "POST",   "path": "/admin/courses", "description": "Create course (draft by default)" },
+    { "method": "PUT",    "path": "/admin/courses/:courseId", "description": "Update course" },
+    { "method": "DELETE", "path": "/admin/courses/:courseId", "description": "Delete course" },
+
+    { "method": "GET",    "path": "/admin/courses/:courseId/chapters", "description": "List chapters in course" },
+    { "method": "POST",   "path": "/admin/courses/:courseId/chapters", "description": "Create chapter in course" },
+    { "method": "PATCH",  "path": "/admin/courses/:courseId/chapters/reorder", "description": "Reorder chapters" },
+    { "method": "PATCH",  "path": "/admin/courses/:courseId/chapters/:chapterId", "description": "Update chapter" },
+    { "method": "DELETE", "path": "/admin/courses/:courseId/chapters/:chapterId", "description": "Delete chapter" },
+
+    { "method": "GET",    "path": "/admin/courses/:courseId/chapters/:chapterId/lessons", "description": "List lessons in chapter" },
+    { "method": "POST",   "path": "/admin/courses/:courseId/chapters/:chapterId/lessons", "description": "Create lesson" },
+    { "method": "PATCH",  "path": "/admin/courses/:courseId/chapters/:chapterId/lessons/reorder", "description": "Reorder lessons in chapter" },
+    { "method": "PATCH",  "path": "/admin/courses/:courseId/chapters/:chapterId/lessons/:lessonId", "description": "Update lesson" },
+    { "method": "DELETE", "path": "/admin/courses/:courseId/chapters/:chapterId/lessons/:lessonId", "description": "Delete lesson" },
+    { "method": "GET",    "path": "/admin/courses/:courseId/chapters/:chapterId/lessons/:lessonId/assets", "description": "List lesson assets" },
+    { "method": "POST",   "path": "/admin/courses/:courseId/chapters/:chapterId/lessons/:lessonId/assets", "description": "Replace attached assets for lesson (courseAssetIds array)" },
+    { "method": "POST",   "path": "/admin/courses/:courseId/chapters/:chapterId/lessons/:lessonId/assets/upload", "description": "Presign + create + attach a lesson asset" },
+    { "method": "DELETE", "path": "/admin/courses/:courseId/chapters/:chapterId/lessons/:lessonId/assets/:assetId", "description": "Detach a lesson asset" },
+
+    { "method": "GET",    "path": "/admin/curricula", "description": "List curricula (mapped from courses)" },
+    { "method": "POST",   "path": "/admin/curricula", "description": "Create curriculum (draft course)" },
+
+    { "method": "GET",    "path": "/admin/users", "description": "List users" },
+    { "method": "PATCH",  "path": "/admin/users/:userId", "description": "Update user role/status" },
+
+    { "method": "GET",    "path": "/admin/instructors", "description": "List instructor candidates" },
+    { "method": "GET",    "path": "/admin/analytics", "description": "Summary analytics" }
+  ]
+}

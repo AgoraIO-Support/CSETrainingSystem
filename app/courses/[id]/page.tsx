@@ -219,7 +219,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                             {course.learningOutcomes && course.learningOutcomes.length > 0 ? (
                                                 <ul className="space-y-3">
                                                     {course.learningOutcomes.map((item, idx) => (
-                                                        <li key={idx} className="flex items-start">
+                                                        <li key={`outcome-${idx}-${item.substring(0, 20)}`} className="flex items-start">
                                                             <Award className="h-5 w-5 mr-3 text-primary flex-shrink-0 mt-0.5" />
                                                             <span>{item}</span>
                                                         </li>
@@ -238,7 +238,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                             {course.requirements && course.requirements.length > 0 ? (
                                                 <ul className="space-y-2 list-disc list-inside text-muted-foreground">
                                                     {course.requirements.map((item, idx) => (
-                                                        <li key={idx}>{item}</li>
+                                                        <li key={`requirement-${idx}-${item.substring(0, 20)}`}>{item}</li>
                                                     ))}
                                                 </ul>
                                             ) : (
@@ -306,8 +306,8 @@ export default function CourseDetailPage({ params }: { params: Promise<{ id: str
                                             </Button>
                                         </div>
                                         <ul className="space-y-1 text-sm text-muted-foreground">
-                                            {course.assets.slice(0, 3).map(asset => (
-                                                <li key={asset.id} className="flex items-center gap-2">
+                                            {course.assets.slice(0, 3).map((asset, idx) => (
+                                                <li key={`${asset.id}-${idx}`} className="flex items-center gap-2">
                                                     <Paperclip className="h-4 w-4 text-muted-foreground" />
                                                     <span className="truncate">{asset.title}</span>
                                                 </li>

@@ -70,7 +70,7 @@ export function QuizQuestion({
 
                                 return (
                                     <button
-                                        key={index}
+                                        key={`option-${index}-${option.substring(0, 20)}`}
                                         onClick={() => !showExplanation && onAnswerSelect(index)}
                                         disabled={showExplanation}
                                         className={cn(

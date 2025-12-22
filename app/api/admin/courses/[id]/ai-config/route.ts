@@ -1,0 +1,200 @@
+import { NextRequest, NextResponse } from 'next/server'
+import prisma from '@/lib/prisma'
+import { withAdminAuth, AuthUser } from '@/lib/auth-middleware'
+import { z } from 'zod'
+
+const courseAIConfigSchema = z.object({
+    systemPrompt: z.string().min(10, 'System prompt must be at least 10 characters').max(10000),
+    modelOverride: z.string().optional().nullable(),
+    temperature: z.number().min(0).max(2).optional().nullable(),
+    maxTokens: z.number().min(100).max(8000).optional().nullable(),
+    isEnabled: z.boolean().optional(),
+})
+
+// GET - Fetch course AI configuration
+export const GET = withAdminAuth(async (
+    req: NextRequest,
+    user: AuthUser,
+    context: { params: Promise<{ id: string }> }
+) => {
+    try {
+        const { id: courseId } = await context.params
+
+        // Verify course exists
+        const course = await prisma.course.findUnique({
+            where: { id: courseId },
+            select: { id: true, title: true }
+        })
+
+        if (!course) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: {
+                        code: 'COURSE_NOT_FOUND',
+                        message: 'Course not found'
+                    }
+                },
+                { status: 404 }
+            )
+        }
+
+        const config = await prisma.courseAIConfig.findUnique({
+            where: { courseId }
+        })
+
+        return NextResponse.json({
+            success: true,
+            data: config
+        })
+    } catch (error) {
+        console.error('Failed to fetch course AI config:', error)
+        return NextResponse.json(
+            {
+                success: false,
+                error: {
+                    code: 'SYSTEM_001',
+                    message: 'Failed to fetch AI configuration'
+                }
+            },
+            { status: 500 }
+        )
+    }
+})
+
+// PUT - Create or update course AI configuration
+export const PUT = withAdminAuth(async (
+    req: NextRequest,
+    user: AuthUser,
+    context: { params: Promise<{ id: string }> }
+) => {
+    try {
+        const { id: courseId } = await context.params
+        const body = await req.json()
+
+        // Validate input
+        const validation = courseAIConfigSchema.safeParse(body)
+        if (!validation.success) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: {
+                        code: 'VALIDATION_ERROR',
+                        message: 'Invalid input',
+                        details: validation.error.flatten().fieldErrors
+                    }
+                },
+                { status: 400 }
+            )
+        }
+
+        const payload = validation.data
+
+        // Verify course exists
+        const course = await prisma.course.findUnique({
+            where: { id: courseId },
+            select: { id: true }
+        })
+
+        if (!course) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: {
+                        code: 'COURSE_NOT_FOUND',
+                        message: 'Course not found'
+                    }
+                },
+                { status: 404 }
+            )
+        }
+
+        // Upsert the configuration
+        const config = await prisma.courseAIConfig.upsert({
+            where: { courseId },
+            update: {
+                systemPrompt: payload.systemPrompt,
+                modelOverride: payload.modelOverride,
+                temperature: payload.temperature,
+                maxTokens: payload.maxTokens,
+                isEnabled: payload.isEnabled ?? true,
+            },
+            create: {
+                courseId,
+                systemPrompt: payload.systemPrompt,
+                modelOverride: payload.modelOverride,
+                temperature: payload.temperature ?? 0.2,
+                maxTokens: payload.maxTokens ?? 1024,
+                isEnabled: payload.isEnabled ?? true,
+            }
+        })
+
+        return NextResponse.json({
+            success: true,
+            data: config,
+            message: 'AI configuration saved successfully'
+        })
+    } catch (error) {
+        console.error('Failed to save course AI config:', error)
+        return NextResponse.json(
+            {
+                success: false,
+                error: {
+                    code: 'SYSTEM_001',
+                    message: 'Failed to save AI configuration'
+                }
+            },
+            { status: 500 }
+        )
+    }
+})
+
+// DELETE - Remove course AI configuration
+export const DELETE = withAdminAuth(async (
+    req: NextRequest,
+    user: AuthUser,
+    context: { params: Promise<{ id: string }> }
+) => {
+    try {
+        const { id: courseId } = await context.params
+
+        // Check if config exists
+        const existing = await prisma.courseAIConfig.findUnique({
+            where: { courseId }
+        })
+
+        if (!existing) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: {
+                        code: 'CONFIG_NOT_FOUND',
+                        message: 'AI configuration not found for this course'
+                    }
+                },
+                { status: 404 }
+            )
+        }
+
+        await prisma.courseAIConfig.delete({
+            where: { courseId }
+        })
+
+        return NextResponse.json({
+            success: true,
+            message: 'AI configuration deleted successfully'
+        })
+    } catch (error) {
+        console.error('Failed to delete course AI config:', error)
+        return NextResponse.json(
+            {
+                success: false,
+                error: {
+                    code: 'SYSTEM_001',
+                    message: 'Failed to delete AI configuration'
+                }
+            },
+            { status: 500 }
+        )
+    }
+})

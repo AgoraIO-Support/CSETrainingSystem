@@ -67,3 +67,91 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Video.js Custom Theme (CSE Theme) */
+.video-js.vjs-theme-cse {
+  font-family: inherit;
+  color: #fff;
+}
+
+.video-js.vjs-theme-cse .vjs-big-play-button {
+  background-color: hsl(var(--primary) / 0.9);
+  border: none;
+  border-radius: 50%;
+  width: 80px;
+  height: 80px;
+  line-height: 80px;
+  font-size: 48px;
+  top: 50%;
+  left: 50%;
+  margin-top: -40px;
+  margin-left: -40px;
+  transition: all 0.2s ease;
+}
+
+.video-js.vjs-theme-cse .vjs-big-play-button:hover {
+  background-color: hsl(var(--primary));
+  transform: scale(1.1);
+}
+
+.video-js.vjs-theme-cse .vjs-control-bar {
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+  height: 50px;
+  padding-top: 10px;
+}
+
+.video-js.vjs-theme-cse .vjs-play-progress,
+.video-js.vjs-theme-cse .vjs-volume-level {
+  background-color: hsl(var(--primary));
+}
+
+.video-js.vjs-theme-cse .vjs-slider {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+.video-js.vjs-theme-cse .vjs-load-progress {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.video-js.vjs-theme-cse .vjs-time-control {
+  padding-left: 0.5em;
+  padding-right: 0.5em;
+  font-size: 14px;
+}
+
+.video-js.vjs-theme-cse .vjs-playback-rate .vjs-playback-rate-value {
+  font-size: 14px;
+  line-height: 40px;
+}
+
+.video-js.vjs-theme-cse .vjs-menu-button-popup .vjs-menu {
+  background-color: rgba(0, 0, 0, 0.9);
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+.video-js.vjs-theme-cse .vjs-menu-button-popup .vjs-menu .vjs-menu-content {
+  background: transparent;
+}
+
+.video-js.vjs-theme-cse .vjs-menu li.vjs-selected,
+.video-js.vjs-theme-cse .vjs-menu li.vjs-selected:hover {
+  background-color: hsl(var(--primary));
+  color: #fff;
+}
+
+.video-js.vjs-theme-cse .vjs-menu li:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.video-js.vjs-theme-cse .vjs-progress-control:hover .vjs-progress-holder {
+  font-size: 1.2em;
+}
+
+/* Subtitle styling */
+.video-js.vjs-theme-cse .vjs-text-track-display > div > div > div {
+  background-color: rgba(0, 0, 0, 0.75) !important;
+  border-radius: 4px;
+  padding: 4px 8px !important;
+  font-size: 16px !important;
+}

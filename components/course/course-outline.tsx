@@ -28,10 +28,10 @@ export function CourseOutline({ chapters, courseId, completedLessons = new Set()
         setExpandedChapters(newExpanded)
     }
 
-    const formatDuration = (seconds: number) => {
-        const mins = Math.floor(seconds / 60)
-        const secs = seconds % 60
-        return `${mins}:${secs.toString().padStart(2, '0')}`
+    const formatDuration = (lesson: any) => {
+        const mins = lesson.durationMinutes ?? Math.round((lesson.duration ?? 0) / 60)
+        if (!mins || mins <= 0) return '--'
+        return `${mins} min`
     }
 
     const totalLessons = chapters.reduce((sum, chapter) => sum + chapter.lessons.length, 0)
@@ -115,7 +115,7 @@ export function CourseOutline({ chapters, courseId, completedLessons = new Set()
                                                             </Badge>
                                                         )}
                                                         <span className="text-sm text-muted-foreground">
-                                                            {formatDuration(lesson.duration)}
+                                                            {formatDuration(lesson)}
                                                         </span>
                                                     </div>
                                                 </Link>

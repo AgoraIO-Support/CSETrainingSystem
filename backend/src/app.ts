@@ -7,12 +7,16 @@ import { appConfig } from './config/env.js'
 import { presignUploadRoutes } from './routes/admin/uploads.js'
 import { materialRoutes } from './routes/admin/materials.js'
 import { cloudfrontCookieRoutes } from './routes/materials/cloudfront.js'
+import { lessonAssetRoutes } from './routes/admin/lesson-assets.js'
+import { chapterAdminRoutes } from './routes/admin/chapters.js'
+import { lessonAdminRoutes } from './routes/admin/lessons.js'
+import { courseAdminRoutes } from './routes/admin/courses.js'
 
 async function buildServer() {
     const server = Fastify({ logger: true })
     await server.register(sensible)
     await server.register(cors, {
-        origin: [/\.example\.com$/, 'http://localhost:3000'],
+        origin: [/\.example\.com$/, 'http://localhost:3000', 'http://localhost:3002'],
         credentials: true,
     })
     await server.register(cookie)
@@ -23,6 +27,10 @@ async function buildServer() {
 
     server.register(presignUploadRoutes, { prefix: '/api/admin/uploads' })
     server.register(materialRoutes, { prefix: '/api/admin/materials' })
+    server.register(lessonAssetRoutes, { prefix: '/api/admin' })
+    server.register(chapterAdminRoutes, { prefix: '/api/admin' })
+    server.register(lessonAdminRoutes, { prefix: '/api/admin' })
+    server.register(courseAdminRoutes, { prefix: '/api/admin' })
     server.register(cloudfrontCookieRoutes, { prefix: '/api/materials' })
 
     return server

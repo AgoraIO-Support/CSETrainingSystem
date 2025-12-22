@@ -1,14 +1,38 @@
+# Dependencies / builds
 node_modules/
 .next/
 out/
 dist/
 build/
-.DS_Store
+coverage/
+*.tsbuildinfo
+
+# Logs
 *.log
-.env*.local
+logs/
+
+# Environment files (never commit secrets)
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Local temp / caches
+tmp/
+.tmp/
+.swc/
 .vercel
 .turbo
-.env
-.env.local
-.env.production
-.env.development
+.ignore
+
+# Assistant artifacts
+.conversation.txt
+.claude/
+.claudeignore
+
+# Media / uploads (keep out of repo by default)
+*.vtt

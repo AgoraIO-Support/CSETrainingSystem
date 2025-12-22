@@ -142,11 +142,16 @@ export interface Lesson {
     id: string
     title: string
     description?: string
-    duration: number
+    duration?: number
+    durationMinutes?: number | null
     order?: number
-    videoUrl?: string
-    subtitleUrl?: string
-    transcript?: string
+    videoUrl?: string // legacy
+    subtitleUrl?: string // legacy
+    transcript?: string // legacy
+    lessonType?: 'VIDEO' | 'DOC' | 'QUIZ' | 'OTHER'
+    learningObjectives?: string[]
+    completionRule?: 'VIEW_ASSETS' | 'MANUAL' | 'QUIZ'
+    assets?: CourseAsset[]
     completed?: boolean
 }
 
@@ -166,6 +171,8 @@ export interface CourseAsset {
     description?: string | null
     type: CourseAssetType
     url: string
+    cloudfrontUrl?: string | null
+    mimeType?: string | null
     contentType?: string | null
     createdAt?: string | Date
 }
@@ -293,4 +300,130 @@ export interface Achievement {
     description: string
     icon: string
     earnedAt: Date
+}
+
+// Exam System Types
+export type ExamStatus = 'DRAFT' | 'PENDING_REVIEW' | 'APPROVED' | 'PUBLISHED' | 'CLOSED'
+export type ExamType = 'COURSE_BASED' | 'STANDALONE'
+export type ExamQuestionType = 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'FILL_IN_BLANK' | 'ESSAY'
+export type ExamAttemptStatus = 'IN_PROGRESS' | 'SUBMITTED' | 'GRADED' | 'EXPIRED'
+export type GradingStatus = 'PENDING' | 'AUTO_GRADED' | 'AI_SUGGESTED' | 'MANUALLY_GRADED'
+
+export interface Exam {
+    id: string
+    title: string
+    description?: string | null
+    instructions?: string | null
+    examType: ExamType
+    status: ExamStatus
+    courseId?: string | null
+    course?: { id: string; title: string } | null
+    timeLimit?: number | null
+    totalScore: number
+    passingScore: number
+    maxAttempts: number
+    randomizeQuestions: boolean
+    randomizeOptions: boolean
+    showResultsImmediately: boolean
+    allowReview: boolean
+    availableFrom?: string | Date | null
+    deadline?: string | Date | null
+    createdAt: string | Date
+    updatedAt: string | Date
+    publishedAt?: string | Date | null
+    _count?: {
+        questions: number
+        attempts: number
+        invitations: number
+    }
+}
+
+export interface ExamQuestion {
+    id: string
+    examId: string
+    type: ExamQuestionType
+    question: string
+    options?: string[] | null
+    correctAnswer?: string | null
+    explanation?: string | null
+    points: number
+    order: number
+    difficulty?: 'EASY' | 'MEDIUM' | 'HARD' | null
+    maxWords?: number | null
+    rubric?: string | null
+    sampleAnswer?: string | null
+}
+
+export interface ExamAttempt {
+    id: string
+    examId: string
+    userId: string
+    attemptNumber: number
+    status: ExamAttemptStatus
+    startedAt: string | Date
+    submittedAt?: string | Date | null
+    expiresAt?: string | Date | null
+    rawScore?: number | null
+    percentageScore?: number | null
+    passed?: boolean | null
+    hasEssays: boolean
+    essaysGraded: boolean
+    user?: {
+        id: string
+        name: string
+        email: string
+    }
+    exam?: {
+        id: string
+        title: string
+        totalScore: number
+        passingScore: number
+    }
+    _count?: {
+        answers: number
+    }
+}
+
+export interface ExamAnswer {
+    id: string
+    attemptId: string
+    questionId: string
+    answer?: string | null
+    selectedOption?: number | null
+    gradingStatus: GradingStatus
+    isCorrect?: boolean | null
+    pointsAwarded?: number | null
+    aiSuggestedScore?: number | null
+    aiFeedback?: string | null
+    adminScore?: number | null
+    adminFeedback?: string | null
+    question?: ExamQuestion
+}
+
+export interface ExamInvitation {
+    id: string
+    examId: string
+    userId: string
+    emailSentAt?: string | Date | null
+    viewed: boolean
+    viewedAt?: string | Date | null
+    user?: {
+        id: string
+        name: string
+        email: string
+    }
+}
+
+export interface ExamAnalytics {
+    examId: string
+    totalAttempts: number
+    uniqueUsers: number
+    avgScore: number
+    medianScore?: number | null
+    highestScore: number
+    lowestScore: number
+    passCount: number
+    failCount: number
+    avgCompletionTime?: number | null
+    lastUpdatedAt: string | Date
 }

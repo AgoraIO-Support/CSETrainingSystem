@@ -63,24 +63,38 @@ export const DELETE = withAdminAuth(async (req, user, { params }: { params: Prom
     try {
         const { id } = await params
 
-        await CourseService.deleteCourse(id)
+        const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL?.replace(/\/$/, '')
+        if (!backendBase) {
+            return NextResponse.json(
+                { success: false, error: { code: 'CONFIG_ERROR', message: 'NEXT_PUBLIC_BACKEND_URL is not configured' } },
+                { status: 500 }
+            )
+        }
 
-        return NextResponse.json({
-            success: true,
-            message: 'Course deleted successfully',
-        })
-    } catch (error) {
-        console.error('Delete course error:', error)
-
-        return NextResponse.json(
-            {
-                success: false,
-                error: {
-                    code: 'SYSTEM_001',
-                    message: 'Failed to delete course',
-                },
+        const res = await fetch(`${backendBase}/api/admin/courses/${id}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(req.headers.get('authorization') ? { Authorization: req.headers.get('authorization') as string } : {}),
             },
-            { status: 500 }
+        })
+
+        if (!res.ok) {
+            // 后端 404 视为幂等成功
+            if (res.status === 404) {
+                return NextResponse.json({ success: true })
+            }
+            const body = await res.json().catch(() => null)
+            return NextResponse.json(body ?? { success: false, error: { code: 'BACKEND_ERROR' } }, { status: res.status })
+        }
+
+        return NextResponse.json({ success: true })
+    } catch (error) {
+        console.error('Course delete proxy error:', error)
+        // 后端不可达不得返回假成功
+        return NextResponse.json(
+            { success: false, error: { code: 'BACKEND_UNREACHABLE', message: 'Backend unreachable while deleting course' } },
+            { status: 502 }
         )
     }
 })

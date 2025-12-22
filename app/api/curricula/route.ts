@@ -5,7 +5,7 @@ export const GET = async () => {
     const { courses } = await CourseService.getCourses({ status: 'PUBLISHED', limit: 100 })
     return NextResponse.json({
         success: true,
-        items: courses.map(c => ({
+        items: courses.map((c: any) => ({
             id: c.id,
             code: c.slug,
             title: c.title,
@@ -14,8 +14,8 @@ export const GET = async () => {
             category: c.category,
             learningOutcomes: c.learningOutcomes,
             requirements: c.requirements,
-            modulesCount: c.chapters?.length ?? 0,
-            lessonsCount: c.chapters?.reduce((sum, ch) => sum + ch.lessons.length, 0) ?? 0,
+            modulesCount: c._count?.chapters ?? 0,
+            lessonsCount: 0, // Would need full chapter/lesson data to calculate
         })),
     })
 }

@@ -6,8 +6,8 @@ generator client {
 }
 
 generator backendClient {
-  provider = "prisma-client-js"
-  output   = "../backend/node_modules/.prisma/client"
+  provider      = "prisma-client-js"
+  output        = "../backend/node_modules/.prisma/client"
   binaryTargets = ["native"]
 }
 
@@ -32,38 +32,44 @@ enum UserStatus {
 }
 
 model User {
-  id            String      @id @default(uuid())
-  email         String      @unique
-  name          String
-  password      String?     // Hashed password for local auth
-  avatar        String?
-  role          UserRole    @default(USER)
-  status        UserStatus  @default(ACTIVE)
-  
+  id       String     @id @default(uuid())
+  email    String     @unique
+  name     String
+  password String? // Hashed password for local auth
+  avatar   String?
+  role     UserRole   @default(USER)
+  status   UserStatus @default(ACTIVE)
+
   // Supabase Auth integration
-  supabaseId    String?     @unique
-  
+  supabaseId String? @unique
+
   // Profile
-  bio           String?
-  title         String?
-  department    String?
-  
+  bio        String?
+  title      String?
+  department String?
+
   // Timestamps
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-  lastLoginAt   DateTime?
-  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  lastLoginAt DateTime?
+
   // Relations
-  enrollments   Enrollment[]
-  progress      LessonProgress[]
-  quizAttempts  QuizAttempt[]
-  achievements  UserAchievement[]
-  discussions   Discussion[]
+  enrollments     Enrollment[]
+  progress        LessonProgress[]
+  quizAttempts    QuizAttempt[]
+  achievements    UserAchievement[]
+  discussions     Discussion[]
   aiConversations AIConversation[]
-  
+
   // Admin-created courses (if instructor)
-  createdCourses Course[]   @relation("CourseInstructor")
-  
+  createdCourses Course[] @relation("CourseInstructor")
+
+  // Exam relations
+  examAttempts    ExamAttempt[]
+  examInvitations ExamInvitation[]
+  createdExams    Exam[]           @relation("ExamCreator")
+  approvedExams   Exam[]           @relation("ExamApprover")
+
   @@index([email])
   @@index([role])
   @@index([status])
@@ -86,44 +92,62 @@ enum CourseStatus {
   ARCHIVED
 }
 
+enum LessonType {
+  VIDEO
+  DOC
+  QUIZ
+  OTHER
+}
+
+enum LessonCompletionRule {
+  VIEW_ASSETS
+  MANUAL
+  QUIZ
+}
+
 model Course {
-  id              String        @id @default(uuid())
-  title           String
-  slug            String        @unique
-  description     String        @db.Text
-  thumbnail       String?       // S3 URL
-  
+  id          String  @id @default(uuid())
+  title       String
+  slug        String  @unique
+  description String  @db.Text
+  thumbnail   String? // S3 URL
+
   // Course metadata
-  level           CourseLevel
-  status          CourseStatus  @default(DRAFT)
-  category        String
-  tags            String[]
-  learningOutcomes String[]   @default([])
-  requirements     String[]   @default([])
-  duration        Int           // Total duration in seconds
-  
+  level            CourseLevel
+  status           CourseStatus @default(DRAFT)
+  category         String
+  tags             String[]
+  learningOutcomes String[]     @default([])
+  requirements     String[]     @default([])
+  duration         Int // Total duration in seconds
+
   // Instructor
-  instructorId    String
-  instructor      User          @relation("CourseInstructor", fields: [instructorId], references: [id])
-  
+  instructorId String
+  instructor   User   @relation("CourseInstructor", fields: [instructorId], references: [id])
+
   // Stats
-  enrolledCount   Int           @default(0)
-  rating          Float         @default(0.0)
-  reviewCount     Int           @default(0)
-  
+  enrolledCount Int   @default(0)
+  rating        Float @default(0.0)
+  reviewCount   Int   @default(0)
+
   // Timestamps
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  publishedAt     DateTime?
-  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  publishedAt DateTime?
+
   // Relations
-  chapters        Chapter[]
-  enrollments     Enrollment[]
-  quizzes         Quiz[]
-  discussions     Discussion[]
-  reviews         CourseReview[]
-  assets          CourseAsset[] @relation("CourseAssets")
-  
+  chapters    Chapter[]
+  enrollments Enrollment[]
+  quizzes     Quiz[]
+  discussions Discussion[]
+  reviews     CourseReview[]
+  assets      CourseAsset[]   @relation("CourseAssets")
+  aiConfig    CourseAIConfig?
+
+  // Exam relations
+  exams         Exam[]
+  examMaterials ExamMaterial[] @relation("CourseExamMaterials")
+
   @@index([slug])
   @@index([status])
   @@index([category])
@@ -132,56 +156,66 @@ model Course {
 }
 
 model Chapter {
-  id          String    @id @default(uuid())
-  courseId    String
-  course      Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  
+  id       String @id @default(uuid())
+  courseId String
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
   title       String
-  description String?   @db.Text
-  order       Int       @default(0)
-  
+  description String? @db.Text
+  order       Int     @default(0)
+
   // Timestamps
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
-  lessons     Lesson[]
-  
+  lessons Lesson[]
+
   @@index([courseId])
   @@index([order])
   @@map("chapters")
 }
 
 model Lesson {
-  id          String    @id @default(uuid())
-  chapterId   String
-  chapter     Chapter   @relation(fields: [chapterId], references: [id], onDelete: Cascade)
-  
-  title       String
-  description String?   @db.Text
-  order       Int       @default(0)
-  duration    Int       // Duration in seconds
-  
+  id        String  @id @default(uuid())
+  chapterId String
+  chapter   Chapter @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+
+  title              String
+  description        String?               @db.Text
+  order              Int                   @default(0)
+  duration           Int // Duration in seconds (legacy)
+  durationMinutes    Int?
+  lessonType         LessonType?
+  learningObjectives String[]              @default([])
+  completionRule     LessonCompletionRule? @default(VIEW_ASSETS)
+
   // Video files (S3)
-  videoUrl    String?   // S3 key or CloudFront URL
-  videoKey    String?   // S3 key for management
-  subtitleUrl String?   // VTT file URL
-  subtitleKey String?   // S3 key
-  
+  videoUrl    String? // S3 key or CloudFront URL
+  videoKey    String? // S3 key for management
+  subtitleUrl String? // VTT file URL
+  subtitleKey String? // S3 key
+
   // Transcript for AI
-  transcript  String?   @db.Text
-  
+  transcript String? @db.Text
+
   // Content
-  content     String?   @db.Text // Additional notes/materials
-  
+  content String? @db.Text // Additional notes/materials
+
   // Timestamps
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
   progress    LessonProgress[]
   assets      LessonAsset[]
-  
+  aiConfig    LessonAIConfig?
+  transcripts TranscriptAsset[]
+
+  // Knowledge base (XML context system)
+  knowledgeContext KnowledgeContext?
+  knowledgeAnchors KnowledgeAnchor[]
+
   @@index([chapterId])
   @@index([order])
   @@map("lessons")
@@ -198,20 +232,20 @@ enum EnrollmentStatus {
 }
 
 model Enrollment {
-  id              String           @id @default(uuid())
-  userId          String
-  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  courseId        String
-  course          Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  
-  status          EnrollmentStatus @default(ACTIVE)
-  progress        Float            @default(0.0) // Percentage 0-100
-  
+  id       String @id @default(uuid())
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId String
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  status   EnrollmentStatus @default(ACTIVE)
+  progress Float            @default(0.0) // Percentage 0-100
+
   // Timestamps
-  enrolledAt      DateTime         @default(now())
-  completedAt     DateTime?
-  lastAccessedAt  DateTime?
-  
+  enrolledAt     DateTime  @default(now())
+  completedAt    DateTime?
+  lastAccessedAt DateTime?
+
   @@unique([userId, courseId])
   @@index([userId])
   @@index([courseId])
@@ -220,21 +254,21 @@ model Enrollment {
 }
 
 model LessonProgress {
-  id              String    @id @default(uuid())
-  userId          String
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  lessonId        String
-  lesson          Lesson    @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  
-  completed       Boolean   @default(false)
-  watchedDuration Int       @default(0) // Seconds watched
-  lastTimestamp   Int       @default(0) // Last position in video
-  
+  id       String @id @default(uuid())
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId String
+  lesson   Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  completed       Boolean @default(false)
+  watchedDuration Int     @default(0) // Seconds watched
+  lastTimestamp   Int     @default(0) // Last position in video
+
   // Timestamps
-  startedAt       DateTime  @default(now())
-  completedAt     DateTime?
-  updatedAt       DateTime  @updatedAt
-  
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
   @@unique([userId, lessonId])
   @@index([userId])
   @@index([lessonId])
@@ -254,65 +288,65 @@ enum QuestionType {
 }
 
 model Quiz {
-  id              String        @id @default(uuid())
-  courseId        String
-  course          Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  
-  title           String
-  description     String?       @db.Text
-  passingScore    Int           @default(70) // Percentage
-  timeLimit       Int?          // Time limit in seconds (null = no limit)
-  randomizeQ      Boolean       @default(false) // Randomize question order
-  
+  id       String @id @default(uuid())
+  courseId String
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  title        String
+  description  String? @db.Text
+  passingScore Int     @default(70) // Percentage
+  timeLimit    Int? // Time limit in seconds (null = no limit)
+  randomizeQ   Boolean @default(false) // Randomize question order
+
   // Timestamps
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
-  questions       Question[]
-  attempts        QuizAttempt[]
-  
+  questions Question[]
+  attempts  QuizAttempt[]
+
   @@index([courseId])
   @@map("quizzes")
 }
 
 model Question {
-  id              String        @id @default(uuid())
-  quizId          String
-  quiz            Quiz          @relation(fields: [quizId], references: [id], onDelete: Cascade)
-  
-  type            QuestionType
-  question        String        @db.Text
-  options         Json?         // For multiple choice: ["option1", "option2", ...]
-  correctAnswer   String        @db.Text // Index for MC, "true"/"false" for TF, text for fill-in
-  explanation     String?       @db.Text
-  points          Int           @default(1)
-  order           Int           @default(0)
-  
+  id     String @id @default(uuid())
+  quizId String
+  quiz   Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  type          QuestionType
+  question      String       @db.Text
+  options       Json? // For multiple choice: ["option1", "option2", ...]
+  correctAnswer String       @db.Text // Index for MC, "true"/"false" for TF, text for fill-in
+  explanation   String?      @db.Text
+  points        Int          @default(1)
+  order         Int          @default(0)
+
   // Timestamps
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([quizId])
   @@index([order])
   @@map("questions")
 }
 
 model QuizAttempt {
-  id              String    @id @default(uuid())
-  userId          String
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  quizId          String
-  quiz            Quiz      @relation(fields: [quizId], references: [id], onDelete: Cascade)
-  
-  answers         Json      // { questionId: answer, ... }
-  score           Float     // Percentage score
-  passed          Boolean
-  
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quizId String
+  quiz   Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  answers Json // { questionId: answer, ... }
+  score   Float // Percentage score
+  passed  Boolean
+
   // Timestamps
-  startedAt       DateTime  @default(now())
-  completedAt     DateTime?
-  
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
   @@index([userId])
   @@index([quizId])
   @@index([passed])
@@ -324,18 +358,18 @@ model QuizAttempt {
 // ============================================================================
 
 model Achievement {
-  id          String            @id @default(uuid())
+  id          String @id @default(uuid())
   title       String
-  description String            @db.Text
-  icon        String            // Emoji or image URL
-  criteria    Json              // { type: "course_complete", courseId: "..." }
-  
+  description String @db.Text
+  icon        String // Emoji or image URL
+  criteria    Json // { type: "course_complete", courseId: "..." }
+
   // Timestamps
-  createdAt   DateTime          @default(now())
-  
+  createdAt DateTime @default(now())
+
   // Relations
-  users       UserAchievement[]
-  
+  users UserAchievement[]
+
   @@map("achievements")
 }
 
@@ -345,9 +379,9 @@ model UserAchievement {
   user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   achievementId String
   achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
-  
-  earnedAt      DateTime    @default(now())
-  
+
+  earnedAt DateTime @default(now())
+
   @@unique([userId, achievementId])
   @@index([userId])
   @@index([achievementId])
@@ -355,16 +389,27 @@ model UserAchievement {
 }
 
 model Certificate {
-  id          String    @id @default(uuid())
-  userId      String
-  courseId    String
-  
-  certificateNumber String  @unique
-  issueDate   DateTime  @default(now())
-  pdfUrl      String?   // S3 URL for generated PDF
-  
+  id       String  @id @default(uuid())
+  userId   String
+  courseId String?
+
+  // Optional exam relation (for exam-based certificates)
+  examId String?
+  exam   Exam?   @relation(fields: [examId], references: [id], onDelete: SetNull)
+
+  certificateNumber String   @unique
+  issueDate         DateTime @default(now())
+  pdfUrl            String? // S3 URL for generated PDF
+
+  // Certificate metadata
+  recipientName String? // Name on certificate (snapshot at time of issue)
+  examTitle     String? // Exam title snapshot
+  courseTitle   String? // Course title snapshot
+  score         Float? // Score achieved
+
   @@index([userId])
   @@index([courseId])
+  @@index([examId])
   @@map("certificates")
 }
 
@@ -373,27 +418,27 @@ model Certificate {
 // ============================================================================
 
 model Discussion {
-  id          String    @id @default(uuid())
-  courseId    String
-  course      Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  title       String?
-  content     String    @db.Text
-  
+  id       String @id @default(uuid())
+  courseId String
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title   String?
+  content String  @db.Text
+
   // Thread management
-  parentId    String?
-  parent      Discussion? @relation("DiscussionReplies", fields: [parentId], references: [id], onDelete: Cascade)
-  replies     Discussion[] @relation("DiscussionReplies")
-  
-  likes       Int       @default(0)
-  isPinned    Boolean   @default(false)
-  
+  parentId String?
+  parent   Discussion?  @relation("DiscussionReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  Discussion[] @relation("DiscussionReplies")
+
+  likes    Int     @default(0)
+  isPinned Boolean @default(false)
+
   // Timestamps
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([courseId])
   @@index([userId])
   @@index([parentId])
@@ -401,18 +446,18 @@ model Discussion {
 }
 
 model CourseReview {
-  id          String    @id @default(uuid())
-  courseId    String
-  course      Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  userId      String
-  
-  rating      Int       // 1-5
-  comment     String?   @db.Text
-  
+  id       String @id @default(uuid())
+  courseId String
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  userId   String
+
+  rating  Int // 1-5
+  comment String? @db.Text
+
   // Timestamps
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@unique([courseId, userId])
   @@index([courseId])
   @@index([rating])
@@ -424,63 +469,106 @@ model CourseReview {
 // ============================================================================
 
 model AIConversation {
-  id          String      @id @default(uuid())
-  userId      String
-  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  courseId    String?     // Context: which course
-  lessonId    String?     // Context: which lesson
-  
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  courseId String? // Context: which course
+  lessonId String? // Context: which lesson
+
   // Timestamps
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
-  messages    AIMessage[]
-  
+  messages AIMessage[]
+
   @@index([userId])
   @@index([courseId])
   @@map("ai_conversations")
 }
 
 model AIMessage {
-  id              String          @id @default(uuid())
-  conversationId  String
-  conversation    AIConversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  
-  role            String          // "user" or "assistant"
-  content         String          @db.Text
-  
+  id             String         @id @default(uuid())
+  conversationId String
+  conversation   AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  role    String // "user" or "assistant"
+  content String @db.Text
+
   // Context
-  videoTimestamp  Int?            // If asked during video, what timestamp
-  context         Json?           // Additional context data
-  
+  videoTimestamp Int? // If asked during video, what timestamp
+  context        Json? // Additional context data
+
   // Metadata
-  tokens          Int?            // Token usage for this message
-  model           String?         // Which AI model was used
-  
+  tokens Int? // Token usage for this message
+  model  String? // Which AI model was used
+
   // Timestamps
-  createdAt       DateTime        @default(now())
-  
+  createdAt DateTime @default(now())
+
   @@index([conversationId])
   @@index([createdAt])
   @@map("ai_messages")
 }
 
 model AIPromptTemplate {
-  id          String    @id @default(uuid())
-  name        String    @unique
-  description String?   @db.Text
-  template    String    @db.Text
-  variables   String[]  // List of variable names used in template
-  
-  isActive    Boolean   @default(true)
-  
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?  @db.Text
+  template    String   @db.Text
+  variables   String[] // List of variable names used in template
+
+  isActive Boolean @default(true)
+
   // Timestamps
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@map("ai_prompt_templates")
+}
+
+// Course-level AI configuration (default for all lessons in course)
+model CourseAIConfig {
+  id       String @id @default(uuid())
+  courseId String @unique
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  systemPrompt  String  @db.Text // The system prompt template
+  modelOverride String? // Optional: override default model (e.g., 'gpt-4')
+  temperature   Float?  @default(0.2)
+  maxTokens     Int?    @default(1024)
+
+  isEnabled Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("course_ai_configs")
+}
+
+// Lesson-level AI configuration (overrides course config for specific lessons)
+model LessonAIConfig {
+  id       String @id @default(uuid())
+  lessonId String @unique
+  lesson   Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  systemPrompt  String  @db.Text // Override system prompt
+  modelOverride String? // Optional: override model
+  temperature   Float?
+  maxTokens     Int?
+
+  isEnabled Boolean @default(true)
+
+  // Context fields
+  includeTranscript     Boolean @default(true)
+  includeAssetSummaries Boolean @default(false)
+  customContext         String? @db.Text // Additional context to inject
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("lesson_ai_configs")
 }
 
 // ============================================================================
@@ -488,46 +576,46 @@ model AIPromptTemplate {
 // ============================================================================
 
 model LearningReport {
-  id                  String    @id @default(uuid())
-  userId              String
-  courseId            String
-  
+  id       String @id @default(uuid())
+  userId   String
+  courseId String
+
   // Report data
-  completedLessons    Int
-  totalLessons        Int
-  averageQuizScore    Float?
-  totalLearningTime   Int       // Seconds
-  
-  knowledgePoints     String[]  // Key topics covered
-  recommendations     Json      // Recommended courses
-  aiSummary           String?   @db.Text
-  
+  completedLessons  Int
+  totalLessons      Int
+  averageQuizScore  Float?
+  totalLearningTime Int // Seconds
+
+  knowledgePoints String[] // Key topics covered
+  recommendations Json // Recommended courses
+  aiSummary       String?  @db.Text
+
   // Export URLs
-  pdfUrl              String?
-  htmlUrl             String?
-  
+  pdfUrl  String?
+  htmlUrl String?
+
   // Timestamps
-  generatedAt         DateTime  @default(now())
-  
+  generatedAt DateTime @default(now())
+
   @@index([userId])
   @@index([courseId])
   @@map("learning_reports")
 }
 
 model SystemAnalytics {
-  id              String    @id @default(uuid())
-  date            DateTime  @db.Date
-  
+  id   String   @id @default(uuid())
+  date DateTime @db.Date
+
   // Metrics
-  activeUsers     Int       @default(0)
-  newEnrollments  Int       @default(0)
-  completedCourses Int      @default(0)
-  totalViews      Int       @default(0)
-  aiInteractions  Int       @default(0)
-  
+  activeUsers      Int @default(0)
+  newEnrollments   Int @default(0)
+  completedCourses Int @default(0)
+  totalViews       Int @default(0)
+  aiInteractions   Int @default(0)
+
   // Timestamps
-  createdAt       DateTime  @default(now())
-  
+  createdAt DateTime @default(now())
+
   @@unique([date])
   @@index([date])
   @@map("system_analytics")
@@ -546,24 +634,25 @@ enum NotificationType {
 }
 
 model Notification {
-  id          String            @id @default(uuid())
-  userId      String?           // null = broadcast to all
-  
-  type        NotificationType
-  title       String
-  message     String            @db.Text
-  link        String?           // Deep link to related content
-  
-  read        Boolean           @default(false)
-  
+  id     String  @id @default(uuid())
+  userId String? // null = broadcast to all
+
+  type    NotificationType
+  title   String
+  message String           @db.Text
+  link    String? // Deep link to related content
+
+  read Boolean @default(false)
+
   // Timestamps
-  createdAt   DateTime          @default(now())
-  
+  createdAt DateTime @default(now())
+
   @@index([userId])
   @@index([read])
   @@index([createdAt])
   @@map("notifications")
 }
+
 enum LessonAssetType {
   VIDEO
   DOCUMENT
@@ -574,34 +663,685 @@ enum LessonAssetType {
 }
 
 model LessonAsset {
-  id          String          @id @default(uuid())
-  lessonId    String
-  lesson      Lesson          @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  type        LessonAssetType
-  title       String
-  description String?
-  url         String
-  s3Key       String
-  contentType String?
+  id            String      @id @default(uuid())
+  lessonId      String
+  courseAssetId String
+  lesson        Lesson      @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  courseAsset   CourseAsset @relation(fields: [courseAssetId], references: [id], onDelete: Cascade)
 
-  createdAt   DateTime        @default(now())
+  createdAt DateTime @default(now())
 
   @@index([lessonId])
+  @@index([courseAssetId])
   @@map("lesson_assets")
 }
-model CourseAsset {
-  id          String    @id @default(uuid())
-  courseId    String
-  course      Course    @relation("CourseAssets", fields: [courseId], references: [id], onDelete: Cascade)
-  title       String
-  description String?
-  type        LessonAssetType
-  url         String
-  s3Key       String
-  contentType String?
 
-  createdAt   DateTime  @default(now())
+model CourseAsset {
+  id            String          @id @default(uuid())
+  courseId      String
+  course        Course          @relation("CourseAssets", fields: [courseId], references: [id], onDelete: Cascade)
+  title         String
+  description   String?
+  type          LessonAssetType
+  url           String
+  cloudfrontUrl String?
+  s3Key         String
+  contentType   String?
+  mimeType      String?
+
+  createdAt   DateTime          @default(now())
+  lessons     LessonAsset[]
+  transcripts TranscriptAsset[] @relation("VideoTranscript")
 
   @@index([courseId])
   @@map("course_assets")
+}
+
+// ============================================================================
+// RAG KNOWLEDGE BASE (Transcript Embeddings)
+// ============================================================================
+
+enum TranscriptStatus {
+  PENDING
+  VALIDATING
+  CHUNKING
+  EMBEDDING
+  INDEXING
+  READY
+  FAILED
+  STALE
+}
+
+enum TranscriptJobState {
+  QUEUED
+  RUNNING
+  RETRY_WAIT
+  SUCCEEDED
+  FAILED
+  CANCELED
+  STALE
+}
+
+// Transcript assets linked to video lessons
+model TranscriptAsset {
+  id           String      @id @default(uuid())
+  lessonId     String
+  lesson       Lesson      @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  videoAssetId String
+  videoAsset   CourseAsset @relation("VideoTranscript", fields: [videoAssetId], references: [id], onDelete: Cascade)
+
+  filename String
+  s3Key    String
+  url      String?
+  language String  @default("en")
+
+  status       TranscriptStatus @default(PENDING)
+  errorMessage String?          @db.Text
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  processedAt DateTime?
+
+  chunks         TranscriptChunk[]
+  processingJobs TranscriptProcessingJob[]
+
+  @@unique([lessonId, videoAssetId])
+  @@index([lessonId])
+  @@index([status])
+  @@map("transcript_assets")
+}
+
+model TranscriptProcessingJob {
+  id String @id @default(uuid())
+
+  transcriptId String
+  transcript   TranscriptAsset @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+
+  // denormalized for easier querying/filtering
+  lessonId String
+
+  state TranscriptJobState @default(QUEUED)
+  stage TranscriptStatus   @default(PENDING)
+
+  progress    Int     @default(0)
+  currentStep String?
+
+  totalChunks     Int @default(0)
+  processedChunks Int @default(0)
+  totalTokens     Int @default(0)
+
+  attempt     Int @default(0)
+  maxAttempts Int @default(5)
+
+  scheduledAt DateTime  @default(now())
+  startedAt   DateTime?
+  finishedAt  DateTime?
+
+  lastHeartbeatAt DateTime?
+  leaseExpiresAt  DateTime?
+  workerId        String?
+
+  errorCode    String?
+  errorMessage String? @db.Text
+
+  metrics Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events TranscriptProcessingJobEvent[]
+
+  @@index([transcriptId])
+  @@index([lessonId])
+  @@index([state, scheduledAt])
+  @@index([leaseExpiresAt])
+  @@map("transcript_processing_jobs")
+}
+
+model TranscriptProcessingJobEvent {
+  id String @id @default(uuid())
+
+  jobId String
+  job   TranscriptProcessingJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  level   String
+  stage   TranscriptStatus?
+  message String
+  data    Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([jobId, createdAt])
+  @@map("transcript_processing_job_events")
+}
+
+// Parsed and embedded transcript chunks for RAG
+model TranscriptChunk {
+  id           String          @id @default(uuid())
+  transcriptId String
+  transcript   TranscriptAsset @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+
+  sequenceIndex Int
+  startTime     Decimal @db.Decimal(10, 3)
+  endTime       Decimal @db.Decimal(10, 3)
+  text          String  @db.Text
+  tokenCount    Int
+
+  // Vector embedding stored as JSON (compatible with pgvector)
+  embedding Json // Stores array of numbers as JSON
+
+  metadata Json // Stores ChunkMetadata (course/chapter/lesson info, timestamps, etc.)
+
+  createdAt DateTime @default(now())
+
+  @@unique([transcriptId, sequenceIndex])
+  @@index([transcriptId])
+  @@map("transcript_chunks")
+}
+
+// ============================================================================
+// KNOWLEDGE CONTEXT (XML-based full context injection system)
+// ============================================================================
+
+enum KnowledgeContextStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum KnowledgeAnchorType {
+  CONCEPT // Core concept explanation
+  EXAMPLE // Practical example
+  DEMO // Live demonstration
+  KEY_TAKEAWAY // Summary/conclusion moment
+}
+
+// Cached XML knowledge base for a lesson (replaces RAG chunks)
+model KnowledgeContext {
+  id       String @id @default(uuid())
+  lessonId String @unique
+  lesson   Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  // S3 storage for XML content
+  s3Key       String
+  contentHash String // SHA-256 hash for cache invalidation
+
+  // Metadata
+  tokenCount   Int // Estimated token count of XML
+  sectionCount Int // Number of <section> elements
+  anchorCount  Int // Number of extracted anchors
+
+  // Status
+  status       KnowledgeContextStatus @default(PENDING)
+  errorMessage String?                @db.Text
+
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  processedAt DateTime?
+
+  @@index([status])
+  @@map("knowledge_contexts")
+}
+
+// Knowledge anchors extracted from transcript for frontend navigation
+model KnowledgeAnchor {
+  id       String @id @default(uuid())
+  lessonId String
+  lesson   Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  // Position in video
+  timestamp    Decimal @db.Decimal(10, 3) // Seconds
+  timestampStr String // Formatted "HH:MM:SS"
+
+  // Content
+  title      String // Short anchor title (e.g., "WebRTC Signaling")
+  summary    String              @db.Text // 1-2 sentence summary
+  keyTerms   String[] // Key terms/concepts at this anchor
+  anchorType KnowledgeAnchorType @default(CONCEPT)
+
+  // Ordering
+  sequenceIndex Int
+
+  createdAt DateTime @default(now())
+
+  @@unique([lessonId, sequenceIndex])
+  @@index([lessonId])
+  @@map("knowledge_anchors")
+}
+
+// ============================================================================
+// EXAM SYSTEM
+// ============================================================================
+
+enum ExamStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  PUBLISHED
+  CLOSED
+  ARCHIVED
+}
+
+enum ExamType {
+  COURSE_BASED
+  STANDALONE
+}
+
+enum ExamQuestionType {
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  FILL_IN_BLANK
+  ESSAY
+}
+
+enum DifficultyLevel {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum GradingStatus {
+  PENDING
+  AUTO_GRADED
+  AI_SUGGESTED
+  MANUALLY_GRADED
+}
+
+enum ExamAttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+  GRADED
+  EXPIRED
+}
+
+enum MaterialAssetType {
+  VTT
+  PDF
+  DOCX
+  TXT
+}
+
+enum MaterialAssetStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum EmailType {
+  EXAM_INVITATION
+  EXAM_REMINDER
+  EXAM_RESULTS
+  CERTIFICATE_DELIVERY
+}
+
+// Main exam model - supports both course-based and standalone exams
+model Exam {
+  id String @id @default(uuid())
+
+  // Exam can be course-based or standalone
+  examType ExamType
+  courseId String?
+  course   Course?  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  title        String
+  description  String? @db.Text
+  instructions String? @db.Text
+
+  status ExamStatus @default(DRAFT)
+
+  // Timing
+  timeLimit     Int? // Minutes (null = no limit)
+  deadline      DateTime? // Exam closes after this date
+  availableFrom DateTime? // Exam becomes available after this date
+
+  // Scoring configuration
+  totalScore   Int @default(100)
+  passingScore Int @default(70) // Percentage
+
+  // Settings
+  randomizeQuestions     Boolean @default(false)
+  randomizeOptions       Boolean @default(false)
+  showResultsImmediately Boolean @default(true)
+  allowReview            Boolean @default(true) // Review answers after submission
+  maxAttempts            Int     @default(1)
+
+  // AI Generation Config
+  aiGenerationConfig Json? // Stores generation parameters
+
+  // Metadata
+  createdById  String
+  createdBy    User      @relation("ExamCreator", fields: [createdById], references: [id])
+  approvedById String?
+  approvedBy   User?     @relation("ExamApprover", fields: [approvedById], references: [id])
+  approvedAt   DateTime?
+
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  publishedAt DateTime?
+  closedAt    DateTime?
+
+  // Relations
+  questions    ExamQuestion[]
+  attempts     ExamAttempt[]
+  materials    ExamMaterial[]
+  invitations  ExamInvitation[]
+  analytics    ExamAnalytics?
+  certificates Certificate[]
+
+  @@index([status])
+  @@index([courseId])
+  @@index([examType])
+  @@index([createdById])
+  @@map("exams")
+}
+
+// Exam questions with support for multiple types
+model ExamQuestion {
+  id     String @id @default(uuid())
+  examId String
+  exam   Exam   @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  type       ExamQuestionType
+  difficulty DifficultyLevel  @default(MEDIUM)
+
+  question      String  @db.Text
+  options       Json? // For MC/TF: ["option1", "option2", ...]
+  correctAnswer String? @db.Text // For auto-gradable questions
+
+  // For essay questions
+  rubric       String? @db.Text // Grading criteria for essays
+  sampleAnswer String? @db.Text // Reference answer for AI grading
+  maxWords     Int? // Word limit for essays
+
+  points      Int     @default(10)
+  explanation String? @db.Text // Shown after submission
+
+  order Int @default(0)
+
+  // AI Generation metadata
+  isAIGenerated    Boolean @default(false)
+  aiModel          String? // Which model generated this
+  generationPrompt String? @db.Text
+
+  // Topic/category for analytics
+  topic String?
+  tags  String[] @default([])
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  answers ExamAnswer[]
+  sources ExamQuestionSource[]
+
+  @@index([examId])
+  @@index([type])
+  @@index([order])
+  @@map("exam_questions")
+}
+
+// Links questions to source chunks for verification/provenance
+model ExamQuestionSource {
+  id         String        @id @default(uuid())
+  questionId String
+  question   ExamQuestion  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  chunkId    String
+  chunk      MaterialChunk @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+
+  relevanceScore Float? // How relevant this source is (0-1)
+
+  @@unique([questionId, chunkId])
+  @@index([questionId])
+  @@map("exam_question_sources")
+}
+
+// User exam attempt
+model ExamAttempt {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  examId String
+  exam   Exam   @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  attemptNumber Int               @default(1)
+  status        ExamAttemptStatus @default(IN_PROGRESS)
+
+  // Timing
+  startedAt   DateTime  @default(now())
+  submittedAt DateTime?
+  expiresAt   DateTime? // Auto-submit deadline
+
+  // Auto-save
+  lastSavedAt DateTime?
+
+  // Scoring
+  rawScore        Float? // Points earned
+  percentageScore Float? // Percentage
+  passed          Boolean?
+
+  // Grading status for essay questions
+  hasEssays    Boolean @default(false)
+  essaysGraded Boolean @default(false)
+
+  // Browser/device info for proctoring
+  userAgent String?
+  ipAddress String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  answers ExamAnswer[]
+
+  @@index([userId])
+  @@index([examId])
+  @@index([status])
+  @@map("exam_attempts")
+}
+
+// Individual answer to a question
+model ExamAnswer {
+  id         String       @id @default(uuid())
+  attemptId  String
+  attempt    ExamAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  questionId String
+  question   ExamQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  // User's answer
+  answer         String? @db.Text // User's response
+  selectedOption Int? // For MC: index of selected option
+
+  // Grading
+  gradingStatus GradingStatus @default(PENDING)
+  isCorrect     Boolean?
+  pointsAwarded Float?
+
+  // AI Grading (for essays)
+  aiSuggestedScore Float?
+  aiFeedback       String?   @db.Text
+  aiGradedAt       DateTime?
+
+  // Admin override
+  adminScore      Float?
+  adminFeedback   String?   @db.Text
+  adminGradedById String?
+  adminGradedAt   DateTime?
+
+  // Timestamps
+  answeredAt DateTime?
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([attemptId, questionId])
+  @@index([attemptId])
+  @@index([questionId])
+  @@index([gradingStatus])
+  @@map("exam_answers")
+}
+
+// ============================================================================
+// EXAM MATERIALS (Extended RAG Support for PDFs, DOCX, TXT)
+// ============================================================================
+
+// Generic material asset for exams (supports PDF, DOCX, TXT, VTT)
+model ExamMaterial {
+  id       String  @id @default(uuid())
+  examId   String? // For standalone exams
+  exam     Exam?   @relation(fields: [examId], references: [id], onDelete: Cascade)
+  courseId String? // For course-based materials
+  course   Course? @relation("CourseExamMaterials", fields: [courseId], references: [id], onDelete: Cascade)
+
+  title     String
+  filename  String
+  s3Key     String
+  url       String?
+  mimeType  String
+  assetType MaterialAssetType
+  fileSize  Int? // Bytes
+
+  status       MaterialAssetStatus @default(PENDING)
+  errorMessage String?             @db.Text
+
+  // Extracted content
+  extractedText String? @db.Text
+  pageCount     Int? // For PDFs
+  wordCount     Int?
+
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  processedAt DateTime?
+
+  chunks MaterialChunk[]
+
+  @@index([examId])
+  @@index([courseId])
+  @@index([status])
+  @@map("exam_materials")
+}
+
+// Chunks for exam materials (extends RAG system)
+model MaterialChunk {
+  id         String       @id @default(uuid())
+  materialId String
+  material   ExamMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  sequenceIndex Int
+  text          String @db.Text
+  tokenCount    Int
+
+  // For VTT files only
+  startTime Decimal? @db.Decimal(10, 3)
+  endTime   Decimal? @db.Decimal(10, 3)
+
+  // For document files
+  pageNumber   Int?
+  sectionTitle String?
+
+  // Vector embedding stored as JSON (compatible with pgvector)
+  embedding Json // Stores array of numbers as JSON
+  metadata  Json // ChunkMetadata
+
+  createdAt DateTime @default(now())
+
+  // Link to generated questions
+  sourceQuestions ExamQuestionSource[]
+
+  @@unique([materialId, sequenceIndex])
+  @@index([materialId])
+  @@map("material_chunks")
+}
+
+// ============================================================================
+// EXAM INVITATIONS & EMAIL SYSTEM
+// ============================================================================
+
+model ExamInvitation {
+  id     String @id @default(uuid())
+  examId String
+  exam   Exam   @relation(fields: [examId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Email tracking
+  emailSentAt    DateTime?
+  reminderSentAt DateTime?
+
+  // Access control
+  accessCode String?   @unique // Optional unique access code
+  expiresAt  DateTime?
+
+  // Status
+  viewed   Boolean   @default(false)
+  viewedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@unique([examId, userId])
+  @@index([examId])
+  @@index([userId])
+  @@map("exam_invitations")
+}
+
+model EmailLog {
+  id String @id @default(uuid())
+
+  type           EmailType
+  recipientId    String
+  recipientEmail String
+
+  // Related entities
+  examId        String?
+  certificateId String?
+
+  // Email details
+  subject    String
+  templateId String? // Resend template ID
+
+  // Status
+  resendId     String? // Resend message ID
+  status       String  @default("pending") // pending, sent, delivered, failed
+  errorMessage String?
+
+  sentAt      DateTime?
+  deliveredAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([recipientId])
+  @@index([examId])
+  @@index([type])
+  @@map("email_logs")
+}
+
+// ============================================================================
+// EXAM ANALYTICS
+// ============================================================================
+
+model ExamAnalytics {
+  id     String @id @default(uuid())
+  examId String @unique
+  exam   Exam   @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  totalAttempts  Int @default(0)
+  passedAttempts Int @default(0)
+  failedAttempts Int @default(0)
+
+  averageScore Float?
+  medianScore  Float?
+  highestScore Float?
+  lowestScore  Float?
+
+  averageTimeMinutes Float?
+
+  // Question-level analytics (JSON)
+  questionStats Json? // { questionId: { attempts, correct, avgScore } }
+
+  lastUpdatedAt DateTime @default(now())
+
+  @@map("exam_analytics")
 }

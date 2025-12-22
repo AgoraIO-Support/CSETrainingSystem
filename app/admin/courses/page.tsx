@@ -23,9 +23,9 @@ export default function AdminCoursesPage() {
             setLoading(true)
             setError(null)
             try {
-                const response = await ApiClient.getCourses({ limit: 50, status: 'ALL' })
+                const response = await ApiClient.getAdminCourses({ limit: 50, status: 'ALL' })
                 if (!cancelled) {
-                    setCourses(response.data.courses)
+                    setCourses(response.data)
                 }
             } catch (err) {
                 if (!cancelled) {

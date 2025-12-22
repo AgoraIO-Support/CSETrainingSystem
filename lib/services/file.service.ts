@@ -1,7 +1,14 @@
 import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
-import s3Client, { S3_BUCKET_NAME, CLOUDFRONT_DOMAIN, S3_ASSET_BASE_PREFIX, ASSET_PUBLIC_BASE_URL } from '@/lib/aws-s3'
+import s3Client, {
+    S3_BUCKET_NAME,
+    CLOUDFRONT_DOMAIN,
+    S3_ASSET_BASE_PREFIX,
+    ASSET_PUBLIC_BASE_URL,
+    ASSET_S3_BUCKET_NAME,
+} from '@/lib/aws-s3'
 import { v4 as uuidv4 } from 'uuid'
+import { log, timeAsync } from '@/lib/logger'
 
 const joinPathSegments = (...segments: (string | undefined | null)[]) => {
     return segments
@@ -26,11 +33,16 @@ export class FileService {
             Bucket: S3_BUCKET_NAME,
             Key: key,
             ContentType: params.contentType,
-            ACL: 'public-read',
+            ServerSideEncryption: 'AES256',
         })
 
         // Generate presigned URL (valid for 1 hour)
-        const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 })
+        const uploadUrl = await timeAsync(
+            'S3',
+            'presign PutObject',
+            { bucket: S3_BUCKET_NAME, key, contentType: params.contentType, expiresIn: 3600 },
+            () => getSignedUrl(s3Client, command, { expiresIn: 3600 })
+        )
 
         return {
             uploadUrl,
@@ -52,14 +64,54 @@ export class FileService {
             Bucket: S3_BUCKET_NAME,
             Key: key,
             ContentType: 'text/vtt',
-            ACL: 'public-read',
+            ServerSideEncryption: 'AES256',
         })
 
-        const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 })
+        const uploadUrl = await timeAsync(
+            'S3',
+            'presign PutObject',
+            { bucket: S3_BUCKET_NAME, key, contentType: 'text/vtt', expiresIn: 3600 },
+            () => getSignedUrl(s3Client, command, { expiresIn: 3600 })
+        )
 
         return {
             uploadUrl,
             key,
+            expiresIn: 3600,
+        }
+    }
+
+    /**
+     * Generate presigned URL for transcript (VTT) upload for RAG
+     * Stored in lesson-assets/transcripts folder for organization
+     */
+    static async generateTranscriptUploadUrl(params: {
+        filename: string
+        lessonId: string
+    }) {
+        const lessonPrefix = `lesson-assets/${params.lessonId}`
+        const prefix = joinPathSegments(S3_ASSET_BASE_PREFIX, lessonPrefix, 'transcripts')
+        const key = joinPathSegments(prefix, `${uuidv4()}-${params.filename}`)
+
+        const command = new PutObjectCommand({
+            Bucket: S3_BUCKET_NAME,
+            Key: key,
+            ContentType: 'text/vtt',
+            ServerSideEncryption: 'AES256',
+        })
+
+        const uploadUrl = await timeAsync(
+            'S3',
+            'presign PutObject',
+            { bucket: S3_BUCKET_NAME, key, contentType: 'text/vtt', expiresIn: 3600 },
+            () => getSignedUrl(s3Client, command, { expiresIn: 3600 })
+        )
+
+        return {
+            uploadUrl,
+            key,
+            bucket: ASSET_S3_BUCKET_NAME,
+            url: this.getAssetPublicUrl(key),
             expiresIn: 3600,
         }
     }
@@ -71,24 +123,33 @@ export class FileService {
         filename: string
         contentType: string
         assetType?: 'documents' | 'presentations' | 'videos' | 'other'
+        lessonId?: string
     }) {
         const folder = params.assetType || 'documents'
-        const prefix = joinPathSegments(S3_ASSET_BASE_PREFIX, folder)
+        const lessonPrefix = params.lessonId ? `lesson-assets/${params.lessonId}` : undefined
+        const prefix = joinPathSegments(S3_ASSET_BASE_PREFIX, lessonPrefix, folder)
         const key = joinPathSegments(prefix, `${uuidv4()}-${params.filename}`)
 
         const command = new PutObjectCommand({
             Bucket: S3_BUCKET_NAME,
             Key: key,
             ContentType: params.contentType,
-            ACL: 'public-read',
+            ServerSideEncryption: 'AES256',
         })
 
-        const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 })
+        const uploadUrl = await timeAsync(
+            'S3',
+            'presign PutObject',
+            { bucket: S3_BUCKET_NAME, key, contentType: params.contentType, expiresIn: 3600 },
+            () => getSignedUrl(s3Client, command, { expiresIn: 3600 })
+        )
 
         return {
             uploadUrl,
             key,
+            bucket: ASSET_S3_BUCKET_NAME,
             url: this.getAssetPublicUrl(key),
+            mimeType: params.contentType,
             expiresIn: 3600,
         }
     }
@@ -128,7 +189,12 @@ export class FileService {
             Key: key,
         })
 
-        return await getSignedUrl(s3Client, command, { expiresIn: 3600 })
+        return await timeAsync(
+            'S3',
+            'presign PutObject',
+            { bucket: S3_BUCKET_NAME, key, expiresIn: 3600 },
+            () => getSignedUrl(s3Client, command, { expiresIn: 3600 })
+        )
     }
 
     /**
@@ -140,6 +206,7 @@ export class FileService {
             Key: key,
         })
 
-        await s3Client.send(command)
+        log('S3', 'info', 'deleteObject', { bucket: S3_BUCKET_NAME, key })
+        await timeAsync('S3', 'deleteObject result', { bucket: S3_BUCKET_NAME, key }, () => s3Client.send(command).then(() => undefined))
     }
 }

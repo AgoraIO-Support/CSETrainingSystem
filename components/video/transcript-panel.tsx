@@ -3,41 +3,82 @@
 import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ChevronDown, ChevronUp, FileText } from 'lucide-react'
+import { ChevronDown, ChevronUp, FileText, FileQuestion } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-interface TranscriptItem {
+export interface TranscriptItem {
     time: number
     text: string
 }
 
 interface TranscriptPanelProps {
-    transcript?: TranscriptItem[]
+    transcript: TranscriptItem[]
     currentTime?: number
     onSeek?: (time: number) => void
+    isLoading?: boolean
 }
 
-// Mock transcript data
-const mockTranscript: TranscriptItem[] = [
-    { time: 0, text: "Welcome to this lesson on Agora SDK fundamentals." },
-    { time: 5, text: "In this video, we'll cover the basic concepts you need to know." },
-    { time: 12, text: "First, let's talk about what the Agora SDK is and why it's important." },
-    { time: 20, text: "The Agora SDK provides real-time video and audio communication capabilities." },
-    { time: 30, text: "You can integrate it into your web, mobile, or desktop applications." },
-    { time: 40, text: "Let's look at the key components of the SDK." },
-    { time: 50, text: "The main components include the RTC engine, channel management, and user roles." },
-    { time: 65, text: "We'll dive deeper into each of these in the upcoming sections." },
-]
-
 export function TranscriptPanel({
-    transcript = mockTranscript,
+    transcript,
     currentTime = 0,
-    onSeek
+    onSeek,
+    isLoading = false
 }: TranscriptPanelProps) {
     const [isExpanded, setIsExpanded] = useState(true)
 
     const handleTranscriptClick = (time: number) => {
         onSeek?.(time)
+    }
+
+    // Loading state
+    if (isLoading) {
+        return (
+            <Card className="h-full">
+                <CardHeader className="flex flex-row items-center justify-between pb-3">
+                    <div className="flex items-center space-x-2">
+                        <FileText className="h-5 w-5" />
+                        <CardTitle className="text-lg">Transcript</CardTitle>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    <div className="space-y-3">
+                        {[1, 2, 3].map((i) => (
+                            <div key={`skeleton-${i}`} className="animate-pulse">
+                                <div className="flex items-start space-x-3">
+                                    <div className="h-4 w-12 bg-muted rounded" />
+                                    <div className="flex-1 space-y-2">
+                                        <div className="h-4 bg-muted rounded w-full" />
+                                        <div className="h-4 bg-muted rounded w-3/4" />
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </CardContent>
+            </Card>
+        )
+    }
+
+    // Empty state
+    if (!transcript || transcript.length === 0) {
+        return (
+            <Card className="h-full">
+                <CardHeader className="flex flex-row items-center justify-between pb-3">
+                    <div className="flex items-center space-x-2">
+                        <FileText className="h-5 w-5" />
+                        <CardTitle className="text-lg">Transcript</CardTitle>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex flex-col items-center justify-center py-8 text-center">
+                        <FileQuestion className="h-12 w-12 text-muted-foreground mb-3" />
+                        <p className="text-sm text-muted-foreground">
+                            No transcript available for this lesson.
+                        </p>
+                    </div>
+                </CardContent>
+            </Card>
+        )
     }
 
     return (
@@ -64,7 +105,7 @@ export function TranscriptPanel({
 
                             return (
                                 <button
-                                    key={index}
+                                    key={`transcript-${index}-${item.time.toFixed(2)}`}
                                     onClick={() => handleTranscriptClick(item.time)}
                                     className={cn(
                                         "w-full text-left p-3 rounded-lg transition-colors hover:bg-accent",

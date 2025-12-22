@@ -1,0 +1,205 @@
+/**
+ * Exam Result Route
+ * GET /api/exams/[examId]/result - Get exam result for a specific attempt
+ */
+
+import { NextRequest, NextResponse } from 'next/server';
+import { withAuth } from '@/lib/auth-middleware';
+import { ExamAttemptService } from '@/lib/services/exam-attempt.service';
+import prisma from '@/lib/prisma';
+import { ExamAttemptStatus } from '@prisma/client';
+
+type RouteContext = {
+  params: Promise<{ examId: string }>;
+};
+
+// GET /api/exams/[examId]/result?attemptId=xxx - Get exam result
+export const GET = withAuth(async (req: NextRequest, user, context: RouteContext) => {
+  try {
+    const { examId } = await context.params;
+    const { searchParams } = new URL(req.url);
+    const attemptId = searchParams.get('attemptId');
+
+    let attempt;
+
+    if (attemptId) {
+      // Get specific attempt
+      attempt = await ExamAttemptService.getAttemptWithAnswers(attemptId);
+
+      // Verify attempt belongs to user
+      if (attempt.userId !== user.id) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'FORBIDDEN',
+              message: 'You do not have access to this attempt',
+            },
+          },
+          { status: 403 }
+        );
+      }
+    } else {
+      // Get the latest completed attempt
+      const attempts = await ExamAttemptService.getUserAttempts(user.id, examId);
+      const completedAttempt = attempts.find(
+        a => a.status === ExamAttemptStatus.SUBMITTED || a.status === ExamAttemptStatus.GRADED
+      );
+
+      if (!completedAttempt) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'NO_COMPLETED_ATTEMPT',
+              message: 'No completed attempt found for this exam',
+            },
+          },
+          { status: 404 }
+        );
+      }
+
+      attempt = await ExamAttemptService.getAttemptWithAnswers(completedAttempt.id);
+    }
+
+    // Check if results are available
+    if (!attempt.exam.showResultsImmediately && attempt.status !== ExamAttemptStatus.GRADED) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          attemptId: attempt.id,
+          examId: attempt.examId,
+          examTitle: attempt.exam.title,
+          attemptNumber: attempt.attemptNumber,
+          status: attempt.status,
+          startedAt: attempt.startedAt,
+          submittedAt: attempt.submittedAt,
+          resultsAvailable: false,
+          rawScore: attempt.rawScore,
+          percentageScore: attempt.percentageScore,
+          passed: attempt.passed,
+          totalScore: attempt.exam.totalScore,
+          passingScore: attempt.exam.passingScore,
+          allowReview: attempt.exam.allowReview,
+          message: 'Results are not yet available. Please check back after grading is complete.',
+        },
+      });
+    }
+
+    // Build result response
+    const result: any = {
+      attemptId: attempt.id,
+      examId: attempt.examId,
+      examTitle: attempt.exam.title,
+      attemptNumber: attempt.attemptNumber,
+      status: attempt.status,
+      startedAt: attempt.startedAt,
+      submittedAt: attempt.submittedAt,
+      resultsAvailable: true,
+      rawScore: attempt.rawScore,
+      percentageScore: attempt.percentageScore,
+      passed: attempt.passed,
+      totalScore: attempt.exam.totalScore,
+      passingScore: attempt.exam.passingScore,
+      allowReview: attempt.exam.allowReview,
+    };
+
+    // Include answers if review is allowed
+    if (attempt.exam.allowReview) {
+      result.answers = attempt.answers.map(answer => {
+        const questionType = answer.question.type;
+        const options = answer.question.options as string[] | null;
+
+        const formatMcOption = (index: number | null | undefined) => {
+          if (!options || index == null) return null;
+          if (index < 0 || index >= options.length) return null;
+          return `${String.fromCharCode(65 + index)}. ${options[index]}`;
+        };
+
+        let userAnswer: string | null = answer.answer;
+        if (questionType === 'MULTIPLE_CHOICE') {
+          userAnswer = formatMcOption(answer.selectedOption) ?? null;
+        } else if (questionType === 'TRUE_FALSE') {
+          userAnswer =
+            answer.answer === 'true' ? 'True' : answer.answer === 'false' ? 'False' : null;
+        }
+
+        let correctAnswer: string | null = answer.question.correctAnswer;
+        if (answer.question.correctAnswer) {
+          if (questionType === 'MULTIPLE_CHOICE') {
+            const idx = Number.parseInt(answer.question.correctAnswer, 10);
+            correctAnswer = Number.isFinite(idx) ? formatMcOption(idx) : answer.question.correctAnswer;
+          } else if (questionType === 'TRUE_FALSE') {
+            correctAnswer =
+              answer.question.correctAnswer === 'true'
+                ? 'True'
+                : answer.question.correctAnswer === 'false'
+                  ? 'False'
+                  : answer.question.correctAnswer;
+          }
+        }
+
+        const answerResult: any = {
+          questionId: answer.questionId,
+          question: answer.question.question,
+          type: questionType,
+          points: answer.question.points,
+          maxPoints: answer.question.points,
+          userAnswer,
+          selectedOption: answer.selectedOption,
+          isCorrect: answer.isCorrect,
+          pointsAwarded: answer.pointsAwarded,
+          gradingStatus: answer.gradingStatus,
+        };
+
+        // Include options for MC questions
+        if (options) {
+          answerResult.options = options;
+        }
+
+        // Include correct answer for review
+        if (correctAnswer) {
+          answerResult.correctAnswer = correctAnswer;
+        }
+
+        // Include explanation
+        if (answer.question.explanation) {
+          answerResult.explanation = answer.question.explanation;
+        }
+
+        return answerResult;
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    console.error('Get result error:', error);
+
+    if (error instanceof Error && error.message === 'ATTEMPT_NOT_FOUND') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'ATTEMPT_NOT_FOUND',
+            message: 'Attempt not found',
+          },
+        },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: 'EXAM_001',
+          message: 'Failed to get exam result',
+        },
+      },
+      { status: 500 }
+    );
+  }
+});

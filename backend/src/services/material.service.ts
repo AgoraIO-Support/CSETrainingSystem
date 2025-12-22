@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid'
 import { DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { s3Client } from '../lib/aws.js'
 import { appConfig } from '../config/env.js'
+import { log, timeAsync } from '../logger.js'
 
 export class MaterialService {
     async createMaterial(payload: {
@@ -25,8 +26,10 @@ export class MaterialService {
                 description: payload.description,
                 type: payload.type as LessonAssetType,
                 url: payload.cloudfrontUrl,
+                cloudfrontUrl: payload.cloudfrontUrl,
                 s3Key: payload.s3Key,
                 contentType: payload.mimeType,
+                mimeType: payload.mimeType,
             },
         })
     }
@@ -39,8 +42,12 @@ export class MaterialService {
         }
 
         if (asset.s3Key) {
-            await s3Client.send(
-                new DeleteObjectCommand({ Bucket: appConfig.s3.bucket, Key: asset.s3Key })
+            log('S3', 'info', 'deleteObject', { bucket: appConfig.s3.bucket, key: asset.s3Key, assetId })
+            await timeAsync(
+                'S3',
+                'deleteObject result',
+                { bucket: appConfig.s3.bucket, key: asset.s3Key, assetId },
+                () => s3Client.send(new DeleteObjectCommand({ Bucket: appConfig.s3.bucket, Key: asset.s3Key! })).then(() => undefined)
             )
         }
 

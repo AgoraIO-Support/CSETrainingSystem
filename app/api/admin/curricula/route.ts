@@ -9,15 +9,15 @@ export const GET = withAdminAuth(async () => {
     const { courses } = await CourseService.getCourses({ status: 'ALL', limit: 200 })
     return NextResponse.json({
         success: true,
-        items: courses.map(c => ({
+        items: courses.map((c: any) => ({
             id: c.id,
             code: c.slug,
             title: c.title,
             status: c.status,
             versionNumber: 1,
             audienceLevel: c.level,
-            modulesCount: c.chapters?.length ?? 0,
-            lessonsCount: c.chapters?.reduce((sum, ch) => sum + ch.lessons.length, 0) ?? 0,
+            modulesCount: c._count?.chapters ?? 0,
+            lessonsCount: 0, // Would need full chapter/lesson data to calculate
             updatedAt: c.updatedAt,
             publishedAt: c.publishedAt,
         })),

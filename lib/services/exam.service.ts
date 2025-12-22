@@ -1,0 +1,883 @@
+/**
+ * Exam Service
+ * CRUD operations and business logic for exams
+ */
+
+import prisma from '@/lib/prisma';
+import {
+  ExamStatus,
+  ExamType,
+  ExamQuestionType,
+  DifficultyLevel,
+  Prisma,
+} from '@prisma/client';
+
+// Input types
+export interface CreateExamInput {
+  examType: ExamType;
+  courseId?: string;
+  title: string;
+  description?: string;
+  instructions?: string;
+  timeLimit?: number;
+  deadline?: Date;
+  availableFrom?: Date;
+  totalScore?: number;
+  passingScore?: number;
+  randomizeQuestions?: boolean;
+  randomizeOptions?: boolean;
+  showResultsImmediately?: boolean;
+  allowReview?: boolean;
+  maxAttempts?: number;
+}
+
+export interface UpdateExamInput {
+  title?: string;
+  description?: string;
+  instructions?: string;
+  timeLimit?: number;
+  deadline?: Date | null;
+  availableFrom?: Date | null;
+  totalScore?: number;
+  passingScore?: number;
+  randomizeQuestions?: boolean;
+  randomizeOptions?: boolean;
+  showResultsImmediately?: boolean;
+  allowReview?: boolean;
+  maxAttempts?: number;
+}
+
+export interface CreateQuestionInput {
+  type: ExamQuestionType;
+  difficulty?: DifficultyLevel;
+  question: string;
+  options?: string[];
+  correctAnswer?: string;
+  rubric?: string;
+  sampleAnswer?: string;
+  maxWords?: number;
+  points?: number;
+  explanation?: string;
+  topic?: string;
+  tags?: string[];
+  isAIGenerated?: boolean;
+  aiModel?: string;
+  generationPrompt?: string;
+}
+
+export interface ExamListParams {
+  page?: number;
+  limit?: number;
+  status?: ExamStatus;
+  examType?: ExamType;
+  courseId?: string;
+  createdById?: string;
+  search?: string;
+}
+
+// Response types
+export interface ExamWithDetails {
+  id: string;
+  examType: ExamType;
+  courseId: string | null;
+  course: {
+    id: string;
+    title: string;
+    slug: string;
+  } | null;
+  title: string;
+  description: string | null;
+  instructions: string | null;
+  status: ExamStatus;
+  timeLimit: number | null;
+  deadline: Date | null;
+  availableFrom: Date | null;
+  totalScore: number;
+  passingScore: number;
+  randomizeQuestions: boolean;
+  randomizeOptions: boolean;
+  showResultsImmediately: boolean;
+  allowReview: boolean;
+  maxAttempts: number;
+  createdBy: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  approvedBy: {
+    id: string;
+    name: string;
+    email: string;
+  } | null;
+  approvedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  publishedAt: Date | null;
+  closedAt: Date | null;
+  _count: {
+    questions: number;
+    attempts: number;
+    materials: number;
+    invitations: number;
+  };
+}
+
+export class ExamService {
+  /**
+   * Get list of exams with pagination and filters
+   */
+  static async getExams(params: ExamListParams = {}): Promise<{
+    exams: ExamWithDetails[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+  }> {
+    const {
+      page = 1,
+      limit = 10,
+      status,
+      examType,
+      courseId,
+      createdById,
+      search,
+    } = params;
+
+    const where: Prisma.ExamWhereInput = {};
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (examType) {
+      where.examType = examType;
+    }
+
+    if (courseId) {
+      where.courseId = courseId;
+    }
+
+    if (createdById) {
+      where.createdById = createdById;
+    }
+
+    if (search) {
+      where.OR = [
+        { title: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [exams, total] = await Promise.all([
+      prisma.exam.findMany({
+        where,
+        include: {
+          course: {
+            select: {
+              id: true,
+              title: true,
+              slug: true,
+            },
+          },
+          createdBy: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          approvedBy: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          _count: {
+            select: {
+              questions: true,
+              attempts: true,
+              materials: true,
+              invitations: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.exam.count({ where }),
+    ]);
+
+    return {
+      exams: exams as ExamWithDetails[],
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  /**
+   * Get exam by ID with full details
+   */
+  static async getExamById(id: string): Promise<ExamWithDetails | null> {
+    const exam = await prisma.exam.findUnique({
+      where: { id },
+      include: {
+        course: {
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+          },
+        },
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        approvedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        _count: {
+          select: {
+            questions: true,
+            attempts: true,
+            materials: true,
+            invitations: true,
+          },
+        },
+      },
+    });
+
+    return exam as ExamWithDetails | null;
+  }
+
+  /**
+   * Create a new exam
+   */
+  static async createExam(
+    data: CreateExamInput,
+    createdById: string
+  ): Promise<ExamWithDetails> {
+    // Validate course exists if course-based
+    if (data.examType === ExamType.COURSE_BASED) {
+      if (!data.courseId) {
+        throw new Error('COURSE_REQUIRED');
+      }
+
+      const course = await prisma.course.findUnique({
+        where: { id: data.courseId },
+      });
+
+      if (!course) {
+        throw new Error('COURSE_NOT_FOUND');
+      }
+    }
+
+    const exam = await prisma.exam.create({
+      data: {
+        examType: data.examType,
+        courseId: data.courseId,
+        title: data.title,
+        description: data.description,
+        instructions: data.instructions,
+        timeLimit: data.timeLimit,
+        deadline: data.deadline,
+        availableFrom: data.availableFrom,
+        totalScore: data.totalScore ?? 100,
+        passingScore: data.passingScore ?? 70,
+        randomizeQuestions: data.randomizeQuestions ?? false,
+        randomizeOptions: data.randomizeOptions ?? false,
+        showResultsImmediately: data.showResultsImmediately ?? true,
+        allowReview: data.allowReview ?? true,
+        maxAttempts: data.maxAttempts ?? 1,
+        createdById,
+        status: ExamStatus.DRAFT,
+      },
+      include: {
+        course: {
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+          },
+        },
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        approvedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        _count: {
+          select: {
+            questions: true,
+            attempts: true,
+            materials: true,
+            invitations: true,
+          },
+        },
+      },
+    });
+
+    // Create analytics record
+    await prisma.examAnalytics.create({
+      data: {
+        examId: exam.id,
+      },
+    });
+
+    return exam as ExamWithDetails;
+  }
+
+  /**
+   * Update an exam
+   */
+  static async updateExam(
+    id: string,
+    data: UpdateExamInput
+  ): Promise<ExamWithDetails> {
+    // Check exam exists and get current status
+    const existing = await prisma.exam.findUnique({
+      where: { id },
+    });
+
+    if (!existing) {
+      throw new Error('EXAM_NOT_FOUND');
+    }
+
+    // Cannot update certain fields once published
+    if (
+      existing.status === ExamStatus.PUBLISHED ||
+      existing.status === ExamStatus.CLOSED
+    ) {
+      // Only allow updating deadline and availability
+      const allowedFields = ['deadline', 'availableFrom'];
+      const updateKeys = Object.keys(data);
+      const disallowedFields = updateKeys.filter(
+        k => !allowedFields.includes(k) && data[k as keyof UpdateExamInput] !== undefined
+      );
+
+      if (disallowedFields.length > 0) {
+        throw new Error('EXAM_PUBLISHED_IMMUTABLE');
+      }
+    }
+
+    const exam = await prisma.exam.update({
+      where: { id },
+      data: {
+        ...(data.title !== undefined && { title: data.title }),
+        ...(data.description !== undefined && { description: data.description }),
+        ...(data.instructions !== undefined && { instructions: data.instructions }),
+        ...(data.timeLimit !== undefined && { timeLimit: data.timeLimit }),
+        ...(data.deadline !== undefined && { deadline: data.deadline }),
+        ...(data.availableFrom !== undefined && { availableFrom: data.availableFrom }),
+        ...(data.totalScore !== undefined && { totalScore: data.totalScore }),
+        ...(data.passingScore !== undefined && { passingScore: data.passingScore }),
+        ...(data.randomizeQuestions !== undefined && { randomizeQuestions: data.randomizeQuestions }),
+        ...(data.randomizeOptions !== undefined && { randomizeOptions: data.randomizeOptions }),
+        ...(data.showResultsImmediately !== undefined && { showResultsImmediately: data.showResultsImmediately }),
+        ...(data.allowReview !== undefined && { allowReview: data.allowReview }),
+        ...(data.maxAttempts !== undefined && { maxAttempts: data.maxAttempts }),
+      },
+      include: {
+        course: {
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+          },
+        },
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        approvedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        _count: {
+          select: {
+            questions: true,
+            attempts: true,
+            materials: true,
+            invitations: true,
+          },
+        },
+      },
+    });
+
+    return exam as ExamWithDetails;
+  }
+
+  /**
+   * Delete an exam (soft delete by changing status to ARCHIVED)
+   */
+  static async deleteExam(id: string): Promise<void> {
+    const existing = await prisma.exam.findUnique({
+      where: { id },
+    });
+
+    if (!existing) {
+      throw new Error('EXAM_NOT_FOUND');
+    }
+
+    // If exam has attempts, archive instead of delete
+    const attemptCount = await prisma.examAttempt.count({
+      where: { examId: id },
+    });
+
+    if (attemptCount > 0) {
+      // Archive instead of delete
+      await prisma.exam.update({
+        where: { id },
+        data: { status: ExamStatus.ARCHIVED },
+      });
+    } else {
+      // Hard delete if no attempts
+      await prisma.exam.delete({
+        where: { id },
+      });
+    }
+  }
+
+  /**
+   * Change exam status
+   */
+  static async changeStatus(
+    id: string,
+    status: ExamStatus,
+    userId?: string
+  ): Promise<ExamWithDetails> {
+    const existing = await prisma.exam.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        status: true,
+        totalScore: true,
+        _count: { select: { questions: true } },
+      },
+    });
+
+    if (!existing) {
+      throw new Error('EXAM_NOT_FOUND');
+    }
+
+    // Validate status transitions
+    this.validateStatusTransition(existing.status, status);
+
+    // Additional validations based on target status
+    if (status === ExamStatus.PENDING_REVIEW) {
+      // Must have at least one question
+      if (existing._count.questions === 0) {
+        throw new Error('EXAM_NO_QUESTIONS');
+      }
+    }
+
+    if (status === ExamStatus.APPROVED) {
+      if (!userId) {
+        throw new Error('APPROVER_REQUIRED');
+      }
+
+      // Must have a consistent scoring configuration before approval.
+      const sum = await prisma.examQuestion.aggregate({
+        where: { examId: id },
+        _sum: { points: true },
+      });
+      const totalPoints = sum._sum.points ?? 0;
+      if (totalPoints !== existing.totalScore) {
+        throw new Error('EXAM_POINTS_MISMATCH');
+      }
+    }
+
+    const updateData: Prisma.ExamUpdateInput = {
+      status,
+    };
+
+    // Set approval info
+    if (status === ExamStatus.APPROVED && userId) {
+      updateData.approvedBy = { connect: { id: userId } };
+      updateData.approvedAt = new Date();
+    }
+
+    // Set publish date
+    if (status === ExamStatus.PUBLISHED) {
+      // Publishing must be done via the explicit publish+assign flow (requires user selection).
+      throw new Error('PUBLISH_REQUIRES_ASSIGNMENT');
+    }
+
+    // Set close date
+    if (status === ExamStatus.CLOSED) {
+      updateData.closedAt = new Date();
+    }
+
+    const exam = await prisma.exam.update({
+      where: { id },
+      data: updateData,
+      include: {
+        course: {
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+          },
+        },
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        approvedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        _count: {
+          select: {
+            questions: true,
+            attempts: true,
+            materials: true,
+            invitations: true,
+          },
+        },
+      },
+    });
+
+    return exam as ExamWithDetails;
+  }
+
+  /**
+   * Validate status transitions
+   */
+  private static validateStatusTransition(
+    currentStatus: ExamStatus,
+    targetStatus: ExamStatus
+  ): void {
+    const validTransitions: Record<ExamStatus, ExamStatus[]> = {
+      [ExamStatus.DRAFT]: [ExamStatus.PENDING_REVIEW, ExamStatus.ARCHIVED],
+      [ExamStatus.PENDING_REVIEW]: [ExamStatus.DRAFT, ExamStatus.APPROVED, ExamStatus.ARCHIVED],
+      [ExamStatus.APPROVED]: [ExamStatus.PENDING_REVIEW, ExamStatus.PUBLISHED, ExamStatus.ARCHIVED],
+      [ExamStatus.PUBLISHED]: [ExamStatus.CLOSED],
+      [ExamStatus.CLOSED]: [ExamStatus.ARCHIVED],
+      [ExamStatus.ARCHIVED]: [],
+    };
+
+    if (!validTransitions[currentStatus].includes(targetStatus)) {
+      throw new Error('INVALID_STATUS_TRANSITION');
+    }
+  }
+
+  /**
+   * Get exam questions
+   */
+  static async getQuestions(examId: string): Promise<any[]> {
+    const questions = await prisma.examQuestion.findMany({
+      where: { examId },
+      orderBy: { order: 'asc' },
+      include: {
+        sources: {
+          include: {
+            chunk: {
+              select: {
+                id: true,
+                text: true,
+                metadata: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return questions;
+  }
+
+  /**
+   * Add a question to an exam
+   */
+  static async addQuestion(
+    examId: string,
+    data: CreateQuestionInput
+  ): Promise<any> {
+    // Get current max order
+    const maxOrder = await prisma.examQuestion.aggregate({
+      where: { examId },
+      _max: { order: true },
+    });
+
+    const question = await prisma.examQuestion.create({
+      data: {
+        examId,
+        type: data.type,
+        difficulty: data.difficulty ?? DifficultyLevel.MEDIUM,
+        question: data.question,
+        options: data.options,
+        correctAnswer: data.correctAnswer,
+        rubric: data.rubric,
+        sampleAnswer: data.sampleAnswer,
+        maxWords: data.maxWords,
+        points: data.points ?? 10,
+        explanation: data.explanation,
+        topic: data.topic,
+        tags: data.tags ?? [],
+        order: (maxOrder._max.order ?? -1) + 1,
+        isAIGenerated: data.isAIGenerated ?? false,
+        aiModel: data.aiModel,
+        generationPrompt: data.generationPrompt,
+      },
+    });
+
+    return question;
+  }
+
+  /**
+   * Update a question
+   */
+  static async updateQuestion(
+    questionId: string,
+    data: Partial<CreateQuestionInput>
+  ): Promise<any> {
+    const question = await prisma.examQuestion.update({
+      where: { id: questionId },
+      data: {
+        ...(data.type !== undefined && { type: data.type }),
+        ...(data.difficulty !== undefined && { difficulty: data.difficulty }),
+        ...(data.question !== undefined && { question: data.question }),
+        ...(data.options !== undefined && { options: data.options }),
+        ...(data.correctAnswer !== undefined && { correctAnswer: data.correctAnswer }),
+        ...(data.rubric !== undefined && { rubric: data.rubric }),
+        ...(data.sampleAnswer !== undefined && { sampleAnswer: data.sampleAnswer }),
+        ...(data.maxWords !== undefined && { maxWords: data.maxWords }),
+        ...(data.points !== undefined && { points: data.points }),
+        ...(data.explanation !== undefined && { explanation: data.explanation }),
+        ...(data.topic !== undefined && { topic: data.topic }),
+        ...(data.tags !== undefined && { tags: data.tags }),
+      },
+    });
+
+    return question;
+  }
+
+  /**
+   * Delete a question
+   */
+  static async deleteQuestion(questionId: string): Promise<void> {
+    await prisma.examQuestion.delete({
+      where: { id: questionId },
+    });
+  }
+
+  /**
+   * Reorder questions
+   */
+  static async reorderQuestions(
+    examId: string,
+    questionIds: string[]
+  ): Promise<void> {
+    await prisma.$transaction(
+      questionIds.map((id, index) =>
+        prisma.examQuestion.update({
+          where: { id },
+          data: { order: index },
+        })
+      )
+    );
+  }
+
+  /**
+   * Get exams available for a user to take
+   */
+  static async getAvailableExamsForUser(userId: string): Promise<any[]> {
+    const now = new Date();
+
+    // Get exams where user is invited or exam is public
+    const exams = await prisma.exam.findMany({
+      where: {
+        status: ExamStatus.PUBLISHED,
+        OR: [
+          // User is invited
+          {
+            invitations: {
+              some: {
+                userId,
+              },
+            },
+          },
+          // Exam is course-based and user is enrolled
+          {
+            examType: ExamType.COURSE_BASED,
+            course: {
+              enrollments: {
+                some: {
+                  userId,
+                },
+              },
+            },
+          },
+        ],
+        // Within availability window
+        AND: [
+          {
+            OR: [
+              { availableFrom: null },
+              { availableFrom: { lte: now } },
+            ],
+          },
+          {
+            OR: [
+              { deadline: null },
+              { deadline: { gt: now } },
+            ],
+          },
+        ],
+      },
+      include: {
+        course: {
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+          },
+        },
+        _count: {
+          select: {
+            questions: true,
+          },
+        },
+        attempts: {
+          where: { userId },
+          select: {
+            id: true,
+            attemptNumber: true,
+            status: true,
+            percentageScore: true,
+            passed: true,
+            submittedAt: true,
+          },
+        },
+      },
+    });
+
+    return exams;
+  }
+
+  /**
+   * Check if user can take an exam
+   */
+  static async canUserTakeExam(
+    userId: string,
+    examId: string
+  ): Promise<{
+    canTake: boolean;
+    reason?: string;
+    attemptsUsed?: number;
+    maxAttempts?: number;
+  }> {
+    const exam = await prisma.exam.findUnique({
+      where: { id: examId },
+      include: {
+        invitations: {
+          where: { userId },
+        },
+        course: {
+          include: {
+            enrollments: {
+              where: { userId },
+            },
+          },
+        },
+        attempts: {
+          where: { userId },
+        },
+      },
+    });
+
+    if (!exam) {
+      return { canTake: false, reason: 'EXAM_NOT_FOUND' };
+    }
+
+    // Check status
+    if (exam.status !== ExamStatus.PUBLISHED) {
+      return { canTake: false, reason: 'EXAM_NOT_PUBLISHED' };
+    }
+
+    // Check availability window
+    const now = new Date();
+    if (exam.availableFrom && exam.availableFrom > now) {
+      return { canTake: false, reason: 'EXAM_NOT_AVAILABLE_YET' };
+    }
+    if (exam.deadline && exam.deadline < now) {
+      return { canTake: false, reason: 'EXAM_DEADLINE_PASSED' };
+    }
+
+    // Check access (invitation required)
+    const hasInvitation = exam.invitations.length > 0;
+
+    if (!hasInvitation) {
+      return { canTake: false, reason: 'NO_ACCESS' };
+    }
+
+    // Check attempt limit
+    const completedAttempts = exam.attempts.filter(
+      a => a.status === 'SUBMITTED' || a.status === 'GRADED'
+    ).length;
+
+    if (completedAttempts >= exam.maxAttempts) {
+      return {
+        canTake: false,
+        reason: 'MAX_ATTEMPTS_REACHED',
+        attemptsUsed: completedAttempts,
+        maxAttempts: exam.maxAttempts,
+      };
+    }
+
+    // Check for in-progress attempt
+    const inProgressAttempt = exam.attempts.find(
+      a => a.status === 'IN_PROGRESS'
+    );
+
+    if (inProgressAttempt) {
+      return {
+        canTake: true,
+        reason: 'RESUME_EXISTING',
+        attemptsUsed: completedAttempts,
+        maxAttempts: exam.maxAttempts,
+      };
+    }
+
+    return {
+      canTake: true,
+      attemptsUsed: completedAttempts,
+      maxAttempts: exam.maxAttempts,
+    };
+  }
+}

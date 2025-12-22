@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import prisma from '@/lib/prisma'
 import jwt from 'jsonwebtoken'
+import { log } from '@/lib/logger'
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-key-do-not-use-in-production'
 const IS_LOCAL_AUTH =
@@ -27,6 +28,11 @@ export function withAuth(
     }
 ) {
     return async (req: NextRequest, context: any) => {
+        const startedAt = Date.now()
+        const pathname = req.nextUrl?.pathname || new URL(req.url).pathname
+        const method = req.method
+        let userIdForLog: string | undefined
+        let statusForLog: number | undefined
         // ... existing auth logic ...
         // (I need to be careful not to overwrite the whole function body if I don't have it all)
         // Actually, I should just replace the signature and the return call.
@@ -36,7 +42,7 @@ export function withAuth(
             // Extract token from Authorization header
             const authHeader = req.headers.get('authorization')
             if (!authHeader || !authHeader.startsWith('Bearer ')) {
-                return NextResponse.json(
+                const res = NextResponse.json(
                     {
                         success: false,
                         error: {
@@ -46,6 +52,8 @@ export function withAuth(
                     },
                     { status: 401 }
                 )
+                statusForLog = res.status
+                return res
             }
 
             const token = authHeader.substring(7)
@@ -84,7 +92,7 @@ export function withAuth(
             }
 
             if (!dbUser || dbUser.status !== 'ACTIVE') {
-                return NextResponse.json(
+                const res = NextResponse.json(
                     {
                         success: false,
                         error: {
@@ -94,11 +102,13 @@ export function withAuth(
                     },
                     { status: 401 }
                 )
+                statusForLog = res.status
+                return res
             }
 
             // Check role requirement
             if (options?.requiredRole && dbUser.role !== options.requiredRole) {
-                return NextResponse.json(
+                const res = NextResponse.json(
                     {
                         success: false,
                         error: {
@@ -108,6 +118,8 @@ export function withAuth(
                     },
                     { status: 403 }
                 )
+                statusForLog = res.status
+                return res
             }
 
             // Create auth user object
@@ -117,12 +129,15 @@ export function withAuth(
                 role: dbUser.role,
                 supabaseId: dbUser.supabaseId || undefined,
             }
+            userIdForLog = authUser.id
 
             // Call handler with authenticated user AND context
-            return await handler(req, authUser, context)
+            const res = await handler(req, authUser, context)
+            statusForLog = res.status
+            return res
         } catch (error) {
             console.error('Auth middleware error:', error)
-            return NextResponse.json(
+            const res = NextResponse.json(
                 {
                     success: false,
                     error: {
@@ -132,6 +147,16 @@ export function withAuth(
                 },
                 { status: 500 }
             )
+            statusForLog = res.status
+            return res
+        } finally {
+            log('API', 'info', 'api request', {
+                method,
+                path: pathname,
+                status: statusForLog,
+                userId: userIdForLog,
+                durationMs: Date.now() - startedAt,
+            })
         }
     }
 }
@@ -143,4 +168,93 @@ export function withAdminAuth(
     handler: (req: NextRequest, user: AuthUser, context: any) => Promise<NextResponse>
 ) {
     return withAuth(handler, { requiredRole: 'ADMIN' })
+}
+
+/**
+ * Optional auth wrapper: tries to authenticate but allows anonymous access.
+ */
+export function withAuthOptional(
+    handler: (req: NextRequest, user: AuthUser | null, context: any) => Promise<NextResponse>
+) {
+    return async (req: NextRequest, context: any) => {
+        const startedAt = Date.now()
+        const pathname = req.nextUrl?.pathname || new URL(req.url).pathname
+        const method = req.method
+        let userIdForLog: string | undefined
+        let statusForLog: number | undefined
+        const authHeader = req.headers.get('authorization')
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            const res = await handler(req, null, context)
+            statusForLog = res.status
+            log('API', 'info', 'api request', {
+                method,
+                path: pathname,
+                status: statusForLog,
+                userId: null,
+                durationMs: Date.now() - startedAt,
+            })
+            return res
+        }
+
+        try {
+            const token = authHeader.substring(7)
+            let dbUser = null
+
+            if (!IS_LOCAL_AUTH) {
+                try {
+                    const {
+                        data: { user: supabaseUser },
+                    } = await supabaseAdmin.auth.getUser(token)
+                    if (supabaseUser) {
+                        dbUser = await prisma.user.findUnique({
+                            where: { supabaseId: supabaseUser.id },
+                        })
+                    }
+                } catch (e) {
+                    // ignore
+                }
+            }
+
+            if (!dbUser) {
+                try {
+                    const decoded = jwt.verify(token, JWT_SECRET) as any
+                    if (decoded?.userId) {
+                        dbUser = await prisma.user.findUnique({ where: { id: decoded.userId } })
+                    }
+                } catch (e) {
+                    // ignore
+                }
+            }
+
+            if (!dbUser || dbUser.status !== 'ACTIVE') {
+                const res = await handler(req, null, context)
+                statusForLog = res.status
+                return res
+            }
+
+            const authUser: AuthUser = {
+                id: dbUser.id,
+                email: dbUser.email,
+                role: dbUser.role,
+                supabaseId: dbUser.supabaseId || undefined,
+            }
+            userIdForLog = authUser.id
+            const res = await handler(req, authUser, context)
+            statusForLog = res.status
+            return res
+        } catch (error) {
+            console.error('Optional auth middleware error:', error)
+            const res = await handler(req, null, context)
+            statusForLog = res.status
+            return res
+        } finally {
+            log('API', 'info', 'api request', {
+                method,
+                path: pathname,
+                status: statusForLog,
+                userId: userIdForLog ?? null,
+                durationMs: Date.now() - startedAt,
+            })
+        }
+    }
 }

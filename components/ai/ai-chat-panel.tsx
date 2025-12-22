@@ -9,13 +9,71 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { ApiClient } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
-import { Bot, Send, Sparkles, User, Mic } from 'lucide-react'
+import { Bot, Send, Sparkles, User, Mic, Play } from 'lucide-react'
+import { MessageSources, type MessageSource } from './message-sources'
+
+/**
+ * Parse timestamp links in AI response content
+ * Format: [Click to jump to video HH:MM:SS for details]
+ * Also handles: [HH:MM:SS] simple format
+ */
+function parseTimestampLinks(
+    content: string,
+    onTimestampClick?: (timestamp: string) => void
+): React.ReactNode[] {
+    // Match both formats:
+    // 1. [Click to jump to video HH:MM:SS for details]
+    // 2. [HH:MM:SS] simple format
+    const timestampPattern = /\[(?:Click to jump to video\s+)?(\d{2}:\d{2}:\d{2})(?:\s+for details)?\]/g
+
+    const parts: React.ReactNode[] = []
+    let lastIndex = 0
+    let match
+
+    while ((match = timestampPattern.exec(content)) !== null) {
+        // Add text before the match
+        if (match.index > lastIndex) {
+            parts.push(content.slice(lastIndex, match.index))
+        }
+
+        const timestamp = match[1]
+        const key = `ts-${match.index}-${timestamp}`
+
+        // Add clickable timestamp button
+        parts.push(
+            <button
+                key={key}
+                onClick={() => onTimestampClick?.(timestamp)}
+                className="inline-flex items-center gap-1 px-2 py-0.5 mx-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-md hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors cursor-pointer"
+                title={`Jump to ${timestamp}`}
+            >
+                <Play className="h-3 w-3" />
+                {timestamp}
+            </button>
+        )
+
+        lastIndex = match.index + match[0].length
+    }
+
+    // Add remaining text after last match
+    if (lastIndex < content.length) {
+        parts.push(content.slice(lastIndex))
+    }
+
+    // If no timestamps found, return original content
+    if (parts.length === 0) {
+        return [content]
+    }
+
+    return parts
+}
 
 interface Message {
     id: string
     role: 'user' | 'assistant'
     content: string
     timestamp: Date
+    sources?: MessageSource[]
 }
 
 interface AIChatPanelProps {
@@ -23,6 +81,7 @@ interface AIChatPanelProps {
     lessonId?: string
     lessonTitle?: string
     currentTime?: number
+    onSeekToTimestamp?: (timestamp: string) => void
 }
 
 const promptSuggestions = [
@@ -44,9 +103,10 @@ const mapServerMessage = (message: any): Message => ({
     role: message.role,
     content: message.content,
     timestamp: new Date(message.createdAt ?? Date.now()),
+    sources: message.context?.sources || undefined,
 })
 
-export function AIChatPanel({ courseId, lessonId, lessonTitle, currentTime = 0 }: AIChatPanelProps) {
+export function AIChatPanel({ courseId, lessonId, lessonTitle, currentTime = 0, onSeekToTimestamp }: AIChatPanelProps) {
     const [messages, setMessages] = useState<Message[]>([introMessage])
     const [conversationId, setConversationId] = useState<string | null>(null)
     const [input, setInput] = useState('')
@@ -54,7 +114,12 @@ export function AIChatPanel({ courseId, lessonId, lessonTitle, currentTime = 0 }
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [followUpSuggestions, setFollowUpSuggestions] = useState<string[]>([])
+    const [knowledgeLoading, setKnowledgeLoading] = useState(false)
+    const [knowledgeReady, setKnowledgeReady] = useState(true)
+    const [knowledgeError, setKnowledgeError] = useState<string | null>(null)
     const messagesEndRef = useRef<HTMLDivElement>(null)
+    const knowledgeRetryCountRef = useRef(0)
+    const knowledgeRetryTimerRef = useRef<number | null>(null)
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -95,8 +160,73 @@ export function AIChatPanel({ courseId, lessonId, lessonTitle, currentTime = 0 }
         }
     }, [courseId, lessonId])
 
+    // Gate chat on knowledge readiness: we do not want to fall back to RAG.
+    // Readiness signal: anchors endpoint returns at least 1 anchor.
+    useEffect(() => {
+        let cancelled = false
+
+        const checkKnowledgeReady = async () => {
+            if (!lessonId) {
+                setKnowledgeReady(true)
+                setKnowledgeError(null)
+                setKnowledgeLoading(false)
+                return
+            }
+
+            setKnowledgeLoading(true)
+            setKnowledgeError(null)
+            try {
+                // ApiClient already prefixes `/api`, so do not include `/api` here.
+                const response: any = await ApiClient.request(`/lessons/${lessonId}/anchors`)
+                if (!response?.success) {
+                    throw new Error(response?.error?.message ?? 'Failed to load lesson knowledge')
+                }
+
+                const anchors = response?.data?.anchors
+                const count = Array.isArray(anchors) ? anchors.length : 0
+                if (cancelled) return
+                setKnowledgeReady(count >= 1)
+
+                const status = response?.data?.status as string | undefined
+                const shouldRetry =
+                    count < 1 &&
+                    (status === 'PROCESSING' || status === 'PENDING' || status === 'MISSING' || status == null)
+
+                if (shouldRetry && knowledgeRetryCountRef.current < 24 && !cancelled) {
+                    knowledgeRetryCountRef.current += 1
+                    if (knowledgeRetryTimerRef.current) {
+                        window.clearTimeout(knowledgeRetryTimerRef.current)
+                    }
+                    knowledgeRetryTimerRef.current = window.setTimeout(checkKnowledgeReady, 5000)
+                }
+            } catch (err) {
+                if (!cancelled) {
+                    setKnowledgeReady(false)
+                    setKnowledgeError(
+                        err instanceof Error ? err.message : 'Failed to load lesson knowledge'
+                    )
+                }
+            } finally {
+                if (!cancelled) {
+                    setKnowledgeLoading(false)
+                }
+            }
+        }
+
+        knowledgeRetryCountRef.current = 0
+        checkKnowledgeReady()
+        return () => {
+            cancelled = true
+            if (knowledgeRetryTimerRef.current) {
+                window.clearTimeout(knowledgeRetryTimerRef.current)
+                knowledgeRetryTimerRef.current = null
+            }
+        }
+    }, [lessonId])
+
     const handleSend = async () => {
         if (!input.trim() || !conversationId) return
+        if (!knowledgeReady) return
 
         const userContent = input.trim()
         setInput('')
@@ -128,6 +258,11 @@ export function AIChatPanel({ courseId, lessonId, lessonTitle, currentTime = 0 }
             const userMessage = mapServerMessage(response.data.userMessage)
             const assistantMessage = mapServerMessage(response.data.assistantMessage)
 
+            // Add sources from response to assistant message if available
+            if (response.data.sources && Array.isArray(response.data.sources)) {
+                assistantMessage.sources = response.data.sources
+            }
+
             setMessages(prev => {
                 return prev
                     .filter(msg => msg.id !== introMessage.id)
@@ -152,9 +287,10 @@ export function AIChatPanel({ courseId, lessonId, lessonTitle, currentTime = 0 }
     }
 
     const showSuggestions = messages.length === 1 && messages[0].id === introMessage.id
+    const chatDisabled = loading || knowledgeLoading || !knowledgeReady
 
     return (
-        <Card className="h-full flex flex-col">
+        <Card className="h-full min-h-0 flex flex-col">
             <CardHeader className="border-b">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
@@ -170,13 +306,23 @@ export function AIChatPanel({ courseId, lessonId, lessonTitle, currentTime = 0 }
                     </div>
                     <Badge variant="secondary" className="flex items-center space-x-1">
                         <Sparkles className="h-3 w-3" />
-                        <span>{loading ? 'Connecting' : 'Online'}</span>
+                        <span>
+                            {loading ? 'Connecting' : knowledgeLoading ? 'Checking' : knowledgeReady ? 'Online' : 'Preparing'}
+                        </span>
                     </Badge>
                 </div>
             </CardHeader>
 
-            <CardContent className="flex-1 flex flex-col p-0">
-                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <CardContent className="flex-1 min-h-0 flex flex-col p-0">
+                <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
+                    {!loading && !knowledgeLoading && !knowledgeReady && (
+                        <Alert>
+                            <AlertDescription>
+                                {knowledgeError ?? 'Lesson knowledge preparing… Please try again shortly.'}
+                            </AlertDescription>
+                        </Alert>
+                    )}
+
                     {error && (
                         <Alert variant="destructive">
                             <AlertDescription>{error}</AlertDescription>
@@ -208,7 +354,20 @@ export function AIChatPanel({ courseId, lessonId, lessonTitle, currentTime = 0 }
                                         : "bg-primary text-primary-foreground"
                                 )}
                             >
-                                <p className="text-sm whitespace-pre-line">{message.content}</p>
+                                <p className="text-sm whitespace-pre-line">
+                                    {message.role === 'assistant'
+                                        ? parseTimestampLinks(message.content, onSeekToTimestamp)
+                                        : message.content
+                                    }
+                                </p>
+
+                                {/* Show sources for assistant messages with RAG context */}
+                                {message.role === 'assistant' && message.sources && message.sources.length > 0 && (
+                                    <MessageSources
+                                        sources={message.sources}
+                                        onTimestampClick={onSeekToTimestamp}
+                                    />
+                                )}
                             </div>
                         </div>
                     ))}
@@ -239,7 +398,7 @@ export function AIChatPanel({ courseId, lessonId, lessonTitle, currentTime = 0 }
                         <div className="grid grid-cols-2 gap-2">
                             {promptSuggestions.map((suggestion, index) => (
                                 <Button
-                                    key={index}
+                                    key={`prompt-${index}-${suggestion.substring(0, 10)}`}
                                     variant="outline"
                                     size="sm"
                                     className="text-xs h-auto py-2 text-left justify-start"
@@ -258,7 +417,7 @@ export function AIChatPanel({ courseId, lessonId, lessonTitle, currentTime = 0 }
                         <div className="flex flex-wrap gap-2">
                             {followUpSuggestions.map((suggestion, index) => (
                                 <Button
-                                    key={`${suggestion}-${index}`}
+                                    key={`followup-${index}-${suggestion.substring(0, 15)}`}
                                     variant="outline"
                                     size="sm"
                                     className="text-xs h-auto py-2 px-3"
@@ -279,7 +438,7 @@ export function AIChatPanel({ courseId, lessonId, lessonTitle, currentTime = 0 }
                             onChange={(e) => setInput(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                             className="flex-1"
-                            disabled={loading}
+                            disabled={chatDisabled}
                         />
                         <Button
                             size="icon"
@@ -293,7 +452,7 @@ export function AIChatPanel({ courseId, lessonId, lessonTitle, currentTime = 0 }
                         <Button
                             size="icon"
                             onClick={handleSend}
-                            disabled={!input.trim() || loading || isAssistantTyping}
+                            disabled={!input.trim() || chatDisabled || isAssistantTyping}
                             className="flex-shrink-0"
                         >
                             <Send className="h-4 w-4" />

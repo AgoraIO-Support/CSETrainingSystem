@@ -291,8 +291,8 @@ export class ProgressService {
         })
 
         const missingCourseIds = certificates
-            .filter(cert => !courseInfoById.has(cert.courseId))
-            .map(cert => cert.courseId)
+            .filter(cert => cert.courseId && !courseInfoById.has(cert.courseId))
+            .map(cert => cert.courseId as string)
 
         if (missingCourseIds.length > 0) {
             const extraCourses = await prisma.course.findMany({
@@ -349,8 +349,12 @@ export class ProgressService {
             certificates: certificates.map(certificate => ({
                 id: certificate.id,
                 courseId: certificate.courseId,
-                courseTitle: courseInfoById.get(certificate.courseId)?.title ?? 'Course',
-                instructorName: courseInfoById.get(certificate.courseId)?.instructorName ?? undefined,
+                courseTitle: certificate.courseId
+                    ? courseInfoById.get(certificate.courseId)?.title ?? 'Course'
+                    : 'Course',
+                instructorName: certificate.courseId
+                    ? courseInfoById.get(certificate.courseId)?.instructorName ?? undefined
+                    : undefined,
                 certificateNumber: certificate.certificateNumber,
                 issueDate: certificate.issueDate,
                 pdfUrl: certificate.pdfUrl ?? undefined,

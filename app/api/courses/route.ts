@@ -10,10 +10,9 @@ const parseLevel = (value: string | null): CourseLevel | undefined => {
     return levelValues.includes(value as CourseLevel) ? (value as CourseLevel) : undefined
 }
 
-const parseStatus = (value: string | null): CourseStatus | 'ALL' | undefined => {
-    if (!value) return undefined
-    if (value === 'ALL') return 'ALL'
-    return statusValues.includes(value as CourseStatus) ? (value as CourseStatus) : undefined
+const parseStatus = (_value: string | null): CourseStatus | 'ALL' | undefined => {
+    // 公共列表接口不允许客户端覆盖状态过滤，强制只展示 PUBLISHED
+    return 'PUBLISHED'
 }
 
 export async function GET(req: NextRequest) {
@@ -26,7 +25,8 @@ export async function GET(req: NextRequest) {
             category: searchParams.get('category') || undefined,
             level: parseLevel(searchParams.get('level')),
             search: searchParams.get('search') || undefined,
-            status: parseStatus(searchParams.get('status')),
+            // 仅返回已发布课程（服务端默认未传 status 时即过滤为 PUBLISHED）
+            // 不允许客户端覆盖状态过滤，因此不传 status
         }
 
         const result = await CourseService.getCourses(params)

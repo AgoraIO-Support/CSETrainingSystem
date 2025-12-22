@@ -9,13 +9,17 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { ApiClient } from '@/lib/api-client'
 import type { Course, CourseLevel } from '@/types'
 import Link from 'next/link'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Video, FileText, AlertTriangle } from 'lucide-react'
+import { CourseAIConfig } from '@/components/admin/course-ai-config'
+import { TranscriptUpload } from '@/components/admin/transcript-upload'
+import { KnowledgeBaseStatus } from '@/components/admin/knowledge-base-status'
+import { ChunkPreview } from '@/components/admin/chunk-preview'
 const backendBaseUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || '').replace(/\/$/, '')
 
 const levels: CourseLevel[] = ['BEGINNER', 'INTERMEDIATE', 'ADVANCED']
@@ -28,30 +32,15 @@ type LessonAssetDto = {
     url: string
 }
 
-type CourseAssetDto = {
-    id: string
-    title: string
-    description?: string | null
-    type: string
-    url: string
-    contentType?: string | null
-}
-
-type PendingCourseAsset = {
-    id: string
-    file: File
-    title: string
-    description: string
-    type: string
-    uploading: boolean
-    error: string | null
-}
-
 type AdminLesson = {
     id: string
     title: string
     description?: string | null
     assets?: LessonAssetDto[]
+    durationMinutes?: number | null
+    lessonType?: string | null
+    learningObjectives?: string[]
+    completionRule?: string | null
 }
 
 type AdminChapter = {
@@ -60,18 +49,35 @@ type AdminChapter = {
     lessons: AdminLesson[]
 }
 
+type LessonAttachment = {
+    id: string
+    title: string
+    type: string
+    url?: string
+    mimeType?: string | null
+    checked: boolean
+}
+
+type PendingLessonUpload = {
+    id: string
+    file: File
+    type: string
+    uploading: boolean
+    error: string | null
+}
+
 type AdminCourse = Course & {
     slug?: string
     instructorId?: string
+    status?: string
     chapters?: AdminChapter[]
-    assets?: CourseAssetDto[]
 }
 
 export default function EditCoursePage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params)
     const router = useRouter()
 
-    const getAuthHeaders = (): Record<string, string> => {
+const getAuthHeaders = (): Record<string, string> => {
         if (typeof window === 'undefined') return {}
         const token = localStorage.getItem('accessToken')
         return token ? { Authorization: `Bearer ${token}` } : {}
@@ -90,16 +96,41 @@ export default function EditCoursePage({ params }: { params: Promise<{ id: strin
         status: 'DRAFT',
         learningOutcomes: '',
         requirements: '',
+        completionExamId: '',
+        autoCertificate: false,
     })
     const [loading, setLoading] = useState(true)
     const [submitting, setSubmitting] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState<string | null>(null)
     const [instructors, setInstructors] = useState<Array<{ id: string; name: string }>>([])
-    const [pendingCourseAssets, setPendingCourseAssets] = useState<PendingCourseAsset[]>([])
-    const [courseAssetError, setCourseAssetError] = useState<string | null>(null)
-    const [courseAssetUploading, setCourseAssetUploading] = useState(false)
-    const [defaultCourseAssetType, setDefaultCourseAssetType] = useState('DOCUMENT')
+    const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null)
+    const [lessonForm, setLessonForm] = useState({
+        title: '',
+        description: '',
+        durationMinutes: '',
+        lessonType: 'VIDEO',
+        learningObjectives: '',
+        completionRule: 'VIEW_ASSETS',
+    })
+    const [lessonAttachments, setLessonAttachments] = useState<LessonAttachment[]>([])
+    const [pendingLessonUploads, setPendingLessonUploads] = useState<PendingLessonUpload[]>([])
+    const [defaultLessonAssetType, setDefaultLessonAssetType] = useState('DOCUMENT')
+    const [lessonSaving, setLessonSaving] = useState(false)
+    const [lessonError, setLessonError] = useState<string | null>(null)
+    const [lessonModalOpen, setLessonModalOpen] = useState(false)
+    const [lessonModalChapterId, setLessonModalChapterId] = useState<string | null>(null)
+    const [chunkPreviewOpen, setChunkPreviewOpen] = useState(false)
+    const [transcriptRefreshKey, setTranscriptRefreshKey] = useState(0)
+    const [vttPromptOpen, setVttPromptOpen] = useState(false)
+    const [vttPromptVideoAssetId, setVttPromptVideoAssetId] = useState<string | null>(null)
+    const [vttPromptLessonId, setVttPromptLessonId] = useState<string | null>(null)
+
+    useEffect(() => {
+        if (lessonModalOpen && selectedLessonId && lessonModalChapterId) {
+            fetchLessonAssets(selectedLessonId, lessonModalChapterId)
+        }
+    }, [lessonModalOpen, selectedLessonId, lessonModalChapterId])
 
     useEffect(() => {
         let mounted = true
@@ -126,6 +157,8 @@ export default function EditCoursePage({ params }: { params: Promise<{ id: strin
                     status: data.status || 'DRAFT',
                     learningOutcomes: (data.learningOutcomes || []).join('\n'),
                     requirements: (data.requirements || []).join('\n'),
+                    completionExamId: '',
+                    autoCertificate: false,
                 })
 
                 setInstructors(instructorsRes.data.map(instr => ({ id: instr.id, name: instr.name })))
@@ -143,18 +176,26 @@ export default function EditCoursePage({ params }: { params: Promise<{ id: strin
         }
     }, [id])
 
-    const handleChange = (field: string, value: string) => {
-        setForm(prev => ({ ...prev, [field]: value }))
+    const handleChange = (field: string, value: any) => {
+        setForm(prev => ({ ...prev, [field]: value as any }))
     }
 
-    const getUploadEndpoint = () =>
-        backendBaseUrl ? `${backendBaseUrl}/api/admin/uploads` : '/api/admin/files/upload-url'
-
-    const getCourseAssetCreateEndpoint = () =>
-        backendBaseUrl ? `${backendBaseUrl}/api/admin/materials` : `/api/admin/courses/${id}/assets`
-
-    const getCourseAssetDeleteEndpoint = (assetId: string) =>
-        backendBaseUrl ? `${backendBaseUrl}/api/admin/materials/${assetId}` : `/api/admin/courses/assets/${assetId}`
+    const hydrateLessonForm = (lesson: any, chapterId: string) => {
+        setSelectedLessonId(lesson.id)
+        setLessonForm({
+            title: lesson.title || '',
+            description: lesson.description || '',
+            durationMinutes: lesson.durationMinutes?.toString?.() || '',
+            lessonType: lesson.lessonType || 'VIDEO',
+            learningObjectives: (lesson.learningObjectives || []).join('\n'),
+            completionRule: lesson.completionRule || 'VIEW_ASSETS',
+        })
+        setLessonAttachments([])
+        setPendingLessonUploads([])
+        // Ensure chapterId is set before fetching assets
+        setLessonModalChapterId(chapterId)
+        fetchLessonAssets(lesson.id, chapterId)
+    }
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -218,14 +259,27 @@ export default function EditCoursePage({ params }: { params: Promise<{ id: strin
         OTHER: 'other',
     }
 
-    const [assetForms, setAssetForms] = useState<Record<string, {
-        title: string
-        description: string
-        type: string
-        file: File | null
-        uploading: boolean
-        error: string | null
-    }>>({})
+    const assetTypeMap: Record<string, 'VIDEO' | 'DOCUMENT' | 'PRESENTATION' | 'TEXT' | 'AUDIO' | 'OTHER'> = {
+        VIDEO: 'VIDEO',
+        DOCUMENT: 'DOCUMENT',
+        PRESENTATION: 'PRESENTATION',
+        TEXT: 'TEXT',
+        AUDIO: 'AUDIO',
+        OTHER: 'OTHER',
+    }
+
+    const lessonTypes = [
+        { value: 'VIDEO', label: 'Video' },
+        { value: 'DOC', label: 'Document' },
+        { value: 'QUIZ', label: 'Quiz' },
+        { value: 'OTHER', label: 'Other' },
+    ]
+
+    const completionRules = [
+        { value: 'VIEW_ASSETS', label: 'View assets' },
+        { value: 'MANUAL', label: 'Manual completion' },
+        { value: 'QUIZ', label: 'Pass quiz' },
+    ]
 
     const formatFileSize = (size: number) => {
         if (size < 1024) return `${size} B`
@@ -240,257 +294,191 @@ export default function EditCoursePage({ params }: { params: Promise<{ id: strin
         return `${Date.now()}-${Math.random().toString(16).slice(2)}`
     }
 
-    const handleCourseAssetFilesSelected = (fileList: FileList | null) => {
-        if (!fileList || fileList.length === 0) return
-        setCourseAssetError(null)
-        const newItems: PendingCourseAsset[] = Array.from(fileList).map(file => {
-            const baseTitle = file.name.replace(/\.[^/.]+$/, '') || file.name
-            return {
-                id: generateTempId(),
-                file,
-                title: baseTitle,
-                description: '',
-                type: defaultCourseAssetType,
-                uploading: false,
-                error: null,
-            }
-        })
+    // Auto-detect asset type from file
+    const detectAssetType = (file: File): 'VIDEO' | 'DOCUMENT' | 'PRESENTATION' | 'TEXT' | 'AUDIO' | 'OTHER' => {
+        const mimeType = file.type.toLowerCase()
+        const extension = file.name.split('.').pop()?.toLowerCase()
 
-        setPendingCourseAssets(prev => [...prev, ...newItems])
+        // Video detection
+        if (mimeType.startsWith('video/') || ['mp4', 'webm', 'mov', 'avi', 'mkv', 'm4v'].includes(extension || '')) {
+            return 'VIDEO'
+        }
+        // Audio detection
+        if (mimeType.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'flac', 'm4a'].includes(extension || '')) {
+            return 'AUDIO'
+        }
+        // Presentation detection
+        if (['ppt', 'pptx', 'key', 'odp'].includes(extension || '') ||
+            mimeType.includes('presentation') || mimeType.includes('powerpoint')) {
+            return 'PRESENTATION'
+        }
+        // Document detection
+        if (['pdf', 'doc', 'docx', 'odt', 'rtf'].includes(extension || '') ||
+            mimeType.includes('document') || mimeType === 'application/pdf') {
+            return 'DOCUMENT'
+        }
+        // Text detection
+        if (mimeType.startsWith('text/') || ['txt', 'md', 'markdown'].includes(extension || '')) {
+            return 'TEXT'
+        }
+
+        return 'OTHER'
     }
 
-    const updatePendingCourseAsset = (assetId: string, patch: Partial<Omit<PendingCourseAsset, 'id' | 'file'>>) => {
-        setPendingCourseAssets(prev =>
-            prev.map(asset => (asset.id === assetId ? { ...asset, ...patch } : asset))
+    const handleLessonFilesSelected = (fileList: FileList | null) => {
+        if (!fileList || fileList.length === 0) return
+        const newItems: PendingLessonUpload[] = Array.from(fileList).map(file => ({
+            id: generateTempId(),
+            file,
+            type: detectAssetType(file),  // Auto-detect type instead of using default
+            uploading: false,
+            error: null,
+        }))
+        setPendingLessonUploads(prev => [...prev, ...newItems])
+    }
+
+    const updatePendingLessonUpload = (uploadId: string, patch: Partial<Omit<PendingLessonUpload, 'id' | 'file'>>) => {
+        setPendingLessonUploads(prev =>
+            prev.map(upload => (upload.id === uploadId ? { ...upload, ...patch } : upload))
         )
     }
 
-    const removePendingCourseAsset = (assetId: string) => {
-        setPendingCourseAssets(prev => prev.filter(asset => asset.id !== assetId))
+    const removePendingLessonUpload = (uploadId: string) => {
+        setPendingLessonUploads(prev => prev.filter(upload => upload.id !== uploadId))
     }
 
-    const updateAssetForm = (lessonId: string, patch: Partial<{
-        title: string
-        description: string
-        type: string
-        file: File | null
-        uploading: boolean
-        error: string | null
-    }>) => {
-        setAssetForms(prev => {
-            const defaults = {
-                title: '',
-                description: '',
-                type: 'DOCUMENT',
-                file: null as File | null,
-                uploading: false,
-                error: null as string | null,
-            }
-            const nextForm = {
-                ...defaults,
-                ...(prev[lessonId] ?? {}),
-                ...patch,
-            }
-            return { ...prev, [lessonId]: nextForm }
-        })
-    }
+    const apiUrl = (path: string) => (backendBaseUrl ? `${backendBaseUrl}${path}` : path)
 
-    const handleAssetUpload = async (lessonId: string) => {
-        const formState = assetForms[lessonId]
-        if (!formState || !formState.file || !formState.title) {
-            updateAssetForm(lessonId, { error: 'Title and file are required' })
-            return
-        }
-
-        updateAssetForm(lessonId, { uploading: true, error: null })
-
+    const fetchLessonAssets = async (lessonId: string, chapterId: string) => {
+        if (!lessonId || !chapterId) return
         try {
-            const uploadMetaRes = await fetch('/api/admin/files/upload-url', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...getAuthHeaders(),
-                },
-                body: JSON.stringify({
-                    filename: formState.file.name,
-                    contentType: formState.file.type || 'application/octet-stream',
-                    assetType: 'documents',
-                }),
-            })
+            let attachments: LessonAttachment[] | null = null
 
-            if (!uploadMetaRes.ok) {
-                throw new Error('Failed to get upload URL')
+            // 1) If external backend is configured, try its GET endpoint first (disabled in dev to avoid ERR_CONNECTION_REFUSED)
+            if (backendBaseUrl && false) {
+                try {
+                    const path = apiUrl(`/api/admin/courses/${id}/chapters/${chapterId}/lessons/${lessonId}/assets`)
+                    const res = await fetch(path, {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...getAuthHeaders(),
+                        },
+                    })
+                    if (res.ok) {
+                        const json = await res.json()
+                        attachments = (json.data || []).map((asset: any) => ({
+                            id: asset.id,
+                            title: asset.title,
+                            type: asset.type,
+                            url: asset.cloudfrontUrl || asset.url,
+                            mimeType: asset.mimeType || null,
+                            checked: true,
+                        }))
+                    }
+                } catch (_) {
+                    // swallow and fallback to internal approach
+                }
             }
 
-            const uploadMeta = await uploadMetaRes.json()
-            const uploadData = uploadMeta.data
-
-            await fetch(uploadData.uploadUrl, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': formState.file.type || 'application/octet-stream',
-                    'x-amz-acl': 'public-read',
-                },
-                body: formState.file,
-            })
-
-            const payload = {
-                courseId: id,
-                title: formState.title,
-                description: formState.description,
-                url: uploadData.url,
-                s3Key: uploadData.key,
-                contentType: formState.file.type || 'application/octet-stream',
-                type: formState.type,
+            // 2) Fallback: load the course via internal API and extract the lesson's assets (no direct GET endpoint exists)
+            if (!attachments) {
+                const response = await ApiClient.getCourse(id)
+                const rawCourse: any = response.data
+                const chapter = (rawCourse?.chapters || []).find((ch: any) => ch.id === chapterId)
+                const lesson = (chapter?.lessons || []).find((l: any) => l.id === lessonId)
+                const assets = (lesson?.assets || []).map((a: any) => (a.courseAsset ? a.courseAsset : a))
+                attachments = (assets || []).map((asset: any) => ({
+                    id: asset.id,
+                    title: asset.title,
+                    type: asset.type,
+                    url: asset.cloudfrontUrl ?? asset.url,
+                    mimeType: asset.mimeType ?? asset.contentType ?? null,
+                    checked: true,
+                }))
             }
 
-            const assetRes = await fetch(`/api/admin/lessons/${lessonId}/assets`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...getAuthHeaders(),
-                },
-                body: JSON.stringify(payload),
+            setLessonAttachments(attachments || [])
+            setCourse(prev => {
+                if (!prev) return prev
+                return {
+                    ...prev,
+                    chapters: (prev.chapters || []).map(ch => ({
+                        ...ch,
+                        lessons: (ch.lessons || []).map(l =>
+                            l.id === lessonId ? { ...l, assets: (attachments || []) as any } : l
+                        ),
+                    })),
+                }
             })
-
-            if (!assetRes.ok) {
-                const errJson = await assetRes.json().catch(() => null)
-                throw new Error(errJson?.error?.message || 'Failed to save asset metadata')
-            }
-
-            await reloadCourse()
-            updateAssetForm(lessonId, { title: '', description: '', file: null, uploading: false })
         } catch (err) {
             console.error(err)
-            updateAssetForm(lessonId, {
-                uploading: false,
-                error: err instanceof Error ? err.message : 'Failed to upload asset',
-            })
         }
-    }
+    };
 
-    const handleDeleteAsset = async (lessonId: string, assetId: string) => {
-        const confirmed = window.confirm('Delete this asset?')
-        if (!confirmed) return
-
-        try {
-            const res = await fetch(`/api/admin/lessons/assets/${assetId}`, {
-                method: 'DELETE',
-                headers: {
-                    ...getAuthHeaders(),
-                },
-            })
-            if (!res.ok) {
-                const errJson = await res.json().catch(() => null)
-                throw new Error(errJson?.error?.message || 'Failed to delete asset')
+const handleDeleteLessonAsset = async (assetId: string) => {
+    if (!selectedLessonId || !lessonModalChapterId) return
+    try {
+            const deleteCandidates = [
+                `/api/admin/courses/${id}/chapters/${lessonModalChapterId}/lessons/${selectedLessonId}/assets/${assetId}`,
+                `/api/admin/lessons/${selectedLessonId}/assets/${assetId}`,
+                apiUrl(`/api/admin/courses/${id}/chapters/${lessonModalChapterId}/lessons/${selectedLessonId}/assets/${assetId}`),
+                apiUrl(`/api/admin/lessons/${selectedLessonId}/assets/${assetId}`),
+            ]
+            let json: any = null
+            let lastErr: any = null
+            for (const path of deleteCandidates) {
+                try {
+                    const res = await fetch(path, {
+                        method: 'DELETE',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...getAuthHeaders(),
+                        },
+                    })
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+                    json = await res.json()
+                    break
+                } catch (e) {
+                    lastErr = e
+                    continue
+                }
             }
-            await reloadCourse()
-        } catch (err) {
-            updateAssetForm(lessonId, {
-                error: err instanceof Error ? err.message : 'Failed to delete asset',
-            })
-        }
-    }
-
-    const handleCourseAssetUpload = async () => {
-        if (pendingCourseAssets.length === 0) {
-            setCourseAssetError('Select at least one file to upload')
-            return
-        }
-
-        setCourseAssetError(null)
-        setCourseAssetUploading(true)
-        const assetsToUpload = [...pendingCourseAssets]
-        let uploadedAny = false
-
-        for (const asset of assetsToUpload) {
-            setPendingCourseAssets(prev =>
-                prev.map(item =>
-                    item.id === asset.id ? { ...item, uploading: true, error: null } : item
-                )
-            )
-
-            try {
-                const uploadMetaRes = await fetch(getUploadEndpoint(), {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...getAuthHeaders(),
-                    },
-                    body: JSON.stringify({
-                        courseId: id,
-                        filename: asset.file.name,
-                        contentType: asset.file.type || 'application/octet-stream',
-                        assetType: assetFolderByType[asset.type] || 'documents',
-                    }),
-                })
-
-                if (!uploadMetaRes.ok) {
-                    throw new Error('Failed to get upload URL')
-                }
-
-                const uploadMeta = await uploadMetaRes.json()
-                const uploadData = uploadMeta.data
-
-                await fetch(uploadData.uploadUrl, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': asset.file.type || 'application/octet-stream',
-                    },
-                    body: asset.file,
-                })
-
-                const payload = {
-                    courseId: id,
-                    title: asset.title,
-                    description: asset.description,
-                    cloudfrontUrl: uploadData.cloudfrontUrl || uploadData.url,
-                    s3Key: uploadData.key,
-                    mimeType: asset.file.type || 'application/octet-stream',
-                    sizeBytes: asset.file.size,
-                    type: asset.type,
-                }
-
-                const assetRes = await fetch(getCourseAssetCreateEndpoint(), {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...getAuthHeaders(),
-                    },
-                    body: JSON.stringify(payload),
-                })
-
-                if (!assetRes.ok) {
-                    const errJson = await assetRes.json().catch(() => null)
-                    throw new Error(errJson?.error?.message || 'Failed to save asset metadata')
-                }
-
-                uploadedAny = true
-                setPendingCourseAssets(prev => prev.filter(item => item.id !== asset.id))
-            } catch (err) {
-                console.error(err)
-                const message = err instanceof Error ? err.message : 'Failed to upload asset'
-                setPendingCourseAssets(prev =>
-                    prev.map(item =>
-                        item.id === asset.id ? { ...item, uploading: false, error: message } : item
-                    )
-                )
+            if (!json) {
+                console.error('Failed to delete asset from all candidates', lastErr)
+                return
             }
-        }
-
-        if (uploadedAny) {
-            await reloadCourse()
-        }
-
-        setCourseAssetUploading(false)
+        const attachments: LessonAttachment[] = (json.data || []).map((asset: any) => ({
+            id: asset.id,
+            title: asset.title,
+            type: asset.type,
+            url: asset.cloudfrontUrl || asset.url,
+            mimeType: asset.mimeType || null,
+            checked: true,
+        }))
+        setLessonAttachments(attachments)
+        setCourse(prev => {
+            if (!prev) return prev
+            return {
+                ...prev,
+                chapters: (prev.chapters || []).map(ch => ({
+                    ...ch,
+                    lessons: (ch.lessons || []).map(l =>
+                        l.id === selectedLessonId ? { ...l, assets: attachments as any } : l
+                    ),
+                })),
+            }
+        })
+    } catch (err) {
+        console.error(err)
     }
+};
 
     const handleCourseAssetDelete = async (assetId: string) => {
         const confirmed = window.confirm('Delete this course material?')
         if (!confirmed) return
 
         try {
-            const res = await fetch(getCourseAssetDeleteEndpoint(assetId), {
+            const res = await fetch(apiUrl(`/api/admin/lessons/${selectedLessonId}/assets/${assetId}`), {
                 method: 'DELETE',
                 headers: {
                     ...getAuthHeaders(),
@@ -504,18 +492,311 @@ export default function EditCoursePage({ params }: { params: Promise<{ id: strin
 
             await reloadCourse()
         } catch (err) {
-            setCourseAssetError(err instanceof Error ? err.message : 'Failed to delete asset')
+            setError(err instanceof Error ? err.message : 'Failed to delete asset')
         }
-    }
+    };
+
+    const handleAddChapter = async () => {
+        const title = window.prompt('Chapter title')
+        if (!title) return
+        await ApiClient.createChapter(id, { title })
+        await reloadCourse()
+    };
+
+    const handleRenameChapter = async (chapterId: string, currentTitle: string) => {
+        const title = window.prompt('Rename chapter', currentTitle)
+        if (!title) return
+        await ApiClient.updateChapter(id, chapterId, { title })
+        await reloadCourse()
+    };
+
+    const handleDeleteChapter = async (chapterId: string) => {
+        if (!window.confirm('Delete this chapter and its lessons?')) return
+        await ApiClient.deleteChapter(id, chapterId)
+        await reloadCourse()
+    };
+
+    const handleAddLesson = (chapterId: string) => {
+        openLessonModal(chapterId)
+    };
+
+    const handleDeleteLesson = async (chapterId: string, lessonId: string) => {
+        if (!window.confirm('Delete this lesson?')) return
+        await ApiClient.deleteLesson(id, chapterId, lessonId)
+        if (selectedLessonId === lessonId) {
+            setSelectedLessonId(null)
+        }
+        await reloadCourse()
+    };
+
+    const handleMoveChapter = async (chapterId: string, direction: 'up' | 'down') => {
+        if (!course?.chapters) return
+        const order = [...course.chapters].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        const idx = order.findIndex(c => c.id === chapterId)
+        const swapIdx = direction === 'up' ? idx - 1 : idx + 1
+        if (swapIdx < 0 || swapIdx >= order.length) return
+        const tmp = order[idx]
+        order[idx] = order[swapIdx]
+        order[swapIdx] = tmp
+        await ApiClient.reorderChapters(id, order.map(c => c.id))
+        await reloadCourse()
+    };
+
+    const handleMoveLesson = async (chapterId: string, lessonId: string, direction: 'up' | 'down') => {
+        const chapter = course?.chapters?.find(c => c.id === chapterId)
+        if (!chapter) return
+        const lessons = [...(chapter.lessons || [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        const idx = lessons.findIndex(l => l.id === lessonId)
+        const swapIdx = direction === 'up' ? idx - 1 : idx + 1
+        if (swapIdx < 0 || swapIdx >= lessons.length) return
+        const tmp = lessons[idx]
+        lessons[idx] = lessons[swapIdx]
+        lessons[swapIdx] = tmp
+        await ApiClient.reorderLessons(id, chapterId, lessons.map(l => l.id))
+        await reloadCourse()
+    };
+
+    const handleLessonSelect = (lesson: any, chapterId: string) => {
+        hydrateLessonForm(lesson, chapterId)
+        setLessonModalOpen(true)
+    };
+
+    const openLessonModal = (chapterId: string) => {
+        setLessonModalChapterId(chapterId)
+        setSelectedLessonId(null)
+        setLessonForm({
+            title: '',
+            description: '',
+            durationMinutes: '',
+            lessonType: 'VIDEO',
+            learningObjectives: '',
+            completionRule: 'VIEW_ASSETS',
+        })
+        setLessonAttachments([])
+        setPendingLessonUploads([])
+        setLessonError(null)
+        setLessonModalOpen(true)
+    };
+
+    const closeLessonModal = () => {
+        setLessonModalOpen(false)
+        setLessonModalChapterId(null)
+        setLessonError(null)
+    };
+
+    const handleLessonFieldChange = (field: string, value: string) => {
+        setLessonForm(prev => ({ ...prev, [field]: value }))
+    };
+
+    const handleToggleAsset = (assetId: string, checked: boolean) => {
+        setLessonAttachments(prev => prev.map(att => att.id === assetId ? { ...att, checked } : att))
+    };
+
+    const handleSaveLesson = async () => {
+        const chapterId = lessonModalChapterId
+        if (!chapterId) {
+            setLessonError('Select a chapter')
+            return
+        }
+        setLessonSaving(true)
+        setLessonError(null)
+        try {
+            const payload = {
+                title: lessonForm.title,
+                description: lessonForm.description,
+                durationMinutes: lessonForm.durationMinutes ? Number(lessonForm.durationMinutes) : undefined,
+                lessonType: lessonForm.lessonType as any,
+                learningObjectives: lessonForm.learningObjectives
+                    .split('\n')
+                    .map(line => line.trim())
+                    .filter(Boolean),
+                completionRule: lessonForm.completionRule as any,
+            }
+
+            const normalizeLesson = (lesson: any): AdminLesson => ({
+                ...lesson,
+                assets:
+                    (lesson.assets || []).map((a: any) => {
+                        const asset = a.courseAsset ? a.courseAsset : a
+                        return {
+                            id: asset.id,
+                            title: asset.title,
+                            description: asset.description ?? null,
+                            type: asset.type,
+                            url: asset.cloudfrontUrl ?? asset.url,
+                            contentType: asset.mimeType ?? asset.contentType ?? null,
+                        }
+                    }) ?? [],
+            })
+
+            const updateCourseState = (lesson: AdminLesson, chapId: string) => {
+                setCourse(prev => {
+                    if (!prev) return prev
+                    return {
+                        ...prev,
+                        chapters: (prev.chapters || []).map(ch =>
+                            ch.id === chapId
+                                ? {
+                                    ...ch,
+                                    lessons: (ch.lessons || []).map(l =>
+                                        l.id === lesson.id ? lesson : l
+                                    ),
+                                }
+                                : ch
+                        ),
+                    } as any
+                })
+            }
+
+            const insertCourseState = (lesson: AdminLesson, chapId: string) => {
+                setCourse(prev => {
+                    if (!prev) return prev
+                    return {
+                        ...prev,
+                        chapters: (prev.chapters || []).map(ch =>
+                            ch.id === chapId
+                                ? {
+                                    ...ch,
+                                    lessons: [...(ch.lessons || []), lesson],
+                                }
+                                : ch
+                        ),
+                    } as any
+                })
+            }
+
+            let lessonId = selectedLessonId
+            let lessonResponse: any = null
+            if (lessonId) {
+                lessonResponse = await ApiClient.updateLesson(id, chapterId, lessonId, payload)
+            } else {
+                lessonResponse = await ApiClient.createLesson(id, chapterId, payload)
+                lessonId = (lessonResponse as any).data.id
+                setSelectedLessonId(lessonId)
+            }
+
+            // Upload pending files now that lessonId is guaranteed
+            const newAssetIds: string[] = []
+            let uploadedVideoAssetId: string | null = null  // Track if video was uploaded
+            for (const upload of pendingLessonUploads) {
+                updatePendingLessonUpload(upload.id, { uploading: true, error: null })
+                try {
+                    const uploadMeta: any = await ApiClient.uploadLessonAsset(id, chapterId, lessonId!, {
+                        filename: upload.file.name,
+                        contentType: upload.file.type || 'application/octet-stream',
+                        type: assetTypeMap[upload.type] || 'DOCUMENT',
+                    })
+
+                    await fetch(uploadMeta.data.uploadUrl, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': upload.file.type || 'application/octet-stream',
+                            'x-amz-server-side-encryption': 'AES256',
+                        },
+                        body: upload.file,
+                    })
+
+                    const asset = uploadMeta.data.asset
+                    newAssetIds.push(asset.id)
+
+                    // Track if this is a video upload
+                    if (asset.type === 'VIDEO') {
+                        uploadedVideoAssetId = asset.id
+                    }
+
+                    setLessonAttachments(prev => [
+                        ...prev,
+                        {
+                            id: asset.id,
+                            title: asset.title || upload.file.name,
+                            type: asset.type,
+                            url: asset.url,
+                            mimeType: asset.mimeType,
+                            checked: true,
+                        },
+                    ])
+                    setPendingLessonUploads(prev => prev.filter(item => item.id !== upload.id))
+                } catch (err) {
+                    console.error(err)
+                    const message = err instanceof Error ? err.message : 'Failed to upload asset'
+                    updatePendingLessonUpload(upload.id, { uploading: false, error: message })
+                    throw err
+                }
+            }
+
+            const existingChecked = lessonAttachments.filter(att => att.checked).map(att => att.id)
+            const finalAssetIds = Array.from(new Set([...existingChecked, ...newAssetIds]))
+
+            await ApiClient.replaceLessonAssets(id, chapterId, lessonId!, finalAssetIds)
+
+            const normalizedLesson = lessonResponse?.data ? normalizeLesson(lessonResponse.data) : null
+            if (normalizedLesson) {
+                if (selectedLessonId) {
+                    updateCourseState(normalizedLesson, chapterId)
+                } else {
+                    insertCourseState(normalizedLesson, chapterId)
+                }
+            }
+
+            await reloadCourse()
+
+            // If a video was uploaded, show VTT prompt modal
+            if (uploadedVideoAssetId && lessonId) {
+                setVttPromptVideoAssetId(uploadedVideoAssetId)
+                setVttPromptLessonId(lessonId)
+                setLessonModalOpen(false)
+                setVttPromptOpen(true)
+            } else {
+                setLessonModalOpen(false)
+            }
+        } catch (err) {
+            console.error(err)
+            setLessonError(err instanceof Error ? err.message : 'Failed to save lesson')
+        } finally {
+            setLessonSaving(false)
+        }
+    };
 
     const reloadCourse = async () => {
         try {
             const response = await ApiClient.getCourse(id)
-            setCourse(response.data)
+            const rawCourse = response.data as any
+
+            // Normalize lesson assets to ensure consistent data structure
+            if (rawCourse.chapters) {
+                rawCourse.chapters = rawCourse.chapters.map((chapter: any) => ({
+                    ...chapter,
+                    lessons: (chapter.lessons || []).map((lesson: any) => {
+                        const normalizedLesson: AdminLesson = {
+                            id: lesson.id,
+                            title: lesson.title,
+                            description: lesson.description,
+                            durationMinutes: lesson.durationMinutes,
+                            lessonType: lesson.lessonType,
+                            learningObjectives: lesson.learningObjectives,
+                            completionRule: lesson.completionRule,
+                            assets: (lesson.assets || []).map((a: any) => {
+                                const asset = a.courseAsset ? a.courseAsset : a
+                                return {
+                                    id: asset.id,
+                                    title: asset.title,
+                                    description: asset.description ?? null,
+                                    type: asset.type,
+                                    url: asset.cloudfrontUrl ?? asset.url,
+                                    contentType: asset.mimeType ?? asset.contentType ?? null,
+                                }
+                            })
+                        }
+                        return normalizedLesson
+                    })
+                }))
+            }
+
+            setCourse(rawCourse)
         } catch (err) {
             console.error(err)
         }
-    }
+    };
 
     const chapterCount = course?.chapters?.length ?? 0
     const lessonCount =
@@ -530,8 +811,6 @@ export default function EditCoursePage({ params }: { params: Promise<{ id: strin
                 ),
             0
         ) ?? 0
-    const courseAssetCount = course?.assets?.length ?? 0
-    const pendingAssetCount = pendingCourseAssets.length
     const levelLabel = (course?.level ?? form.level ?? 'BEGINNER') as CourseLevel
     const categoryLabel = course?.category ?? (form.category || 'Uncategorized')
     const instructorName =
@@ -612,9 +891,9 @@ export default function EditCoursePage({ params }: { params: Promise<{ id: strin
                 <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
                     <Card className="h-full">
                         <CardHeader className="pb-4">
-                            <CardTitle>Course Details</CardTitle>
+                            <CardTitle>Step 1: Course information</CardTitle>
                             <p className="text-sm text-muted-foreground">
-                                Keep the hero content concise and compelling.
+                                Provide the core course details learners will see in the catalog.
                             </p>
                         </CardHeader>
                         <CardContent>
@@ -649,38 +928,38 @@ export default function EditCoursePage({ params }: { params: Promise<{ id: strin
                                         </div>
                                     </div>
                                     <div className="space-y-2">
-                        <Label htmlFor="description">Description</Label>
-                        <Textarea
-                            id="description"
-                            rows={4}
-                            value={form.description}
-                            onChange={e => handleChange('description', e.target.value)}
-                            required
-                        />
-                    </div>
+                                        <Label htmlFor="description">Description</Label>
+                                        <Textarea
+                                            id="description"
+                                            rows={4}
+                                            value={form.description}
+                                            onChange={e => handleChange('description', e.target.value)}
+                                            required
+                                        />
+                                    </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <Label htmlFor="learningOutcomes">What you'll learn</Label>
-                            <Textarea
-                                id="learningOutcomes"
-                                rows={4}
-                                placeholder="One item per line"
-                                value={form.learningOutcomes}
-                                onChange={e => handleChange('learningOutcomes', e.target.value)}
-                            />
-                        </div>
-                        <div>
-                            <Label htmlFor="requirements">Requirements</Label>
-                            <Textarea
-                                id="requirements"
-                                rows={4}
-                                placeholder="One item per line"
-                                value={form.requirements}
-                                onChange={e => handleChange('requirements', e.target.value)}
-                            />
-                        </div>
-                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <Label htmlFor="learningOutcomes">What you'll learn</Label>
+                                            <Textarea
+                                                id="learningOutcomes"
+                                                rows={4}
+                                                placeholder="One item per line"
+                                                value={form.learningOutcomes}
+                                                onChange={e => handleChange('learningOutcomes', e.target.value)}
+                                            />
+                                        </div>
+                                        <div>
+                                            <Label htmlFor="requirements">Requirements</Label>
+                                            <Textarea
+                                                id="requirements"
+                                                rows={4}
+                                                placeholder="One item per line"
+                                                value={form.requirements}
+                                                onChange={e => handleChange('requirements', e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
                                 </section>
 
                                 <section className="space-y-4">
@@ -711,19 +990,6 @@ export default function EditCoursePage({ params }: { params: Promise<{ id: strin
                                                 required
                                             />
                                         </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="status">Status</Label>
-                                            <Select value={form.status} onValueChange={value => handleChange('status', value)}>
-                                                <SelectTrigger id="status">
-                                                    <SelectValue placeholder="Select status" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="DRAFT">Draft (hidden)</SelectItem>
-                                                    <SelectItem value="PUBLISHED">Published (visible)</SelectItem>
-                                                    <SelectItem value="ARCHIVED">Archived</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
                                     </div>
                                     <div className="grid gap-4 md:grid-cols-2">
                                         <div className="space-y-2">
@@ -741,18 +1007,55 @@ export default function EditCoursePage({ params }: { params: Promise<{ id: strin
                                                 </SelectContent>
                                             </Select>
                                         </div>
+                                    </div>
+                                    <div className="border rounded-lg p-4 space-y-3">
+                                        <p className="text-xs uppercase tracking-wider text-muted-foreground">Step 3</p>
+                                        <p className="text-sm font-semibold">Publish settings</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            Set completion conditions, certificate rules, and publish status.
+                                        </p>
+                                        <div>
+                                            <p className="text-sm font-semibold">Completion & Certificate</p>
+                                            <p className="text-xs text-muted-foreground">
+                                                Set how learners complete the course and whether to auto-issue certificates.
+                                            </p>
+                                        </div>
                                         <div className="space-y-2">
-                                            <Label>Instructor</Label>
-                                            <Select value={form.instructorId} onValueChange={value => handleChange('instructorId', value)}>
-                                                <SelectTrigger>
-                                                    <SelectValue placeholder="Assign instructor" />
+                                            <Label htmlFor="completionExamId">Completion condition (exam ID or name)</Label>
+                                            <Input
+                                                id="completionExamId"
+                                                placeholder="e.g., exam-media-quality"
+                                                value={form.completionExamId}
+                                                onChange={e => handleChange('completionExamId', e.target.value)}
+                                            />
+                                            <p className="text-xs text-muted-foreground">
+                                                Learners must pass this exam to complete the course.
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <p className="text-sm font-medium">Auto-issue certificate</p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    Issue a certificate to the learner account after passing the exam.
+                                                </p>
+                                            </div>
+                                            <Input
+                                                type="checkbox"
+                                                className="h-4 w-4"
+                                                checked={form.autoCertificate}
+                                                onChange={e => handleChange('autoCertificate', e.target.checked)}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="status">Course status</Label>
+                                            <Select value={form.status} onValueChange={value => handleChange('status', value)}>
+                                                <SelectTrigger id="status">
+                                                    <SelectValue placeholder="Select status" />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    {instructors.map(instr => (
-                                                        <SelectItem key={instr.id} value={instr.id}>
-                                                            {instr.name}
-                                                        </SelectItem>
-                                                    ))}
+                                                    <SelectItem value="DRAFT">Draft (hidden)</SelectItem>
+                                                    <SelectItem value="PUBLISHED">Published (visible)</SelectItem>
+                                                    <SelectItem value="ARCHIVED">Archived</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
@@ -812,10 +1115,6 @@ export default function EditCoursePage({ params }: { params: Promise<{ id: strin
                                         <dd className="text-2xl font-semibold">{lessonCount}</dd>
                                     </div>
                                     <div>
-                                        <dt className="text-muted-foreground">Course assets</dt>
-                                        <dd className="text-2xl font-semibold">{courseAssetCount}</dd>
-                                    </div>
-                                    <div>
                                         <dt className="text-muted-foreground">Lesson assets</dt>
                                         <dd className="text-2xl font-semibold">{lessonAssetCount}</dd>
                                     </div>
@@ -839,380 +1138,502 @@ export default function EditCoursePage({ params }: { params: Promise<{ id: strin
                             </CardContent>
                         </Card>
 
-                        <Card>
-                            <CardHeader className="pb-4">
-                                <CardTitle>Instructor & workflow</CardTitle>
-                                <p className="text-sm text-muted-foreground">
-                                    Keep ownership and upload progress visible.
-                                </p>
-                            </CardHeader>
-                            <CardContent className="space-y-4 text-sm">
-                                <div className="rounded-lg border p-3">
-                                    <p className="text-xs uppercase tracking-wider text-muted-foreground">Instructor</p>
-                                    <p className="text-base font-semibold text-foreground">{instructorName}</p>
-                                </div>
-                                <div className="rounded-lg border p-3">
-                                    <p className="text-xs uppercase tracking-wider text-muted-foreground">Pending uploads</p>
-                                    <p className="text-base font-semibold text-foreground">{pendingAssetCount}</p>
-                                    <p className="text-xs text-muted-foreground">
-                                        Files staged below, waiting to be pushed to storage.
-                                    </p>
-                                </div>
-                                <div className="rounded-lg border p-3">
-                                    <p className="text-xs uppercase tracking-wider text-muted-foreground">Course visibility</p>
-                                    <p className="text-sm text-muted-foreground">
-                                        Save changes to sync updates with the catalog instantly.
-                                    </p>
-                                </div>
-                            </CardContent>
-                        </Card>
+                        {/* Instructor & workflow removed per new flow */}
                     </div>
                 </div>
 
                 {course && (
                     <Card>
                         <CardHeader>
-                            <CardTitle>Materials & assets</CardTitle>
+                            <CardTitle>Step 2: Design the course</CardTitle>
                             <p className="text-sm text-muted-foreground">
-                                Manage downloads that apply to the entire course or drill into lesson-level attachments.
+                                Build chapters and lessons, then attach lesson-specific materials.
                             </p>
                         </CardHeader>
                         <CardContent>
-                            <Tabs defaultValue="course">
-                                <TabsList>
-                                    <TabsTrigger value="course">Course library</TabsTrigger>
-                                    <TabsTrigger value="lessons">Lesson assets</TabsTrigger>
-                                </TabsList>
-                                <TabsContent value="course" className="space-y-6">
-                                    <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
-                                        <section className="space-y-4">
-                                            <div>
-                                                <p className="text-sm font-semibold">Existing materials</p>
-                                                <p className="text-sm text-muted-foreground">
-                                                    Files available to every learner regardless of lesson.
-                                                </p>
-                                            </div>
-                                            {course.assets && course.assets.length > 0 ? (
-                                                <div className="space-y-3">
-                                                    {course.assets.map(asset => (
-                                                        <div
-                                                            key={asset.id}
-                                                            className="flex items-start justify-between rounded-lg border p-3"
-                                                        >
-                                                            <div className="pr-4">
-                                                                <p className="font-medium">{asset.title}</p>
-                                                                <p className="text-xs text-muted-foreground">{asset.type}</p>
-                                                                {asset.description && (
-                                                                    <p className="mt-1 text-xs text-muted-foreground">{asset.description}</p>
+                            <div className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <p className="text-sm font-semibold">Course structure</p>
+                                            <p className="text-sm text-muted-foreground">
+                                                Chapters contain lessons; lessons own their attached files.
+                                            </p>
+                                        </div>
+                                        <Button size="sm" onClick={handleAddChapter}>
+                                            Add chapter
+                                        </Button>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        {course.chapters && course.chapters.length > 0 ? (
+                                            course.chapters
+                                                .slice()
+                                                .sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0))
+                                                .map(chapter => (
+                                                    <div key={chapter.id} className="rounded-lg border p-3 space-y-3">
+                                                        <div className="flex items-start justify-between gap-2">
+                                                            <div>
+                                                                <p className="font-semibold">{chapter.title}</p>
+                                                                {chapter.description && (
+                                                                    <p className="text-xs text-muted-foreground">
+                                                                        {chapter.description}
+                                                                    </p>
                                                                 )}
                                                             </div>
-                                                            <div className="flex items-center gap-2">
-                                                                <Button asChild size="sm" variant="outline">
-                                                                    <Link href={asset.url} target="_blank">
-                                                                        View
-                                                                    </Link>
+                                                            <div className="flex gap-1">
+                                                                <Button variant="ghost" size="sm" onClick={() => handleMoveChapter(chapter.id, 'up')}>
+                                                                    ↑
                                                                 </Button>
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="sm"
-                                                                    className="text-destructive"
-                                                                    onClick={() => handleCourseAssetDelete(asset.id)}
-                                                                >
+                                                                <Button variant="ghost" size="sm" onClick={() => handleMoveChapter(chapter.id, 'down')}>
+                                                                    ↓
+                                                                </Button>
+                                                                <Button variant="ghost" size="sm" onClick={() => handleRenameChapter(chapter.id, chapter.title)}>
+                                                                    Rename
+                                                                </Button>
+                                                                <Button variant="ghost" size="sm" className="text-destructive" onClick={() => handleDeleteChapter(chapter.id)}>
                                                                     Delete
                                                                 </Button>
                                                             </div>
                                                         </div>
-                                                    ))}
-                                                </div>
-                                            ) : (
-                                                <Alert>
-                                                    <AlertTitle>No materials yet</AlertTitle>
-                                                    <AlertDescription>
-                                                        Upload slide decks, worksheets, or supporting documents so learners can download everything in one spot.
-                                                    </AlertDescription>
-                                                </Alert>
-                                            )}
-                                        </section>
-
-                                        <section className="space-y-4 rounded-lg border p-4">
-                                            <div>
-                                                <p className="text-sm font-semibold">Upload new material</p>
-                                                <p className="text-sm text-muted-foreground">
-                                                    Stage multiple files, edit metadata, then upload in one batch.
-                                                </p>
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label>Default type</Label>
-                                                <Select
-                                                    value={defaultCourseAssetType}
-                                                    onValueChange={value => setDefaultCourseAssetType(value)}
-                                                >
-                                                    <SelectTrigger>
-                                                        <SelectValue placeholder="Select type" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        {assetTypes.map(type => (
-                                                            <SelectItem key={type.value} value={type.value}>
-                                                                {type.label}
-                                                            </SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                                <p className="text-xs text-muted-foreground">
-                                                    Applies to every file you pick until you change it.
-                                                </p>
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label>Files</Label>
-                                                <Input
-                                                    type="file"
-                                                    multiple
-                                                    onChange={e => {
-                                                        handleCourseAssetFilesSelected(e.target.files)
-                                                        if (e.target) {
-                                                            e.target.value = ''
-                                                        }
-                                                    }}
-                                                />
-                                                <p className="text-xs text-muted-foreground">
-                                                    PDFs, decks, spreadsheets, audio, or video up to your S3 limit.
-                                                </p>
-                                            </div>
-                                            {pendingCourseAssets.length > 0 ? (
-                                                <div className="space-y-4 rounded-md border p-3">
-                                                    {pendingCourseAssets.map(asset => (
-                                                        <div
-                                                            key={asset.id}
-                                                            className="space-y-3 border-b pb-3 last:border-b-0 last:pb-0"
-                                                        >
-                                                            <div className="flex items-center justify-between">
-                                                                <div>
-                                                                    <p className="font-medium">{asset.file.name}</p>
-                                                                    <p className="text-xs text-muted-foreground">
-                                                                        {formatFileSize(asset.file.size)} · {asset.file.type || 'unknown'}
-                                                                    </p>
-                                                                </div>
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="sm"
-                                                                    onClick={() => removePendingCourseAsset(asset.id)}
-                                                                >
-                                                                    Remove
-                                                                </Button>
-                                                            </div>
-                                                            <div className="grid gap-3 md:grid-cols-2">
-                                                                <div className="space-y-2">
-                                                                    <Label>Title</Label>
-                                                                    <Input
-                                                                        value={asset.title}
-                                                                        onChange={e =>
-                                                                            updatePendingCourseAsset(asset.id, { title: e.target.value })
-                                                                        }
-                                                                    />
-                                                                </div>
-                                                                <div className="space-y-2">
-                                                                    <Label>Type</Label>
-                                                                    <Select
-                                                                        value={asset.type}
-                                                                        onValueChange={value =>
-                                                                            updatePendingCourseAsset(asset.id, { type: value })
-                                                                        }
-                                                                    >
-                                                                        <SelectTrigger>
-                                                                            <SelectValue placeholder="Select type" />
-                                                                        </SelectTrigger>
-                                                                        <SelectContent>
-                                                                            {assetTypes.map(type => (
-                                                                                <SelectItem key={type.value} value={type.value}>
-                                                                                    {type.label}
-                                                                                </SelectItem>
-                                                                            ))}
-                                                                        </SelectContent>
-                                                                    </Select>
-                                                                </div>
-                                                            </div>
-                                                            <div className="space-y-2">
-                                                                <Label>Description</Label>
-                                                                <Textarea
-                                                                    rows={2}
-                                                                    value={asset.description}
-                                                                    onChange={e =>
-                                                                        updatePendingCourseAsset(asset.id, { description: e.target.value })
-                                                                    }
-                                                                />
-                                                            </div>
-                                                            {asset.error && (
-                                                                <p className="text-sm text-destructive">{asset.error}</p>
-                                                            )}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            ) : (
-                                                <p className="text-sm text-muted-foreground">
-                                                    No files staged. Use the picker above to add materials.
-                                                </p>
-                                            )}
-                                            {courseAssetError && (
-                                                <p className="text-sm text-destructive">{courseAssetError}</p>
-                                            )}
-                                            <Button
-                                                type="button"
-                                                className="w-full"
-                                                onClick={handleCourseAssetUpload}
-                                                disabled={courseAssetUploading || pendingCourseAssets.length === 0}
-                                            >
-                                                {courseAssetUploading ? 'Uploading...' : 'Upload materials'}
-                                            </Button>
-                                        </section>
-                                    </div>
-                                </TabsContent>
-
-                                <TabsContent value="lessons" className="space-y-4">
-                                    {course.chapters?.length ? (
-                                        course.chapters.map(chapter => (
-                                            <Card key={chapter.id} className="border-dashed">
-                                                <CardHeader className="pb-3">
-                                                    <CardTitle className="text-lg font-semibold">{chapter.title}</CardTitle>
-                                                    <p className="text-sm text-muted-foreground">
-                                                        {chapter.lessons.length} lesson{chapter.lessons.length === 1 ? '' : 's'}
-                                                    </p>
-                                                </CardHeader>
-                                                <CardContent className="space-y-6">
-                                                    {chapter.lessons.map(lesson => {
-                                                        const formState = assetForms[lesson.id] || {
-                                                            title: '',
-                                                            description: '',
-                                                            type: 'DOCUMENT',
-                                                            file: null,
-                                                            uploading: false,
-                                                            error: null,
-                                                        }
-
-                                                        return (
-                                                            <div key={lesson.id} className="space-y-4 rounded-lg border p-4">
-                                                                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                                                    <div>
-                                                                        <h4 className="font-semibold">{lesson.title}</h4>
-                                                                        <p className="text-sm text-muted-foreground">
-                                                                            {(lesson as any).assets?.length || 0} asset(s)
-                                                                        </p>
-                                                                    </div>
-                                                                </div>
-                                                                <div className="space-y-3">
-                                                                    {(lesson as any).assets && (lesson as any).assets.length > 0 ? (
-                                                                        ((lesson as any).assets as any[]).map((asset: any) => (
+                                                        <div className="space-y-2">
+                                                            {chapter.lessons && chapter.lessons.length > 0 ? (
+                                                                chapter.lessons
+                                                                    .slice()
+                                                                    .sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0))
+                                                                    .map(lesson => (
+                                                                        <div key={lesson.id} className="space-y-2">
                                                                             <div
-                                                                                key={asset.id}
-                                                                                className="flex items-center justify-between rounded-md border p-3"
+                                                                                className={`flex items-center justify-between rounded-md border p-2 text-sm cursor-pointer ${selectedLessonId === lesson.id ? 'border-primary bg-primary/5' : ''}`}
+                                                                                onClick={() => handleLessonSelect(lesson as any, chapter.id)}
                                                                             >
-                                                                                <div>
-                                                                                    <p className="font-medium">{asset.title}</p>
-                                                                                    <p className="text-xs text-muted-foreground">{asset.type}</p>
+                                                                                <div className="flex-1 space-y-1">
+                                                                                    <div className="flex items-center gap-2">
+                                                                                        <p className="font-medium">{lesson.title}</p>
+                                                                                        {lesson.assets && lesson.assets.length > 0 && (
+                                                                                            <Badge variant="secondary" className="text-xs">
+                                                                                                {lesson.assets.length} {lesson.assets.length === 1 ? 'file' : 'files'}
+                                                                                            </Badge>
+                                                                                        )}
+                                                                                    </div>
+                                                                                    <p className="text-xs text-muted-foreground">
+                                                                                        {(lesson.lessonType as string) || 'Lesson'} ·{' '}
+                                                                                        {lesson.durationMinutes ? `${lesson.durationMinutes} min` : 'No duration'}
+                                                                                    </p>
                                                                                 </div>
-                                                                                <div className="flex items-center gap-2">
-                                                                                    <Button asChild size="sm" variant="outline">
-                                                                                        <Link href={asset.url} target="_blank">
-                                                                                            View
-                                                                                        </Link>
+                                                                                <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                                                                                    <Button variant="ghost" size="sm" onClick={() => handleMoveLesson(chapter.id, lesson.id, 'up')}>
+                                                                                        ↑
                                                                                     </Button>
-                                                                                    <Button
-                                                                                        variant="ghost"
-                                                                                        size="sm"
-                                                                                        className="text-destructive"
-                                                                                        onClick={() => handleDeleteAsset(lesson.id, asset.id)}
-                                                                                    >
+                                                                                    <Button variant="ghost" size="sm" onClick={() => handleMoveLesson(chapter.id, lesson.id, 'down')}>
+                                                                                        ↓
+                                                                                    </Button>
+                                                                                    <Button variant="ghost" size="sm" className="text-destructive" onClick={() => handleDeleteLesson(chapter.id, lesson.id)}>
                                                                                         Delete
                                                                                     </Button>
                                                                                 </div>
                                                                             </div>
-                                                                        ))
-                                                                    ) : (
-                                                                        <p className="text-sm text-muted-foreground">No assets yet.</p>
-                                                                    )}
-                                                                </div>
-                                                                <div className="space-y-4 rounded-md bg-muted/40 p-4">
-                                                                    <h5 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                                                                        Add asset
-                                                                    </h5>
-                                                                    <div className="grid gap-4 md:grid-cols-2">
-                                                                        <div className="space-y-2">
-                                                                            <Label>Title</Label>
-                                                                            <Input
-                                                                                value={formState.title}
-                                                                                onChange={e => updateAssetForm(lesson.id, { title: e.target.value })}
-                                                                            />
-                                                                        </div>
-                                                                        <div className="space-y-2">
-                                                                            <Label>Type</Label>
-                                                                            <Select
-                                                                                value={formState.type}
-                                                                                onValueChange={value => updateAssetForm(lesson.id, { type: value })}
-                                                                            >
-                                                                                <SelectTrigger>
-                                                                                    <SelectValue placeholder="Select type" />
-                                                                                </SelectTrigger>
-                                                                                <SelectContent>
-                                                                                    {assetTypes.map(type => (
-                                                                                        <SelectItem key={type.value} value={type.value}>
-                                                                                            {type.label}
-                                                                                        </SelectItem>
+                                                                            {(() => {
+                                                                                const displayAssets =
+                                                                                    selectedLessonId === lesson.id
+                                                                                        ? lessonAttachments
+                                                                                        : (lesson.assets as any[]) || []
+                                                                                return displayAssets && displayAssets.length > 0
+                                                                            })() && (
+                                                                                <div className="ml-4 pl-3 border-l-2 border-muted space-y-1.5">
+                                                                                    <p className="text-xs font-medium text-muted-foreground">Attached materials:</p>
+                                                                                    {(selectedLessonId === lesson.id
+                                                                                        ? lessonAttachments
+                                                                                        : (lesson.assets as any[]) || []
+                                                                                    ).map((asset: any, idx: number) => (
+                                                                                        <div key={`${asset.id}-${idx}`} className="flex items-center justify-between rounded bg-muted/50 px-2 py-1.5">
+                                                                                            <div className="flex-1 min-w-0">
+                                                                                                <p className="text-xs font-medium truncate">{asset.title}</p>
+                                                                                                <p className="text-xs text-muted-foreground truncate">
+                                                                                                    {asset.type}
+                                                                                                </p>
+                                                                                            </div>
+                                                                                            {asset.url && (
+                                                                                                <Button asChild size="sm" variant="ghost" className="h-6 text-xs">
+                                                                                                    <Link href={asset.url} target="_blank" onClick={e => e.stopPropagation()}>
+                                                                                                        View
+                                                                                                    </Link>
+                                                                                                </Button>
+                                                                                            )}
+                                                                                        </div>
                                                                                     ))}
-                                                                                </SelectContent>
-                                                                            </Select>
+                                                                                </div>
+                                                                            )}
                                                                         </div>
-                                                                    </div>
-                                                                    <div className="space-y-2">
-                                                                        <Label>Description</Label>
-                                                                        <Textarea
-                                                                            rows={2}
-                                                                            value={formState.description}
-                                                                            onChange={e => updateAssetForm(lesson.id, { description: e.target.value })}
-                                                                        />
-                                                                    </div>
-                                                                    <div className="space-y-2">
-                                                                        <Label>File</Label>
-                                                                        <Input
-                                                                            type="file"
-                                                                            onChange={e =>
-                                                                                updateAssetForm(lesson.id, {
-                                                                                    file: e.target.files?.[0] || null,
-                                                                                })
-                                                                            }
-                                                                        />
-                                                                        <p className="text-xs text-muted-foreground">
-                                                                            Upload videos, documents, slides, or other lesson materials.
-                                                                        </p>
-                                                                    </div>
-                                                                    {formState.error && (
-                                                                        <p className="text-sm text-destructive">{formState.error}</p>
-                                                                    )}
-                                                                    <Button
-                                                                        type="button"
-                                                                        onClick={() => handleAssetUpload(lesson.id)}
-                                                                        disabled={formState.uploading}
-                                                                    >
-                                                                        {formState.uploading ? 'Uploading...' : 'Upload asset'}
-                                                                    </Button>
-                                                                </div>
-                                                            </div>
-                                                        )
-                                                    })}
-                                                </CardContent>
-                                            </Card>
-                                        ))
-                                    ) : (
-                                        <Alert>
-                                            <AlertTitle>No chapters available</AlertTitle>
-                                            <AlertDescription>
-                                                Attach lessons to this course to enable lesson-level materials.
-                                            </AlertDescription>
-                                        </Alert>
-                                    )}
-                                </TabsContent>
-                            </Tabs>
+                                                                    ))
+                                                            ) : (
+                                                                <p className="text-xs text-muted-foreground">No lessons yet.</p>
+                                                            )}
+                                                            <Button variant="outline" size="sm" onClick={() => handleAddLesson(chapter.id)}>
+                                                                Add lesson
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                ))
+                                        ) : (
+                                            <Alert>
+                                                <AlertTitle>No chapters</AlertTitle>
+                                                <AlertDescription>Add chapters to start structuring the course.</AlertDescription>
+                                            </Alert>
+                                        )}
+                                    </div>
+                            </div>
                         </CardContent>
                     </Card>
                 )}
+
+                {course && (
+                    <CourseAIConfig courseId={id} />
+                )}
+
+                <Dialog open={lessonModalOpen} onOpenChange={setLessonModalOpen}>
+                    <DialogContent className="max-w-3xl">
+                <DialogHeader>
+                    <DialogTitle>{selectedLessonId ? 'Edit lesson' : 'Create lesson'}</DialogTitle>
+                    <DialogDescription className="sr-only">
+                        Edit lesson details, upload files, and choose which attachments remain linked to this lesson.
+                    </DialogDescription>
+                </DialogHeader>
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-3">
+                                <Label>Title</Label>
+                                <Input
+                                    value={lessonForm.title}
+                                    onChange={e => handleLessonFieldChange('title', e.target.value)}
+                                />
+                                <Label>Description</Label>
+                                <Textarea
+                                    rows={3}
+                                    value={lessonForm.description}
+                                    onChange={e => handleLessonFieldChange('description', e.target.value)}
+                                />
+                                <Label>Learning objectives</Label>
+                                <Textarea
+                                    rows={3}
+                                    placeholder="One per line"
+                                    value={lessonForm.learningObjectives}
+                                    onChange={e => handleLessonFieldChange('learningObjectives', e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-3">
+                                <Label>Duration (minutes)</Label>
+                                <Input
+                                    type="number"
+                                    value={lessonForm.durationMinutes}
+                                    onChange={e => handleLessonFieldChange('durationMinutes', e.target.value)}
+                                />
+                                <Label>Lesson type</Label>
+                                <Select
+                                    value={lessonForm.lessonType}
+                                    onValueChange={value => handleLessonFieldChange('lessonType', value)}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select type" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {lessonTypes.map(opt => (
+                                            <SelectItem key={opt.value} value={opt.value}>
+                                                {opt.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <Label>Completion rule</Label>
+                                <Select
+                                    value={lessonForm.completionRule}
+                                    onValueChange={value => handleLessonFieldChange('completionRule', value)}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select rule" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {completionRules.map(opt => (
+                                            <SelectItem key={opt.value} value={opt.value}>
+                                                {opt.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <p className="text-sm font-semibold">Attach assets</p>
+                            <div className="space-y-2">
+                                <Label>Default type</Label>
+                                <Select
+                                    value={defaultLessonAssetType}
+                                    onValueChange={value => setDefaultLessonAssetType(value)}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select type" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {assetTypes.map(type => (
+                                            <SelectItem key={type.value} value={type.value}>
+                                                {type.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Upload files</Label>
+                                <Input
+                                    type="file"
+                                    multiple
+                                    onChange={e => {
+                                        handleLessonFilesSelected(e.target.files)
+                                        if (e.target) e.target.value = ''
+                                    }}
+                                />
+                                {pendingLessonUploads.length > 0 && (
+                                    <div className="space-y-3 rounded-md border p-3">
+                                        {pendingLessonUploads.map(upload => (
+                                            <div key={upload.id} className="space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <div>
+                                                        <p className="font-medium">{upload.file.name}</p>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            {formatFileSize(upload.file.size)} · {upload.file.type || 'unknown'}
+                                                        </p>
+                                                    </div>
+                                                    <Button variant="ghost" size="sm" onClick={() => removePendingLessonUpload(upload.id)}>
+                                                        Remove
+                                                    </Button>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <Label>Type</Label>
+                                                    <Select
+                                                        value={upload.type}
+                                                        onValueChange={value => updatePendingLessonUpload(upload.id, { type: value })}
+                                                    >
+                                                        <SelectTrigger>
+                                                            <SelectValue placeholder="Select type" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {assetTypes.map(type => (
+                                                                <SelectItem key={type.value} value={type.value}>
+                                                                    {type.label}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                                {upload.error && <p className="text-sm text-destructive">{upload.error}</p>}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <p className="text-sm font-semibold">Attached files</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        Uncheck to detach on save.
+                                    </p>
+                                </div>
+                                {lessonAttachments.length === 0 ? (
+                                    <p className="text-xs text-muted-foreground">No files attached.</p>
+                                ) : (
+                                    <div className="space-y-2 max-h-56 overflow-y-auto rounded-md border p-2">
+                                        {lessonAttachments.map((asset, index) => (
+                                            <div
+                                                key={`${asset.id}-${index}`}
+                                                className="flex items-center gap-3 rounded-md bg-muted/50 p-2"
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    className="h-4 w-4"
+                                                    checked={asset.checked}
+                                                    onChange={(e) => handleToggleAsset(asset.id, e.target.checked)}
+                                                />
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-medium truncate">
+                                                        {asset.title || `Asset ${asset.id.slice(0, 8)}...`}
+                                                    </p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        {asset.type || asset.mimeType || 'Unknown type'}
+                                                    </p>
+                                                </div>
+                                                {asset.url && (
+                                                    <Button asChild size="sm" variant="ghost" className="h-7 text-xs">
+                                                        <Link href={asset.url} target="_blank" onClick={e => e.stopPropagation()}>
+                                                            View
+                                                        </Link>
+                                                    </Button>
+                                                )}
+                                                <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    className="h-7 text-xs text-destructive"
+                                                    onClick={() => handleDeleteLessonAsset(asset.id)}
+                                                >
+                                                    Delete
+                                                </Button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Transcript & AI Knowledge Base Section */}
+                        {(() => {
+                            // Find the first VIDEO asset for this lesson (saved assets)
+                            const videoAsset = lessonAttachments.find(asset => asset.type === 'VIDEO')
+                            // Check for pending video uploads
+                            const pendingVideoUpload = pendingLessonUploads.find(upload => upload.type === 'VIDEO')
+
+                            return (
+                                <div className="space-y-4 border-t pt-4">
+                                    <div>
+                                        <p className="text-sm font-semibold">AI Knowledge Base</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            Upload VTT transcripts to enable AI-powered Q&A with source citations
+                                        </p>
+                                    </div>
+
+                                    {pendingVideoUpload ? (
+                                        // Video is pending upload - will prompt for VTT after save
+                                        <div className="rounded-lg border border-dashed border-blue-300 bg-blue-50 p-4">
+                                            <div className="flex items-center gap-2">
+                                                <Video className="h-5 w-5 text-blue-600" />
+                                                <div>
+                                                    <p className="text-sm font-medium text-blue-900">
+                                                        Video pending upload: {pendingVideoUpload.file.name}
+                                                    </p>
+                                                    <p className="text-xs text-blue-700">
+                                                        After saving, you&apos;ll be prompted to upload a VTT transcript file for AI-powered Q&A
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : !videoAsset ? (
+                                        <div className="rounded-lg border border-dashed p-4 text-center">
+                                            <p className="text-sm text-muted-foreground">
+                                                Add a video asset to this lesson first to enable transcript upload
+                                            </p>
+                                        </div>
+                                    ) : selectedLessonId ? (
+                                        <div className="space-y-4">
+                                            <div className="grid gap-4 md:grid-cols-2">
+                                                <TranscriptUpload
+                                                    key={`upload-${transcriptRefreshKey}`}
+                                                    lessonId={selectedLessonId}
+                                                    videoAssetId={videoAsset.id}
+                                                    onUploadComplete={() => {
+                                                        setTranscriptRefreshKey(prev => prev + 1)
+                                                    }}
+                                                />
+                                                <KnowledgeBaseStatus
+                                                    key={`status-${transcriptRefreshKey}`}
+                                                    lessonId={selectedLessonId}
+                                                    onViewChunks={() => setChunkPreviewOpen(true)}
+                                                    onDelete={() => {
+                                                        setTranscriptRefreshKey(prev => prev + 1)
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="rounded-lg border border-dashed p-4 text-center">
+                                            <p className="text-sm text-muted-foreground">
+                                                Save the lesson first to enable transcript upload
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            )
+                        })()}
+
+                        {lessonError && <p className="text-sm text-destructive">{lessonError}</p>}
+                        <DialogFooter>
+                            <Button variant="outline" onClick={closeLessonModal}>Cancel</Button>
+                            <Button onClick={handleSaveLesson} disabled={lessonSaving}>
+                                {lessonSaving ? 'Saving...' : 'Save lesson'}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Chunk Preview Modal */}
+                {selectedLessonId && (
+                    <ChunkPreview
+                        lessonId={selectedLessonId}
+                        open={chunkPreviewOpen}
+                        onOpenChange={setChunkPreviewOpen}
+                    />
+                )}
+
+                {/* VTT Prompt Modal - Shows after video upload */}
+                <Dialog open={vttPromptOpen} onOpenChange={setVttPromptOpen}>
+                    <DialogContent className="sm:max-w-[500px]">
+                        <DialogHeader>
+                            <div className="flex items-center gap-2">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100">
+                                    <Video className="h-5 w-5 text-blue-600" />
+                                </div>
+                                <div>
+                                    <DialogTitle>Add Transcription for AI Assistant</DialogTitle>
+                                    <DialogDescription>
+                                        Enable AI-powered Q&A for this video
+                                    </DialogDescription>
+                                </div>
+                            </div>
+                        </DialogHeader>
+
+                        <div className="space-y-4 py-4">
+                            <p className="text-sm text-muted-foreground">
+                                To enable AI-powered Q&A for this video, please upload the transcription file (VTT format).
+                                The AI Assistant will use this to answer student questions with precise citations.
+                            </p>
+
+                            <Alert>
+                                <FileText className="h-4 w-4" />
+                                <AlertDescription>
+                                    VTT (WebVTT) files contain timed text tracks. You can generate these using video editing
+                                    software or transcription services.
+                                </AlertDescription>
+                            </Alert>
+
+                            {vttPromptLessonId && vttPromptVideoAssetId && (
+                                <TranscriptUpload
+                                    lessonId={vttPromptLessonId}
+                                    videoAssetId={vttPromptVideoAssetId}
+                                    onUploadComplete={() => {
+                                        setVttPromptOpen(false)
+                                        setVttPromptVideoAssetId(null)
+                                        setVttPromptLessonId(null)
+                                    }}
+                                />
+                            )}
+                        </div>
+
+                        <DialogFooter className="flex-col gap-2 sm:flex-row">
+                            <Button
+                                variant="outline"
+                                onClick={() => {
+                                    setVttPromptOpen(false)
+                                    setVttPromptVideoAssetId(null)
+                                    setVttPromptLessonId(null)
+                                }}
+                                className="w-full sm:w-auto"
+                            >
+                                <AlertTriangle className="mr-2 h-4 w-4" />
+                                Skip for Now
+                            </Button>
+                            <p className="text-xs text-muted-foreground text-center sm:hidden">
+                                (AI will have limited knowledge without transcript)
+                            </p>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </div>
         </DashboardLayout>
     )

@@ -4,6 +4,36 @@ import { CourseService } from '@/lib/services/course.service'
 import { createCourseSchema } from '@/lib/validations'
 import { z } from 'zod'
 
+// GET /admin/courses — admin list (all statuses by default)
+export const GET = withAdminAuth(async (req) => {
+    try {
+        const { searchParams } = new URL(req.url)
+        const page = Number(searchParams.get('page') || '1')
+        const limit = Number(searchParams.get('limit') || '10')
+        const category = searchParams.get('category') || undefined
+        const level = (searchParams.get('level') as any) || undefined
+        const search = searchParams.get('search') || undefined
+        const status = (searchParams.get('status') as any) || 'ALL'
+
+        const { courses, pagination } = await CourseService.getCourses({
+            page,
+            limit,
+            category,
+            level,
+            search,
+            status, // 'ALL' includes DRAFT/PUBLISHED/ARCHIVED for admin
+        })
+
+        return NextResponse.json({ success: true, data: courses, pagination })
+    } catch (error) {
+        console.error('List courses error:', error)
+        return NextResponse.json(
+            { success: false, error: { code: 'SYSTEM_001', message: 'Failed to list courses' } },
+            { status: 500 }
+        )
+    }
+})
+
 export const POST = withAdminAuth(async (req) => {
     try {
         const body = await req.json()
