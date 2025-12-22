@@ -30,7 +30,7 @@
    - 提供上下文理解、视频时间戳关联、RAG 结构（如需要）。
 
 6. **DevOps 工程师**  
-   - 输出 Dockerfile、docker-compose  
+   - 输出部署/运维脚本与部署指引（不依赖 Docker）  
    - 若需要，给出 CI/CD（Vercel + GitHub Actions）  
    - 提供部署架构图。
 

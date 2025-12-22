@@ -36,3 +36,8 @@ tmp/
 
 # Media / uploads (keep out of repo by default)
 *.vtt
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+frontend.log
+backend.log

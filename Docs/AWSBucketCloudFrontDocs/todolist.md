@@ -34,7 +34,7 @@
       - After the backend runs with correct envs, use the admin UI.
       - Each upload now stores metadata in Postgres and outputs CloudFront URLs; re-upload existing files to remove public S3 links.
   4. Deploy backend to ECS Fargate
-      - Containerize /backend (Dockerfile + multi-stage build).
+      - Build a container image with your chosen tooling (Podman compatible).
       - Create ECS service (ALB -> Fastify) with the same env variables.
       - Point NEXT_PUBLIC_BACKEND_URL to the load balancer.
   5. Add automated tests
