@@ -1,7 +1,25 @@
 import prisma from '@/lib/prisma'
 import { LessonAssetType, LessonCompletionRule, LessonType } from '@prisma/client'
 import { FileService } from '@/lib/services/file.service'
-import { resolveAssetUrl } from './asset-url-resolver'
+import { S3_ASSET_BASE_PREFIX } from '@/lib/aws-s3'
+import { v4 as uuidv4 } from 'uuid'
+import path from 'path'
+
+const joinPathSegments = (...segments: (string | undefined | null)[]) => {
+    return segments
+        .filter(Boolean)
+        .map(segment => segment!.replace(/^\/+|\/+$/g, ''))
+        .filter(segment => segment.length > 0)
+        .join('/')
+}
+
+const extensionForContentType = (contentType: string): string => {
+    const t = contentType.toLowerCase()
+    if (t === 'video/mp4') return '.mp4'
+    if (t === 'text/vtt') return '.vtt'
+    if (t === 'application/pdf') return '.pdf'
+    return ''
+}
 
 export class CourseStructureService {
     static async assertChapterAncestry(courseId: string, chapterId: string) {
@@ -298,20 +316,34 @@ export class CourseStructureService {
         })
         if (!lesson) throw new Error('LESSON_NOT_FOUND')
 
+        // New key scheme (for CloudFront `/assets/*` behavior):
+        //   <AWS_S3_ASSET_PREFIX>/<courseId>/<lessonId>/<assetId>.<ext>
+        // `AWS_S3_ASSET_PREFIX` should be set to `assets` in production to match `/assets/*`.
+        const assetId = uuidv4()
+        const ext = (() => {
+            const fromName = path.extname(params.filename || '').trim()
+            if (fromName && fromName.length <= 10) return fromName
+            return extensionForContentType(params.contentType)
+        })()
+        const key = joinPathSegments(S3_ASSET_BASE_PREFIX, lesson.chapter.courseId, lessonId, `${assetId}${ext}`)
+
         const upload = await FileService.generateAssetUploadUrl({
             filename: params.filename,
             contentType: params.contentType,
             assetType: this.mapAssetTypeFolder(params.type),
             lessonId,
+            key,
         })
 
         const courseAsset = await prisma.courseAsset.create({
             data: {
+                id: assetId,
                 courseId: lesson.chapter.courseId,
                 title: params.filename.replace(/\.[^/.]+$/, '') || params.filename,
                 type: params.type,
-                url: upload.url,
-                cloudfrontUrl: upload.url,
+                // Do not store expiring access URLs in DB. Always compute at read-time.
+                url: upload.key,
+                cloudfrontUrl: null,
                 s3Key: upload.key,
                 mimeType: params.contentType,
             },
@@ -327,7 +359,7 @@ export class CourseStructureService {
                 id: courseAsset.id,
                 title: courseAsset.title,
                 type: courseAsset.type,
-                url: courseAsset.cloudfrontUrl ?? courseAsset.url,
+                url: await FileService.getAssetAccessUrl(courseAsset.s3Key),
                 mimeType: courseAsset.mimeType ?? courseAsset.contentType ?? undefined,
                 s3Key: courseAsset.s3Key,
             },

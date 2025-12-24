@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { CourseStructureService } from '@/lib/services/course-structure.service'
-import { resolveAssetUrl } from '@/lib/services/asset-url-resolver'
+import { FileService } from '@/lib/services/file.service'
 import { withAuthOptional } from '@/lib/auth-middleware'
 
 export const GET = withAuthOptional(async (req, user, { params }: { params: Promise<{ id: string }> }) => {
@@ -11,12 +11,12 @@ export const GET = withAuthOptional(async (req, user, { params }: { params: Prom
 
         const payload = {
             courseId: course.id,
-            chapters: course.chapters.map((chapter) => ({
+            chapters: await Promise.all(course.chapters.map(async (chapter) => ({
                 id: chapter.id,
                 title: chapter.title,
                 description: chapter.description,
                 order: chapter.order,
-                lessons: chapter.lessons.map((lesson) => ({
+                lessons: await Promise.all(chapter.lessons.map(async (lesson) => ({
                     id: lesson.id,
                     title: lesson.title,
                     description: lesson.description,
@@ -25,18 +25,18 @@ export const GET = withAuthOptional(async (req, user, { params }: { params: Prom
                     lessonType: lesson.lessonType ?? undefined,
                     learningObjectives: lesson.learningObjectives ?? [],
                     completionRule: lesson.completionRule ?? undefined,
-                    assets: lesson.assets.map((binding) => {
+                    assets: await Promise.all(lesson.assets.map(async (binding) => {
                         const asset = binding.courseAsset
                         return {
                             id: asset.id,
                             title: asset.title,
                             type: asset.type,
-                            url: resolveAssetUrl(asset),
+                            url: await FileService.getAssetAccessUrl(asset.s3Key),
                             mimeType: asset.mimeType ?? asset.contentType ?? undefined,
                         }
-                    }),
-                })),
-            })),
+                    })),
+                }))),
+            }))),
         }
 
         return NextResponse.json({ success: true, data: payload })

@@ -43,6 +43,7 @@
         "@supabase/supabase-js": "^2.86.0",
         "@types/video.js": "^7.3.58",
         "bcryptjs": "^2.4.3",
+        "aws-cloudfront-sign": "^2.2.1",
         "class-variance-authority": "^0.7.0",
         "clsx": "^2.1.0",
         "date-fns": "^3.0.6",

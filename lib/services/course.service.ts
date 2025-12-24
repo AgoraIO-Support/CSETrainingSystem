@@ -1,6 +1,9 @@
 import prisma from '@/lib/prisma'
 import { CourseLevel, CourseStatus, Prisma } from '@prisma/client'
-import { resolveAssetUrl, resolveMediaUrl } from './asset-url-resolver'
+import { FileService } from './file.service'
+
+const ABSOLUTE_URL_REGEX = /^https?:\/\//i
+const isAbsoluteUrl = (value?: string | null) => typeof value === 'string' && ABSOLUTE_URL_REGEX.test(value)
 
 export class CourseService {
     /**
@@ -109,7 +112,7 @@ export class CourseService {
                                 },
                                 transcripts: {
                                     where: { status: 'READY' },
-                                    select: { url: true, language: true },
+                                    select: { s3Key: true, url: true, language: true },
                                     orderBy: { createdAt: 'desc' },
                                     take: 1,
                                 },
@@ -148,32 +151,66 @@ export class CourseService {
             }
         }
 
+        const chapters = await Promise.all(
+            course.chapters.map(async (ch) => {
+                const lessons = await Promise.all(
+                    ch.lessons.map(async (lesson) => {
+                        // Prefer transcript asset if available; otherwise fall back to legacy subtitle fields.
+                        const transcriptAsset = lesson.transcripts?.[0]
+
+                        const subtitleUrl = transcriptAsset?.s3Key
+                            ? await FileService.getAssetAccessUrl(transcriptAsset.s3Key)
+                            : lesson.subtitleKey
+                                ? await FileService.getAssetAccessUrl(lesson.subtitleKey)
+                                : lesson.subtitleUrl
+                                    ? isAbsoluteUrl(lesson.subtitleUrl)
+                                        ? lesson.subtitleUrl
+                                        : await FileService.getAssetAccessUrl(lesson.subtitleUrl)
+                                    : null
+
+                        const videoUrl = lesson.videoKey
+                            ? await FileService.getAssetAccessUrl(lesson.videoKey)
+                            : lesson.videoUrl
+                                ? isAbsoluteUrl(lesson.videoUrl)
+                                    ? lesson.videoUrl
+                                    : await FileService.getAssetAccessUrl(lesson.videoUrl)
+                                : null
+
+                        const assets = await Promise.all(
+                            lesson.assets.map(async (binding) => {
+                                const asset = binding.courseAsset
+                                const url = asset?.s3Key
+                                    ? await FileService.getAssetAccessUrl(asset.s3Key)
+                                    : asset?.cloudfrontUrl || asset?.url || null
+
+                                return {
+                                    ...asset,
+                                    id: asset.id,
+                                    url,
+                                    mimeType: asset.mimeType ?? asset.contentType,
+                                }
+                            })
+                        )
+
+                        return {
+                            ...lesson,
+                            videoUrl,
+                            subtitleUrl,
+                            assets,
+                        }
+                    })
+                )
+
+                return {
+                    ...ch,
+                    lessons,
+                }
+            })
+        )
+
         return {
             ...course,
-            chapters: course.chapters.map(ch => ({
-                ...ch,
-                lessons: ch.lessons.map(lesson => {
-                    // Prefer transcript URL from transcript_assets if available (already processed VTT)
-                    // Otherwise fall back to legacy subtitleUrl/subtitleKey fields
-                    const transcriptUrl = lesson.transcripts?.[0]?.url
-                    const legacySubtitleUrl = resolveMediaUrl(lesson.subtitleUrl, lesson.subtitleKey)
-
-                    return {
-                        ...lesson,
-                        videoUrl: resolveMediaUrl(lesson.videoUrl, lesson.videoKey),
-                        subtitleUrl: transcriptUrl || legacySubtitleUrl,
-                        assets: lesson.assets.map(binding => {
-                            const asset = binding.courseAsset
-                            return {
-                                ...asset,
-                                id: asset.id,
-                                url: resolveAssetUrl(asset),
-                                mimeType: asset.mimeType ?? asset.contentType,
-                            }
-                        }),
-                    }
-                }),
-            })),
+            chapters,
             isEnrolled,
             progress,
         }

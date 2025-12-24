@@ -8,6 +8,8 @@ import { withAdminAuth } from '@/lib/auth-middleware';
 import { z } from 'zod';
 import { FileService } from '@/lib/services/file.service';
 import prisma from '@/lib/prisma';
+import { S3_ASSET_BASE_PREFIX } from '@/lib/aws-s3'
+import { v4 as uuidv4 } from 'uuid'
 
 // Validation schema for upload request
 const transcriptUploadSchema = z.object({
@@ -38,6 +40,7 @@ export const POST = withAdminAuth(async (
     // 2. Check if lesson exists
     const lesson = await prisma.lesson.findUnique({
       where: { id: lessonId },
+      include: { chapter: { select: { courseId: true } } },
     });
 
     if (!lesson) {
@@ -81,20 +84,31 @@ export const POST = withAdminAuth(async (
       }
     }
 
-    // 6. Generate presigned URL for upload
+    // 6. Generate a stable S3 key under:
+    //    <AWS_S3_ASSET_PREFIX>/<courseId>/<lessonId>/<transcriptId>.vtt
+    // `AWS_S3_ASSET_PREFIX` should be `assets` in production to match CloudFront `/assets/*`.
+    const transcriptId = uuidv4()
+    const key = [S3_ASSET_BASE_PREFIX, lesson.chapter.courseId, lessonId, `${transcriptId}.vtt`]
+      .filter(Boolean)
+      .map((s) => String(s).replace(/^\/+|\/+$/g, ''))
+      .join('/')
+
+    // 7. Generate presigned URL for upload
     const uploadData = await FileService.generateTranscriptUploadUrl({
       filename: validatedData.filename,
       lessonId,
+      key,
     });
 
-    // 7. Create TranscriptAsset record
+    // 8. Create TranscriptAsset record (do not store expiring access URL)
     const transcriptAsset = await prisma.transcriptAsset.create({
       data: {
+        id: transcriptId,
         lessonId,
         videoAssetId: validatedData.videoAssetId,
         filename: validatedData.filename,
         s3Key: uploadData.key,
-        url: uploadData.url,
+        url: null,
         language: validatedData.language,
         status: 'PENDING',
       },
@@ -207,7 +221,7 @@ export const GET = withAdminAuth(async (
           id: transcript.id,
           filename: transcript.filename,
           s3Key: transcript.s3Key,
-          url: transcript.url,
+          url: transcript.s3Key ? await FileService.getAssetAccessUrl(transcript.s3Key) : null,
           language: transcript.language,
           uploadedAt: transcript.createdAt.toISOString(),
         },

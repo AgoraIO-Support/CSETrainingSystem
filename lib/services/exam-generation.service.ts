@@ -14,7 +14,7 @@ import { log, timeAsync } from '@/lib/logger';
 import { ExamService } from '@/lib/services/exam.service';
 import { KnowledgeContextService } from '@/lib/services/knowledge-context.service';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
-import s3Client, { S3_BUCKET_NAME } from '@/lib/aws-s3';
+import s3Client, { ASSET_S3_BUCKET_NAME } from '@/lib/aws-s3';
 import { createHash } from 'crypto';
 
 export interface GenerationConfig {
@@ -315,7 +315,7 @@ export class ExamGenerationService {
       const transcript = lesson.transcripts[0];
       if (!transcript?.s3Key) continue;
 
-      const command = new GetObjectCommand({ Bucket: S3_BUCKET_NAME, Key: transcript.s3Key });
+      const command = new GetObjectCommand({ Bucket: ASSET_S3_BUCKET_NAME, Key: transcript.s3Key });
       const response = await s3Client.send(command);
       const vttContent = (await response.Body?.transformToString('utf-8')) || '';
       if (!vttContent.trim()) continue;

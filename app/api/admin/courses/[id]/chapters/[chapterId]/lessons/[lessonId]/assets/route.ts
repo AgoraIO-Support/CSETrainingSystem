@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { replaceLessonAssetsSchema } from '@/lib/validations'
 import { CourseStructureService } from '@/lib/services/course-structure.service'
 import { LessonAssetType } from '@prisma/client'
+import { FileService } from '@/lib/services/file.service'
 
 // GET /admin/courses/:id/chapters/:chapterId/lessons/:lessonId/assets
 export const GET = withAdminAuth(async (req, user, { params }: { params: Promise<{ id: string; chapterId: string; lessonId: string }> }) => {
@@ -11,14 +12,14 @@ export const GET = withAdminAuth(async (req, user, { params }: { params: Promise
     const { id: courseId, chapterId, lessonId } = await params
     await CourseStructureService.assertLessonAncestry(courseId, chapterId, lessonId)
     const assets = await CourseStructureService.getLessonAssets(lessonId)
-    const data = assets.map((asset: any) => ({
+    const data = await Promise.all(assets.map(async (asset: any) => ({
       id: asset.id,
       title: asset.title,
       type: asset.type as LessonAssetType,
-      url: asset.cloudfrontUrl ?? asset.url,
-      cloudfrontUrl: asset.cloudfrontUrl ?? null,
+      url: await FileService.getAssetAccessUrl(asset.s3Key),
+      cloudfrontUrl: null,
       mimeType: asset.mimeType ?? asset.contentType ?? null,
-    }))
+    })))
     return NextResponse.json({ success: true, data })
   } catch (error) {
     console.error('Get nested lesson assets error:', error)
@@ -52,14 +53,14 @@ export const POST = withAdminAuth(async (req, user, { params }: { params: Promis
     await CourseStructureService.replaceLessonAssets(lessonId, data.courseAssetIds)
 
     const assets = await CourseStructureService.getLessonAssets(lessonId)
-    const response = assets.map((asset: any) => ({
+    const response = await Promise.all(assets.map(async (asset: any) => ({
       id: asset.id,
       title: asset.title,
       type: asset.type as LessonAssetType,
-      url: asset.cloudfrontUrl ?? asset.url,
-      cloudfrontUrl: asset.cloudfrontUrl ?? null,
+      url: await FileService.getAssetAccessUrl(asset.s3Key),
+      cloudfrontUrl: null,
       mimeType: asset.mimeType ?? asset.contentType ?? null,
-    }))
+    })))
     return NextResponse.json({ success: true, data: response })
   } catch (error) {
     console.error('Replace nested lesson assets error:', error)

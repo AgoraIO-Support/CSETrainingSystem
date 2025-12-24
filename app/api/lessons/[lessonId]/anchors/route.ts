@@ -8,7 +8,7 @@ import { withAuth } from '@/lib/auth-middleware';
 import prisma from '@/lib/prisma';
 import { KnowledgeContextService } from '@/lib/services/knowledge-context.service';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
-import s3Client, { S3_BUCKET_NAME } from '@/lib/aws-s3';
+import s3Client, { ASSET_S3_BUCKET_NAME } from '@/lib/aws-s3';
 
 const PROCESSING_STALE_MS = 3 * 60 * 1000;
 
@@ -99,7 +99,7 @@ export const GET = withAuth(async (
 
         if (lesson && transcript?.s3Key) {
           const command = new GetObjectCommand({
-            Bucket: S3_BUCKET_NAME,
+            Bucket: ASSET_S3_BUCKET_NAME,
             Key: transcript.s3Key,
           });
           const response = await s3Client.send(command);

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { withAdminAuth } from '@/lib/auth-middleware'
 import { CourseAssetService } from '@/lib/services/course-asset.service'
+import { FileService } from '@/lib/services/file.service'
 import { createCourseAssetSchema } from '@/lib/validations'
 import { z } from 'zod'
 
@@ -11,7 +12,13 @@ export const GET = withAdminAuth(async (req, user, { params }: { params: Promise
 
         return NextResponse.json({
             success: true,
-            data: assets,
+            data: await Promise.all(
+                assets.map(async (asset) => ({
+                    ...asset,
+                    url: asset.s3Key ? await FileService.getAssetAccessUrl(asset.s3Key) : asset.url,
+                    cloudfrontUrl: null,
+                }))
+            ),
         })
     } catch (error) {
         console.error('List course assets error:', error)

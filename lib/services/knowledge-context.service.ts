@@ -5,7 +5,7 @@
  */
 
 import prisma from '@/lib/prisma';
-import s3Client, { S3_BUCKET_NAME, CLOUDFRONT_DOMAIN, S3_ASSET_BASE_PREFIX } from '@/lib/aws-s3';
+import s3Client, { ASSET_S3_BUCKET_NAME, CLOUDFRONT_DOMAIN, S3_ASSET_BASE_PREFIX } from '@/lib/aws-s3';
 import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { VTTToXMLService, XMLGenerationResult, KnowledgeAnchorData, CourseContext } from './vtt-to-xml.service';
 import { KnowledgeContextStatus, KnowledgeAnchorType } from '@prisma/client';
@@ -80,7 +80,7 @@ export class KnowledgeContextService {
       });
 
       // Store XML to S3
-      const s3Key = await this.storeXMLToS3(lessonId, result.xml);
+      const s3Key = await this.storeXMLToS3(context.courseId, lessonId, result.xml);
 
       // Store anchors in database
       await this.storeAnchors(lessonId, result.anchors);
@@ -278,11 +278,13 @@ export class KnowledgeContextService {
   /**
    * Store XML content to S3
    */
-  private async storeXMLToS3(lessonId: string, xml: string): Promise<string> {
-    const key = `${S3_ASSET_BASE_PREFIX}/knowledge-contexts/${lessonId}/context.xml`;
+  private async storeXMLToS3(courseId: string, lessonId: string, xml: string): Promise<string> {
+    // Keep XML under the same asset prefix so it can also be served via CloudFront when needed:
+    //   <AWS_S3_ASSET_PREFIX>/<courseId>/<lessonId>/context.xml
+    const key = `${S3_ASSET_BASE_PREFIX}/${courseId}/${lessonId}/context.xml`;
 
     const command = new PutObjectCommand({
-      Bucket: S3_BUCKET_NAME,
+      Bucket: ASSET_S3_BUCKET_NAME,
       Key: key,
       Body: xml,
       ContentType: 'application/xml',
@@ -303,7 +305,7 @@ export class KnowledgeContextService {
    */
   private async fetchXMLFromS3(s3Key: string): Promise<string> {
     const command = new GetObjectCommand({
-      Bucket: S3_BUCKET_NAME,
+      Bucket: ASSET_S3_BUCKET_NAME,
       Key: s3Key,
     });
 
@@ -323,7 +325,7 @@ export class KnowledgeContextService {
    */
   private async deleteXMLFromS3(s3Key: string): Promise<void> {
     const command = new DeleteObjectCommand({
-      Bucket: S3_BUCKET_NAME,
+      Bucket: ASSET_S3_BUCKET_NAME,
       Key: s3Key,
     });
 

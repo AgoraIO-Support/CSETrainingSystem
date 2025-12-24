@@ -33,6 +33,15 @@ export interface LoginResponse {
     message?: string
 }
 
+export interface RegisterPayload {
+    email: string
+    password: string
+    name: string
+    department?: string
+}
+
+export type RegisterResponse = LoginResponse
+
 export interface ApiError {
     success: false
     error: {
@@ -127,6 +136,19 @@ export class ApiClient {
         const response = await this.request<LoginResponse>('/auth/login', {
             method: 'POST',
             body: JSON.stringify({ email, password }),
+        })
+
+        if (response.success && response.data.session) {
+            this.setToken(response.data.session.accessToken)
+        }
+
+        return response
+    }
+
+    static async register(payload: RegisterPayload): Promise<RegisterResponse> {
+        const response = await this.request<RegisterResponse>('/auth/register', {
+            method: 'POST',
+            body: JSON.stringify(payload),
         })
 
         if (response.success && response.data.session) {

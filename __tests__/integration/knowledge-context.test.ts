@@ -197,7 +197,9 @@ describe('Knowledge Context & Anchor Persistence', () => {
 
       expect(putCall).toBeDefined();
       expect(putCall[0].Key).toContain(testLessonId);
-      expect(putCall[0].Key).toContain('knowledge-contexts');
+      // New key scheme: <AWS_S3_ASSET_PREFIX>/<courseId>/<lessonId>/context.xml
+      expect(putCall[0].Key).toContain(TEST_COURSE_CONTEXT.courseId);
+      expect(putCall[0].Key).toContain('context.xml');
       expect(putCall[0].ContentType).toBe('application/xml');
     });
 
