@@ -222,7 +222,7 @@ export default function ExamsPage() {
                                                     Pass: {exam.passingScore}/{exam.totalScore}
                                                 </span>
                                                 <span>
-                                                    Attempts: {exam.userAttempts}/{exam.maxAttempts}
+                                                    Attempts: {(exam.userAttempts ?? 0)}/{exam.maxAttempts}
                                                 </span>
                                                 {exam.deadline && (
                                                     <span className="flex items-center gap-1">
@@ -257,14 +257,14 @@ export default function ExamsPage() {
                                         <div className="ml-4">
                                             <Link href={`/exams/${exam.id}`}>
                                                 <Button
-                                                    disabled={exam.userAttempts >= exam.maxAttempts && !exam.hasPassed}
+                                                    disabled={(exam.userAttempts ?? 0) >= exam.maxAttempts && !exam.hasPassed}
                                                 >
-                                                    {exam.userAttempts === 0 ? (
+                                                    {(exam.userAttempts ?? 0) === 0 ? (
                                                         <>
                                                             <Play className="h-4 w-4 mr-2" />
                                                             Start Exam
                                                         </>
-                                                    ) : exam.userAttempts >= exam.maxAttempts ? (
+                                                    ) : (exam.userAttempts ?? 0) >= exam.maxAttempts ? (
                                                         'View Results'
                                                     ) : (
                                                         <>
