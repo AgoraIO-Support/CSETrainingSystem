@@ -4,7 +4,10 @@ import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-key-do-not-use-in-production'
-const IS_LOCAL_AUTH = process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('placeholder')
+const IS_LOCAL_AUTH =
+    !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL.includes('placeholder') ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL.startsWith('http://localhost')
 
 export class AuthService {
     /**

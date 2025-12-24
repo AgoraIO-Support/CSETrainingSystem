@@ -37,7 +37,7 @@ export const POST = withAdminAuth(async (req, user, { params }: { params: Promis
   try {
     const { id: courseId, chapterId } = await params
     const body = await req.json()
-    const data = createLessonSchema.parse(body)
+    const data: z.infer<typeof createLessonSchema> = createLessonSchema.parse(body)
 
     // Ensure chapter belongs to course
     await CourseStructureService.assertChapterAncestry(courseId, chapterId)

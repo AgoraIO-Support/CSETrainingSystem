@@ -8,7 +8,7 @@ export const POST = withAdminAuth(async (req, user, { params }: { params: Promis
     try {
         const { chapterId } = await params
         const body = await req.json()
-        const data = createLessonSchema.parse(body)
+        const data: z.infer<typeof createLessonSchema> = createLessonSchema.parse(body)
 
         const lesson = await CourseStructureService.createLesson(chapterId, data)
 
