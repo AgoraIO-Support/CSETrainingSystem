@@ -25,7 +25,6 @@ COPY components ./components
 COPY lib ./lib
 COPY public ./public
 COPY types ./types
-COPY backend ./backend
 COPY next-env.d.ts next.config.js tsconfig.json tailwind.config.ts postcss.config.js eslint.config.mjs ./
 
 RUN npm run build
