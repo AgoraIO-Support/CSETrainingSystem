@@ -15,7 +15,7 @@ const getSeedAdminCredentials = () => {
     return { email, password }
 }
 
-const isLocalDatabaseUrl = (databaseUrl) => {
+const isLocalDatabaseUrl = (databaseUrl: string) => {
     try {
         const url = new URL(databaseUrl)
         const host = url.hostname
