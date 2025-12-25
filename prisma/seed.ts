@@ -3,55 +3,136 @@ const bcrypt = require('bcryptjs')
 
 const prisma = new PrismaClient()
 
+const getSeedAdminCredentials = () => {
+    const email = (process.env.CSE_SEED_ADMIN_EMAIL || process.env.ADMIN_EMAIL || '').trim()
+    const password = (process.env.CSE_SEED_ADMIN_PASSWORD || process.env.ADMIN_PASSWORD || '').trim()
+
+    if (!email && !password) return null
+    if (!email || !password) {
+        throw new Error('Missing CSE_SEED_ADMIN_EMAIL/CSE_SEED_ADMIN_PASSWORD (or ADMIN_EMAIL/ADMIN_PASSWORD)')
+    }
+
+    return { email, password }
+}
+
+const isLocalDatabaseUrl = (databaseUrl) => {
+    try {
+        const url = new URL(databaseUrl)
+        const host = url.hostname
+        return host === 'localhost' || host === '::1' || host === '127.0.0.1' || host.startsWith('127.')
+    } catch {
+        return false
+    }
+}
+
 async function main() {
     console.log('🌱 Starting database seed...')
 
-    // Hash password for all seed users
-    const passwordHash = await bcrypt.hash('password123', 10)
+    const databaseUrl = (process.env.DATABASE_URL || '').trim()
+    const seedAdmin = getSeedAdminCredentials()
 
-    // Create admin user
-    const adminUser = await prisma.user.upsert({
-        where: { email: 'admin@agora.io' },
-        update: {
-            password: passwordHash,
-        },
-        create: {
-            email: 'admin@agora.io',
-            name: 'Admin User',
-            password: passwordHash,
-            role: 'ADMIN',
-            status: 'ACTIVE',
-            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin',
-            title: 'System Administrator',
-            department: 'IT',
-        },
-    })
+    // Safety rule:
+    // - For production/remote DBs, NEVER create default credentials.
+    // - Allow default seed users only for local DB URLs (localhost/127.0.0.1) or when explicitly opted-in.
+    const allowDefaultUsers =
+        process.env.CSE_SEED_DEFAULT_USERS === '1' || (databaseUrl && isLocalDatabaseUrl(databaseUrl))
 
-    console.log('✅ Created admin user:', adminUser.email)
+    if (!allowDefaultUsers && !seedAdmin) {
+        throw new Error(
+            [
+                'Refusing to seed default users for a non-local DATABASE_URL.',
+                'To seed an admin user in production, set:',
+                '  - CSE_SEED_ADMIN_EMAIL',
+                '  - CSE_SEED_ADMIN_PASSWORD',
+                'Or (for local dev only) opt-in to default seed users with:',
+                '  - CSE_SEED_DEFAULT_USERS=1',
+            ].join('\n')
+        )
+    }
 
-    // Create sample regular user
-    const regularUser = await prisma.user.upsert({
-        where: { email: 'user@agora.io' },
-        update: {
-            password: passwordHash,
-        },
-        create: {
-            email: 'user@agora.io',
-            name: 'Test User',
-            password: passwordHash,
-            role: 'USER',
-            status: 'ACTIVE',
-            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=User',
-            department: 'CSE',
-        },
-    })
+    let passwordHash
+    let regularUser
 
-    console.log('✅ Created regular user')
+    // 1) Production-safe path: seed a single admin user when explicitly provided.
+    if (seedAdmin) {
+        const adminPasswordHash = await bcrypt.hash(seedAdmin.password, 10)
+
+        const adminUser = await prisma.user.upsert({
+            where: { email: seedAdmin.email },
+            update: {
+                password: adminPasswordHash,
+                role: 'ADMIN',
+                status: 'ACTIVE',
+            },
+            create: {
+                email: seedAdmin.email,
+                name: 'Admin User',
+                password: adminPasswordHash,
+                role: 'ADMIN',
+                status: 'ACTIVE',
+                avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin',
+                title: 'System Administrator',
+                department: 'IT',
+            },
+        })
+
+        console.log('✅ Seeded admin user:', adminUser.email)
+    }
+
+    // 2) Local dev/test path: seed the legacy default users (explicitly disallowed for remote DBs).
+    if (allowDefaultUsers) {
+        // Hash password for all default seed users
+        passwordHash = await bcrypt.hash(process.env.CSE_SEED_DEFAULT_PASSWORD || 'password123', 10)
+
+        // Create admin user
+        const adminUser = await prisma.user.upsert({
+            where: { email: 'admin@agora.io' },
+            update: {
+                password: passwordHash,
+            },
+            create: {
+                email: 'admin@agora.io',
+                name: 'Admin User',
+                password: passwordHash,
+                role: 'ADMIN',
+                status: 'ACTIVE',
+                avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin',
+                title: 'System Administrator',
+                department: 'IT',
+            },
+        })
+
+        console.log('✅ Created default admin user:', adminUser.email)
+
+        // Create sample regular user
+        regularUser = await prisma.user.upsert({
+            where: { email: 'user@agora.io' },
+            update: {
+                password: passwordHash,
+            },
+            create: {
+                email: 'user@agora.io',
+                name: 'Test User',
+                password: passwordHash,
+                role: 'USER',
+                status: 'ACTIVE',
+                avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=User',
+                department: 'CSE',
+            },
+        })
+
+        console.log('✅ Created default regular user')
+    }
 
     // Demo content is opt-in. By default, we only seed the minimal accounts above.
     const seedDemo = process.env.CSE_SEED_DEMO_DATA === '1'
     if (!seedDemo) {
         console.log('ℹ️  Skipping demo data (set CSE_SEED_DEMO_DATA=1 to seed sample courses/content).')
+        console.log('🎉 Database seeding completed successfully!')
+        return
+    }
+    if (!allowDefaultUsers) {
+        console.log('ℹ️  Skipping demo data because CSE_SEED_DEFAULT_USERS is not enabled for this DATABASE_URL.')
         console.log('🎉 Database seeding completed successfully!')
         return
     }

@@ -245,17 +245,10 @@ podman build -t cselearning-web:latest -f Containerfile .
 podman build --target migrator -t cselearning-migrator:latest -f Containerfile .
 ```
 
-Notes:
-
-- The `CAP_* operation not permitted` warnings are normal for rootless Podman.
-- If `next build` fails by type-checking `backend/`, ensure you pulled the latest code where:
-  - `tsconfig.json` excludes `backend`
-  - `Containerfile` no longer copies `backend/` into the Next build stage
-
 ### 2.6 Run Prisma migrations (one-off)
 
 ```bash
-podman run --rm --env-file /opt/cselearning.env cselearning-migrator:latest
+podman run --rm --env-file /home/ubuntu/cselearning.env cselearning-migrator:latest
 ```
 
 ### 2.7 Run the web container
@@ -265,7 +258,7 @@ Run on port 3000 (later you can put Nginx in front on 80/443):
 ```bash
 podman rm -f cselearning-web || true
 podman run -d --name cselearning-web \
-  --env-file /opt/cselearning.env \
+  --env-file /home/ubuntu/cselearning.env \
   -p 3000:3000 \
   cselearning-web:latest
 podman logs --tail 100 cselearning-web
@@ -314,7 +307,31 @@ Manage the backend container with Podman commands:
 
 ```
 
+如果代码有改动，需要重新部署 Fastify 后端，步骤如下：
+  cd /opt/cselearning/app
+  git pull
 
+  # 1) 重新 build 镜像
+  podman build -t cselearning-backend:latest -f backend/Containerfile .
+
+  # 2) 停掉旧容器并用新镜像起一个
+  podman stop cselearning-backend
+  podman rm cselearning-backend
+
+  podman run -d --name cselearning-backend \
+    --env-file /home/ubuntu/cselearning.env \
+    -p 8080:8080 \
+    -e PORT=8080 \
+    cselearning-backend:latest
+
+  # 3) 验证
+  podman ps --filter name=cselearning-backend
+  podman logs --tail 100 cselearning-backend
+
+  如果你是用 systemd 管的（container-cselearning-backend.service），build 完后改为重启 service 即可：
+
+  - rootless：systemctl --user restart container-cselearning-backend.service
+  - rootful：sudo systemctl restart container-cselearning-backend.service
 
 
 systemd autostart:
@@ -401,3 +418,118 @@ Checks:
 - Ensure the Fastify backend is running and reachable at `NEXT_PUBLIC_BACKEND_URL`
 - Ensure backend has: `CLOUDFRONT_DOMAIN`, `CLOUDFRONT_KEY_PAIR_ID`, `CLOUDFRONT_PRIVATE_KEY`
 - If backend is on a different origin, ensure backend CORS allows `https://cselearning.club`
+
+
+更新 cselearning.env 这种“运行时配置”不要求重新 podman build，但需要让容器“重新读取 env-file”（env 只在 创建容器 时读取一次），所以你要 重建/重跑容器 或 重启 systemd 单元。
+
+  如果你是按 systemd 跑的（推荐）：
+
+  - sudo systemctl restart container-cselearning-backend.service
+  - sudo systemctl restart container-cselearning-web.service
+  - 看日志：sudo journalctl -u container-cselearning-backend.service -n 200 --no-pager
+  - 看日志：sudo journalctl -u container-cselearning-web.service -n 200 --no-pager
+
+  如果你是手动 podman run 跑的（含 pod）：
+
+  - 先停掉并删除旧容器（不会删镜像）：podman rm -f cselearning-web cselearning-backend
+  - 重新启动（示例：同一个 pod，backend 不对外暴露端口）：
+      - podman pod create --name cselearning -p 3000:3000（已存在就跳过）
+      - podman run -d --pod cselearning --name cselearning-backend --env-file /home/ubuntu/cselearning.env -e PORT=8080 cselearning-backend:latest
+      - podman run -d --pod cselearning --name cselearning-web --env-file /home/ubuntu/cselearning.env -e BACKEND_INTERNAL_URL=http://127.0.0.1:8080 cselearning-web:latest
+  - 验证：podman ps、podman logs --tail 200 cselearning-web、podman logs --tail 200 cselearning-backend
+
+
+  只有当你改了代码/依赖/Containerfile 时，才需要重新 podman build。
+• podman pod create --name cselearning -p 3000:3000 是“先创建一个 Pod（共享网络命名空间）”，并把 宿主机 3000 端口 映射到 Pod 内部的 3000 端口。
+
+  然后你用：
+
+  - podman run -d --pod cselearning ... cselearning-web:latest
+
+  为什么要 pod：
+
+  - 同一个 pod 里的容器共享网络，所以前端容器可以用 http://127.0.0.1:8080 访问 backend 容器。
+  - backend 不需要 -p 8080:8080 暴露到宿主机/公网，实现“浏览器不能直接访问 backend”。
+
+  常见流程：
+
+  - 第一次：podman pod create ...（只做一次）
+  - 每次启动/更新：podman run --pod cselearning ... 启动/重建容器
+  - 如果 pod 已存在，再执行 podman pod create 会报已存在，你就跳过即可。
+
+
+
+
+  1. 确认前端真的在对外提供服务
+
+  - curl -I http://127.0.0.1:3000/
+  - curl -sS http://127.0.0.1:3000/api/courses | head
+
+  2. 如果还没 seed 过用户（通常会导致登录失败），跑一次 seed（用 migrator 镜像即可）
+
+  - podman run --rm --env-file /home/ubuntu/cselearning.env cselearning-migrator:latest npx prisma db seed
+  - 默认账号：
+      - admin@agora.io / password123
+      - user@agora.io / password123
+
+  3. 确保 EC2 Security Group 放行 3000 给你当前公网 IP（或临时 0.0.0.0/0 做验证）
+  4. 在你本机浏览器打开
+
+  - http://<EC2的EIP或公网IP>:3000/login
+  - 用上面的账号密码登录
+
+
+
+
+• 你现在的默认账号来自 prisma db seed（prisma/seed.ts 固定创建 admin@agora.io / password123）。生产环境建议做两件事：创建你自己的管理员账号 + 禁用默认账号（不建议继续保留）。
+
+  在 EC2 上执行（用 migrator 镜像即可，避免你本机装依赖）：
+
+  1. 创建/覆盖你的管理员账号（自己换成强密码；注意会进 shell history，做完可以清 history）
+
+  ADMIN_EMAIL='你自己的邮箱'
+  ADMIN_PASSWORD='强密码'
+
+  podman run --rm --env-file /home/ubuntu/cselearning.env \
+    -e ADMIN_EMAIL -e ADMIN_PASSWORD \
+    cselearning-migrator:latest node - <<'NODE'
+  const { PrismaClient } = require('@prisma/client')
+  const bcrypt = require('bcryptjs')
+
+  const prisma = new PrismaClient()
+  ;(async () => {
+    const email = process.env.ADMIN_EMAIL
+    const password = process.env.ADMIN_PASSWORD
+    if (!email || !password) throw new Error('Missing ADMIN_EMAIL / ADMIN_PASSWORD')
+
+    const hash = await bcrypt.hash(password, 10)
+    const user = await prisma.user.upsert({
+      where: { email },
+      update: { password: hash, role: 'ADMIN', status: 'ACTIVE' },
+      create: { email, name: 'Admin', password: hash, role: 'ADMIN', status: 'ACTIVE' },
+    })
+    console.log('Admin ready:', user.email)
+    await prisma.$disconnect()
+  })().catch(e => { console.error(e); process.exit(1) })
+  NODE
+
+  2. 禁用默认账号（避免被撞库；登录逻辑会拒绝 status !== ACTIVE）
+
+  podman run --rm --env-file /home/ubuntu/cselearning.env \
+    cselearning-migrator:latest node - <<'NODE'
+  const { PrismaClient } = require('@prisma/client')
+  const prisma = new PrismaClient()
+  ;(async () => {
+    const res = await prisma.user.updateMany({
+      where: { email: { in: ['admin@agora.io', 'user@agora.io'] } },
+      data: { status: 'SUSPENDED' },
+    })
+    console.log('Disabled default users:', res.count)
+    await prisma.$disconnect()
+  })().catch(e => { console.error(e); process.exit(1) })
+  NODE
+
+  3. 重启 web（确保后续登录用新账号）
+
+  - podman restart cselearning-web
+
