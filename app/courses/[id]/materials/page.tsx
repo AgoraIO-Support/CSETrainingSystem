@@ -9,8 +9,6 @@ import { ApiClient } from '@/lib/api-client'
 import type { Course, CourseAsset } from '@/types'
 import { CloudFrontPlayer } from '@/components/video/cloudfront-player'
 
-const backendBaseUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || '').replace(/\/$/, '')
-
 export default function CourseMaterialsPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params)
     const [course, setCourse] = useState<(Course & { assets?: CourseAsset[] }) | null>(null)
@@ -40,11 +38,11 @@ export default function CourseMaterialsPage({ params }: { params: Promise<{ id: 
         }
 
         const requestCfCookie = async () => {
-            if (!backendBaseUrl) return
             const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null
             if (!token) return
             try {
-                await fetch(`${backendBaseUrl}/api/materials/${id}/cf-cookie`, {
+                // Call the Next.js API proxy so the browser never talks to the Fastify backend directly.
+                await fetch(`/api/materials/${id}/cf-cookie`, {
                     method: 'GET',
                     headers: {
                         Authorization: `Bearer ${token}`,

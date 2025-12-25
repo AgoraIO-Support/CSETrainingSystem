@@ -6,10 +6,10 @@ export const DELETE = withAdminAuth(async (req, user, { params }: { params: Prom
   try {
     const { id, chapterId } = await params
 
-    const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL?.replace(/\/$/, '')
+    const backendBase = (process.env.BACKEND_INTERNAL_URL || process.env.NEXT_PUBLIC_BACKEND_URL || '').replace(/\/$/, '')
     if (!backendBase) {
       return NextResponse.json(
-        { success: false, error: { code: 'CONFIG_ERROR', message: 'NEXT_PUBLIC_BACKEND_URL is not configured' } },
+        { success: false, error: { code: 'CONFIG_ERROR', message: 'BACKEND_INTERNAL_URL is not configured' } },
         { status: 500 }
       )
     }

@@ -133,7 +133,7 @@ podman run -d --name cselearning-backend --network cselearning \
 
 Then set the frontend env (for local dev) so the browser can reach it:
 
-- `NEXT_PUBLIC_BACKEND_URL=http://127.0.0.1:8080`
+- `BACKEND_INTERNAL_URL=http://127.0.0.1:8080`
 
 ### 1.7 Optional E2E checks
 
@@ -209,8 +209,8 @@ AWS_S3_BUCKET_NAME=cse-training-bucket
 AWS_S3_ASSET_PREFIX=CSETraining
 
 # If you deploy the Fastify backend, the browser will call it using this base URL.
-# Example (if you expose backend on 8080 directly): http://<EC2_EIP>:8080
-NEXT_PUBLIC_BACKEND_URL=https://cselearning.club
+# This is server-only. Keep the backend private and only reachable from the Next.js server.
+BACKEND_INTERNAL_URL=http://127.0.0.1:8080
 
 # Asset delivery mode:
 # - For production with private assets: cloudfront_signed
@@ -294,13 +294,28 @@ Run it on port `8080`:
 
 ```bash
 podman rm -f cselearning-backend || true
+### Copy env file for ubuntu user
+sudo install -m 600 -o ubuntu -g ubuntu /opt/cselearning.env /home/ubuntu/cselearning.env
+
 podman run -d --name cselearning-backend \
-  --env-file /opt/cselearning.env \
-  -p 8080:8080 \
-  -e PORT=8080 \
-  cselearning-backend:latest
+    --env-file /home/ubuntu/cselearning.env \
+    -p 127.0.0.1:8080:8080 \
+    -e PORT=8080 \
+    cselearning-backend:latest
+
 podman logs --tail 100 cselearning-backend
+
+Manage the backend container with Podman commands:
+  - 停止：podman stop cselearning-backend
+  - 启动（停止后再启动）：podman start cselearning-backend
+  - 重启：podman restart cselearning-backend
+  - 查看日志：podman logs -f cselearning-backend
+  - 停止并删除容器（下次要重新 podman run）：podman rm -f cselearning-backend
+
 ```
+
+
+
 
 systemd autostart:
 
@@ -310,12 +325,25 @@ sudo mv container-cselearning-backend.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now container-cselearning-backend.service
 sudo systemctl status container-cselearning-backend.service
+
+如果你已经按文档做了 systemd 自启动（container-cselearning-backend.service），用 systemd 管：
+
+  - 停止：sudo systemctl stop container-cselearning-backend.service
+  - 启动：sudo systemctl start container-cselearning-backend.service
+  - 重启：sudo systemctl restart container-cselearning-backend.service
+  - 看状态：sudo systemctl status container-cselearning-backend.service
+  - 取消开机自启：sudo systemctl disable --now container-cselearning-backend.service
+
+  你现在有没有执行过 podman generate systemd ... 并 systemctl enable --now ...？如果有，建议优先用 systemd 管，避免手动 podman 和 systemd “打架”。
+
 ```
 
 Notes:
 
-- If the browser calls the backend at a different origin (e.g. `http://<EIP>:8080`), you must ensure the backend CORS configuration allows `https://cselearning.club`.
-- The simplest way to avoid CORS entirely is to make the backend reachable under the same origin (reverse proxy), but that is outside this minimal Podman-only guide.
+- With the current frontend refactor, the browser never calls the backend directly. Next.js proxies the backend for:
+  - CloudFront signed cookies: `GET /api/materials/:courseId/cf-cookie`
+  - Admin deletes
+- Recommended: run both containers in the same Podman pod so `BACKEND_INTERNAL_URL=http://127.0.0.1:8080` works and port 8080 is not exposed publicly.
 
 ---
 
