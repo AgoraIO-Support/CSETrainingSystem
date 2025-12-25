@@ -567,3 +567,22 @@ Checks:
 podman start cselearning-web
 podman start cselearning-backend
 CSE_SEED_ADMIN_EMAIL=AdminEmail CSE_SEED_ADMIN_PASSWORD='xxxx!' podman run --rm --env-file /home/ubuntu/cselearning.env -e CSE_SEED_ADMIN_EMAIL -e CSE_SEED_ADMIN_PASSWORD cselearning-migrator:latest npx prisma db seed
+
+
+查看启动状态：
+systemctl --user list-unit-files | grep cselearning
+
+日志：
+• 用 rootless 的 user service，就用 user journal 看日志：
+
+  - 看最近 200 行（推荐先用这个）
+    journalctl --user -u container-cselearning-web.service -n 200 --no-pager
+  - 实时跟踪
+    journalctl --user -u container-cselearning-web.service -f
+  - 如果你想看“上一次启动”的完整日志（含旧日志）
+    journalctl --user -u container-cselearning-web.service --since "2 hours ago" --no-pager
+
+  另外也可以直接看容器日志（不经过 systemd）：
+
+  - podman logs --tail 200 cselearning-web
+  - podman logs -f cselearning-web

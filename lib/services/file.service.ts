@@ -27,6 +27,17 @@ const readInt = (value: string | undefined, fallback: number) => {
     return Number.isFinite(n) ? n : fallback
 }
 
+const stripWrappingQuotes = (value: string): string => {
+    const trimmed = value.trim()
+    if (
+        (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+        (trimmed.startsWith("'") && trimmed.endsWith("'"))
+    ) {
+        return trimmed.slice(1, -1)
+    }
+    return trimmed
+}
+
 const getDeliveryMode = (): AssetDeliveryMode => {
     const raw = (process.env.CSE_ASSET_DELIVERY_MODE || '').trim()
     if (raw === 'cloudfront_signed' || raw === 's3_presigned' || raw === 'public') return raw
@@ -44,8 +55,11 @@ const getAssetUrlTtlSeconds = (): number => {
 }
 
 const getCloudFrontSignerConfig = () => {
-    const keyPairId = (process.env.CLOUDFRONT_KEY_PAIR_ID || '').trim()
-    const privateKeyString = (process.env.CLOUDFRONT_PRIVATE_KEY || '').replace(/\\n/g, '\n').trim()
+    // Be tolerant of env-file values wrapped in quotes (common mistake when moving from `.env` to `--env-file`).
+    const keyPairId = stripWrappingQuotes(process.env.CLOUDFRONT_KEY_PAIR_ID || '')
+    const privateKeyString = stripWrappingQuotes(process.env.CLOUDFRONT_PRIVATE_KEY || '')
+        .replace(/\\n/g, '\n')
+        .trim()
     if (!keyPairId || !privateKeyString) {
         throw new Error('CLOUDFRONT_SIGNING_NOT_CONFIGURED')
     }

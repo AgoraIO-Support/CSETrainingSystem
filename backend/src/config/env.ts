@@ -13,6 +13,21 @@ function optionalEnv(name: string): string | undefined {
     return process.env[name]
 }
 
+function stripWrappingQuotes(value: string): string {
+    const trimmed = value.trim()
+    if (
+        (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+        (trimmed.startsWith("'") && trimmed.endsWith("'"))
+    ) {
+        return trimmed.slice(1, -1)
+    }
+    return trimmed
+}
+
+function normalizeMultilineEnv(value: string): string {
+    return stripWrappingQuotes(value).replace(/\\n/g, '\n')
+}
+
 export const appConfig = {
     port: parseInt(process.env.PORT || '8080', 10),
     databaseUrl: requireEnv('DATABASE_URL'),
@@ -25,13 +40,13 @@ export const appConfig = {
     },
     cloudfront: {
         domain: requireEnv('CLOUDFRONT_DOMAIN'),
-        keyPairId: requireEnv('CLOUDFRONT_KEY_PAIR_ID'),
-        privateKey: requireEnv('CLOUDFRONT_PRIVATE_KEY').replace(/\\n/g, '\n'),
+        keyPairId: stripWrappingQuotes(requireEnv('CLOUDFRONT_KEY_PAIR_ID')),
+        privateKey: normalizeMultilineEnv(requireEnv('CLOUDFRONT_PRIVATE_KEY')),
         cookieTtlHours: parseInt(process.env.CLOUDFRONT_SIGNED_COOKIE_TTL_HOURS || '12', 10),
     },
     auth: {
-        jwtPublicKey: optionalEnv('JWT_PUBLIC_KEY')?.replace(/\\n/g, '\n'),
-        jwtSecret: optionalEnv('JWT_SECRET'),
+        jwtPublicKey: optionalEnv('JWT_PUBLIC_KEY') ? normalizeMultilineEnv(optionalEnv('JWT_PUBLIC_KEY')!) : undefined,
+        jwtSecret: optionalEnv('JWT_SECRET') ? stripWrappingQuotes(optionalEnv('JWT_SECRET')!) : undefined,
     },
 }
 
