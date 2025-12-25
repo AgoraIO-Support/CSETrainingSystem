@@ -17,10 +17,13 @@ RUN npm ci --include=dev
 FROM deps AS build
 COPY backend/tsconfig.json ./tsconfig.json
 COPY backend/src ./src
-COPY prisma /app/prisma
+RUN mkdir -p ./prisma
+COPY prisma/schema.prisma ./prisma/schema.prisma
 
-# Generate Prisma client (schema is in /app/prisma, referenced by backend/package.json prisma.schema)
-RUN npx prisma generate --schema /app/prisma/schema.prisma
+# Generate Prisma client for the backend package.
+# Important: run against a schema path *inside* /app/backend so Prisma can find backend/package.json
+# and will not attempt auto-install in /app (which may fail in locked-down build environments).
+RUN npx prisma generate --schema ./prisma/schema.prisma --generator client
 RUN npm run build
 RUN npm prune --omit=dev
 
