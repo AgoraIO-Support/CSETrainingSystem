@@ -1,7 +1,6 @@
 FROM node:20-bookworm-slim AS base
 WORKDIR /app/backend
 
-ENV NODE_ENV=production
 ENV PORT=8080
 
 RUN apt-get update \
@@ -11,7 +10,8 @@ RUN apt-get update \
 # Install deps (includes dev deps for TypeScript build + prisma generate)
 FROM base AS deps
 COPY backend/package.json backend/package-lock.json ./
-RUN npm ci
+# NOTE: build needs devDependencies (typescript/prisma). Do not let NODE_ENV=production strip them.
+RUN npm ci --include=dev
 
 # Build backend
 FROM deps AS build
@@ -22,12 +22,14 @@ COPY prisma /app/prisma
 # Generate Prisma client (schema is in /app/prisma, referenced by backend/package.json prisma.schema)
 RUN npx prisma generate --schema /app/prisma/schema.prisma
 RUN npm run build
+RUN npm prune --omit=dev
 
 # Runtime
 FROM base AS runtime
 WORKDIR /app/backend
+ENV NODE_ENV=production
 
-COPY --from=deps /app/backend/node_modules ./node_modules
+COPY --from=build /app/backend/node_modules ./node_modules
 COPY --from=build /app/backend/dist ./dist
 
 EXPOSE 8080
