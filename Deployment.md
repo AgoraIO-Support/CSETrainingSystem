@@ -48,7 +48,7 @@ podman run -d --name cselearning-postgres --network cselearning \
 
 ```bash
 podman build -t cselearning-web:latest -f Containerfile .
-podman build --target migrator -t cselearning-migrator:latest -f Containerfile .
+podman build --target migrator -t cselearning-migrator:latest -f Containerfile . //如果Seed.ts文件更新，需要重新build migrator 镜像
 ```
 
 ### 1.3 Create a local env file (do NOT commit secrets)
@@ -84,8 +84,19 @@ EOF
 podman run --rm --network cselearning --env-file tmp/podman/local.env \
   cselearning-migrator:latest
 
+# Local dev/test (DATABASE_URL points to localhost/127.*):
+# seeds default users (admin@agora.io / user@agora.io).
 podman run --rm --network cselearning --env-file tmp/podman/local.env \
-  cselearning-migrator:latest npx tsx prisma/seed.ts
+  cselearning-migrator:latest npx prisma db seed
+```
+
+Production/remote DB (RDS): default users are blocked. You must explicitly seed an admin:
+
+```bash
+CSE_SEED_ADMIN_EMAIL=AdminEmail CSE_SEED_ADMIN_PASSWORD='xxxx!' \
+  podman run --rm --env-file /home/ubuntu/cselearning.env \
+  -e CSE_SEED_ADMIN_EMAIL -e CSE_SEED_ADMIN_PASSWORD \
+  cselearning-migrator:latest npx prisma db seed
 ```
 
 ### 1.5 Run the web container
@@ -101,8 +112,9 @@ podman run -d --name cselearning-web --network cselearning \
 Open:
 
 - `http://127.0.0.1:3000/login`
-  - User: `user@agora.io` / `password123`
-  - Admin: `admin@agora.io` / `password123`
+  - Local dev default users (only if you used the local seed above):
+    - User: `user@agora.io` / `password123`
+    - Admin: `admin@agora.io` / `password123`
 
 ### 1.6 Optional: run the Fastify backend locally
 
@@ -266,13 +278,20 @@ podman logs --tail 100 cselearning-web
 
 ### 2.8 systemd autostart (recommended)
 
+Important: use **rootless Podman** + **user systemd** (`systemctl --user`).  
+Do **NOT** use `sudo systemctl ...` unless you intentionally run **rootful** Podman, because root/system services cannot see rootless pods/images/containers and will fail with exit code `125` (e.g. “pod not found”, “image not found”, port conflicts).
+
 ```bash
-sudo mkdir -p /etc/systemd/system
 podman generate systemd --name cselearning-web --files --new
-sudo mv container-cselearning-web.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now container-cselearning-web.service
-sudo systemctl status container-cselearning-web.service
+mkdir -p ~/.config/systemd/user
+mv container-cselearning-web.service ~/.config/systemd/user/
+
+systemctl --user daemon-reload
+systemctl --user enable --now container-cselearning-web.service
+systemctl --user status container-cselearning-web.service
+
+# Ensure the user service starts on boot even without an active SSH session
+sudo loginctl enable-linger ubuntu
 ```
 
 ### 2.9 Optional: deploy the Fastify backend on EC2
@@ -330,28 +349,32 @@ Manage the backend container with Podman commands:
 
   如果你是用 systemd 管的（container-cselearning-backend.service），build 完后改为重启 service 即可：
 
-  - rootless：systemctl --user restart container-cselearning-backend.service
-  - rootful：sudo systemctl restart container-cselearning-backend.service
+  - rootless（recommended）：systemctl --user restart container-cselearning-backend.service
 
 
 systemd autostart:
 
 ```bash
 podman generate systemd --name cselearning-backend --files --new
-sudo mv container-cselearning-backend.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now container-cselearning-backend.service
-sudo systemctl status container-cselearning-backend.service
+mkdir -p ~/.config/systemd/user
+mv container-cselearning-backend.service ~/.config/systemd/user/
+
+systemctl --user daemon-reload
+systemctl --user enable --now container-cselearning-backend.service
+systemctl --user status container-cselearning-backend.service
 
 如果你已经按文档做了 systemd 自启动（container-cselearning-backend.service），用 systemd 管：
 
-  - 停止：sudo systemctl stop container-cselearning-backend.service
-  - 启动：sudo systemctl start container-cselearning-backend.service
-  - 重启：sudo systemctl restart container-cselearning-backend.service
-  - 看状态：sudo systemctl status container-cselearning-backend.service
-  - 取消开机自启：sudo systemctl disable --now container-cselearning-backend.service
+  - 停止：systemctl --user stop container-cselearning-backend.service
+  - 启动：systemctl --user start container-cselearning-backend.service
+  - 重启：systemctl --user restart container-cselearning-backend.service
+  - 看状态：systemctl --user status container-cselearning-backend.service
+  - 取消开机自启：systemctl --user disable --now container-cselearning-backend.service
 
-  你现在有没有执行过 podman generate systemd ... 并 systemctl enable --now ...？如果有，建议优先用 systemd 管，避免手动 podman 和 systemd “打架”。
+  如果你之前误用了 `sudo systemctl enable --now container-*.service`（root systemd），建议先停用它们，避免 root/rootless 两套 Podman “打架”：
+
+  - sudo systemctl disable --now container-cselearning-web.service
+  - sudo systemctl disable --now container-cselearning-backend.service
 
 ```
 
@@ -415,7 +438,7 @@ Symptoms:
 
 Checks:
 
-- Ensure the Fastify backend is running and reachable at `NEXT_PUBLIC_BACKEND_URL`
+- Ensure the Fastify backend is running and reachable from the Next.js server via `BACKEND_INTERNAL_URL` (server-only)
 - Ensure backend has: `CLOUDFRONT_DOMAIN`, `CLOUDFRONT_KEY_PAIR_ID`, `CLOUDFRONT_PRIVATE_KEY`
 - If backend is on a different origin, ensure backend CORS allows `https://cselearning.club`
 
@@ -467,8 +490,14 @@ Checks:
 
   2. 如果还没 seed 过用户（通常会导致登录失败），跑一次 seed（用 migrator 镜像即可）
 
-  - podman run --rm --env-file /home/ubuntu/cselearning.env cselearning-migrator:latest npx prisma db seed
-  - 默认账号：
+  - 生产环境（RDS）不会创建默认账号，必须显式创建管理员：
+
+    CSE_SEED_ADMIN_EMAIL=AdminEmail CSE_SEED_ADMIN_PASSWORD='xxxx!' \
+      podman run --rm --env-file /home/ubuntu/cselearning.env \
+      -e CSE_SEED_ADMIN_EMAIL -e CSE_SEED_ADMIN_PASSWORD \
+      cselearning-migrator:latest npx prisma db seed
+
+  - 本地开发（DATABASE_URL 指向 localhost/127.*）才会创建默认账号：
       - admin@agora.io / password123
       - user@agora.io / password123
 
@@ -478,10 +507,7 @@ Checks:
   - http://<EC2的EIP或公网IP>:3000/login
   - 用上面的账号密码登录
 
-
-
-
-• 你现在的默认账号来自 prisma db seed（prisma/seed.ts 固定创建 admin@agora.io / password123）。生产环境建议做两件事：创建你自己的管理员账号 + 禁用默认账号（不建议继续保留）。
+• 本地开发环境的默认账号来自 `prisma db seed`（会创建 `admin@agora.io / password123`）。生产环境（RDS）默认不会创建这些账号；如果你的数据库里历史上已经存在默认账号，建议禁用它们。
 
   在 EC2 上执行（用 migrator 镜像即可，避免你本机装依赖）：
 
@@ -533,3 +559,11 @@ Checks:
 
   - podman restart cselearning-web
 
+
+
+
+
+快速启动：
+podman start cselearning-web
+podman start cselearning-backend
+CSE_SEED_ADMIN_EMAIL=AdminEmail CSE_SEED_ADMIN_PASSWORD='xxxx!' podman run --rm --env-file /home/ubuntu/cselearning.env -e CSE_SEED_ADMIN_EMAIL -e CSE_SEED_ADMIN_PASSWORD cselearning-migrator:latest npx prisma db seed

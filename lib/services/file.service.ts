@@ -265,12 +265,13 @@ export class FileService {
 
         const { keyPairId, privateKeyString } = getCloudFrontSignerConfig()
         const url = `https://${domain}/${normalizedKey}`
-        const epochExpires = Math.floor(Date.now() / 1000) + ttlSeconds
 
         return getCloudFrontSignedUrl(url, {
             keypairId: keyPairId,
             privateKeyString,
-            expireTime: epochExpires,
+            // `aws-cloudfront-sign` expects expireTime in milliseconds (or Date/moment),
+            // not epoch seconds. Passing seconds can cause "expireTime must be after the current time".
+            expireTime: Date.now() + ttlSeconds * 1000,
         })
     }
 
