@@ -1,4 +1,5 @@
 import { S3Client } from '@aws-sdk/client-s3'
+import { RequestChecksumCalculation } from '@aws-sdk/middleware-flexible-checksums'
 
 const explicitCredentials =
     process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY
@@ -13,6 +14,11 @@ const explicitCredentials =
 const s3Client = new S3Client({
     region: process.env.AWS_REGION || 'us-east-1',
     credentials: explicitCredentials,
+    // We presign PUT URLs and upload from the browser using `fetch` (not the AWS SDK).
+    // If requestChecksumCalculation is WHEN_SUPPORTED (default), the SDK may add checksum
+    // parameters to presigned URLs which the browser upload does not satisfy, leading to
+    // 403 SignatureDoesNotMatch/BadDigest errors.
+    requestChecksumCalculation: RequestChecksumCalculation.WHEN_REQUIRED,
 })
 
 const sanitizePath = (value?: string | null) => {

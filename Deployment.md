@@ -439,6 +439,47 @@ Symptoms:
 Checks:
 
 - Ensure the Fastify backend is running and reachable from the Next.js server via `BACKEND_INTERNAL_URL` (server-only)
+
+### Admin MP4/VTT upload fails with S3 CORS error
+
+Symptoms:
+
+- Admin “upload asset” fails in the browser
+- Console shows `blocked by CORS policy` to `https://<bucket>.s3.<region>.amazonaws.com/...` (preflight has no `Access-Control-Allow-Origin`)
+
+Cause:
+
+- The browser uploads directly to S3 using a presigned `PUT` URL, which requires an S3 bucket **CORS** rule allowing your app origin.
+
+Fix (recommended: restrict to your origin(s)):
+
+1) Create a local file `cors.json`:
+
+```json
+{
+  "CORSRules": [
+    {
+      "AllowedOrigins": ["https://cselearning.club", "http://127.0.0.1:3000", "http://localhost:3000", "http://<EC2_EIP>:3000"],
+      "AllowedMethods": ["GET", "PUT", "HEAD"],
+      "AllowedHeaders": ["*"],
+      "ExposeHeaders": ["ETag"],
+      "MaxAgeSeconds": 3000
+    }
+  ]
+}
+```
+
+2) Apply it:
+
+```bash
+aws s3api put-bucket-cors --region ap-southeast-1 --bucket <YOUR_BUCKET> --cors-configuration file://cors.json
+aws s3api get-bucket-cors --region ap-southeast-1 --bucket <YOUR_BUCKET>
+```
+
+Notes:
+
+- This does **not** make objects public; it only allows the browser to use valid presigned URLs.
+- Once you switch fully to the domain, you can remove the `http://<EC2_EIP>:3000` origin.
 - Ensure backend has: `CLOUDFRONT_DOMAIN`, `CLOUDFRONT_KEY_PAIR_ID`, `CLOUDFRONT_PRIVATE_KEY`
 - If backend is on a different origin, ensure backend CORS allows `https://cselearning.club`
 
@@ -586,3 +627,52 @@ systemctl --user list-unit-files | grep cselearning
 
   - podman logs --tail 200 cselearning-web
   - podman logs -f cselearning-web
+
+
+
+
+本地测试环境快速部署：
+• 在项目根目录用 Podman 跑一套“本地类生产”最快流程（按 Deployment.md）：
+
+  # macOS 先开 Podman VM（Linux 跳过）
+  podman machine start
+
+  # 1) 启动 Postgres（带 pgvector）
+  podman network create cselearning || true
+  podman rm -f cselearning-postgres || true
+  podman run -d --name cselearning-postgres --network cselearning \
+    -e POSTGRES_DB='cselearning-database' \
+    -e POSTGRES_USER='postgres' \
+    -e POSTGRES_PASSWORD='postgres' \
+    docker.io/pgvector/pgvector:pg16
+
+  # 2) 准备本地环境变量（不要提交）
+  mkdir -p tmp/podman
+  cat > tmp/podman/local.env <<'EOF'
+  NODE_ENV=production
+  JWT_SECRET=local-dev-secret-change-me
+  DATABASE_URL=postgresql://postgres:postgres@cselearning-postgres:5432/cselearning-database?schema=public
+  AWS_REGION=ap-southeast-1
+  AWS_S3_BUCKET_NAME=cse-training-bucket
+  AWS_S3_ASSET_PREFIX=CSETraining
+  CSE_ASSET_DELIVERY_MODE=s3_presigned
+  CSE_ASSET_URL_TTL_SECONDS=43200
+  EOF
+
+  # 3) build + 迁移 + seed + 启动 web
+  podman build -t cselearning-web:latest -f Containerfile .
+  podman build --target migrator -t cselearning-migrator:latest -f Containerfile .
+  podman run --rm --network cselearning --env-file tmp/podman/local.env cselearning-migrator:latest
+  podman run --rm --network cselearning --env-file tmp/podman/local.env cselearning-migrator:latest npx tsx prisma/seed.ts
+  podman rm -f cselearning-web || true
+  podman run -d --name cselearning-web --network cselearning -p 3000:3000 \
+    --env-file tmp/podman/local.env cselearning-web:latest
+
+  可选：如果你需要跑 backend（CloudFront cookie / admin delete）：
+
+  podman build -t cselearning-backend:latest -f backend/Containerfile .
+  podman rm -f cselearning-backend || true
+  podman run -d --name cselearning-backend --network cselearning -p 8080:8080 \
+    --env-file tmp/podman/local.env -e PORT=8080 cselearning-backend:latest
+
+  访问：http://127.0.0.1:3000/login（默认账号：user@agora.io/password123，管理员：admin@agora.io/password123）。
