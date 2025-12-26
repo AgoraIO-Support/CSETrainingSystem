@@ -3,6 +3,7 @@ import { withAdminAuth } from '@/lib/auth-middleware'
 import { CourseService } from '@/lib/services/course.service'
 import { updateCourseSchema } from '@/lib/validations'
 import { z } from 'zod'
+import jwt from 'jsonwebtoken'
 
 export const PUT = withAdminAuth(async (req, user, { params }: { params: Promise<{ id: string }> }) => {
     try {
@@ -59,6 +60,20 @@ export const PUT = withAdminAuth(async (req, user, { params }: { params: Promise
     }
 })
 
+const getBackendInternalToken = (user: { id: string; email: string; role: string }) => {
+    const secret = process.env.JWT_SECRET
+    if (!secret) {
+        throw new Error('JWT_SECRET is not configured')
+    }
+    // Use a short-lived internal token to authenticate server-to-server calls to the Fastify backend.
+    // This avoids coupling the backend to the browser token format (e.g. Supabase JWT vs local JWT).
+    return jwt.sign(
+        { sub: user.id, id: user.id, email: user.email, role: user.role },
+        secret,
+        { algorithm: 'HS256', expiresIn: '5m' }
+    )
+}
+
 export const DELETE = withAdminAuth(async (req, user, { params }: { params: Promise<{ id: string }> }) => {
     try {
         const { id } = await params
@@ -68,14 +83,14 @@ export const DELETE = withAdminAuth(async (req, user, { params }: { params: Prom
             return NextResponse.json(
                 { success: false, error: { code: 'CONFIG_ERROR', message: 'BACKEND_INTERNAL_URL is not configured' } },
                 { status: 500 }
-            )
+                )
         }
 
         const res = await fetch(`${backendBase}/api/admin/courses/${id}`, {
             method: 'DELETE',
             headers: {
                 'Content-Type': 'application/json',
-                ...(req.headers.get('authorization') ? { Authorization: req.headers.get('authorization') as string } : {}),
+                Authorization: `Bearer ${getBackendInternalToken(user)}`,
             },
         })
 

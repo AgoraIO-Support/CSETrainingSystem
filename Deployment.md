@@ -676,3 +676,230 @@ systemctl --user list-unit-files | grep cselearning
     --env-file tmp/podman/local.env -e PORT=8080 cselearning-backend:latest
 
   访问：http://127.0.0.1:3000/login（默认账号：user@agora.io/password123，管理员：admin@agora.io/password123）。
+
+
+
+====================================================================
+• 按“EC2 + Podman 容器在实例里跑 web/backend”的场景，Instance Role（Instance Profile）配置步骤如下：
+
+  1. 创建 IAM Policy（最小权限）
+
+  - 进 AWS Console → IAM → Policies → Create policy（JSON）
+  - 把 bucket/prefix 替换成你的实际值（示例只允许操作 CSETraining/*）：
+
+  {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "ListBucketUnderPrefix",
+        "Effect": "Allow",
+        "Action": ["s3:ListBucket"],
+        "Resource": "arn:aws:s3:::cse-training-bucket",
+        "Condition": { "StringLike": { "s3:prefix": ["CSETraining/*"] } }
+      },
+      {
+        "Sid": "ObjectRWUnderPrefix",
+        "Effect": "Allow",
+        "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+        "Resource": "arn:aws:s3:::cse-training-bucket/CSETraining/*"
+      }
+    ]
+  }
+
+  2. 创建 IAM Role（给 EC2 用）
+
+  - IAM → Roles → Create role → AWS service → EC2
+  - Attach 上一步的 policy
+  - Role 名字比如：cselearning-ec2-role
+
+  3. 把 Role 绑定到 EC2 实例
+
+  - EC2 Console → Instances → 选中你的实例
+  - Actions → Security → Modify IAM role
+  - 选择 cselearning-ec2-role → Save
+
+  4. 在 EC2 上验证实例已拿到临时凭证
+     在 EC2 SSH 里执行（需要装 awscli；没装也可以跳过，用应用日志验证）：
+
+  aws sts get-caller-identity
+
+  5. 应用侧不用再配 AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY
+
+  - 保留/设置这些即可：AWS_REGION、AWS_S3_BUCKET_NAME、AWS_S3_ASSET_PREFIX（以及你的 CSE_ASSET_DELIVERY_MODE）
+  - 重启容器后，S3 相关报错应消失
+
+  如果你重启后仍然提示 Could not load credentials from any providers，把你是用 rootless podman 还是 sudo podman、以及容器启动命令（含网络参数）贴一下，我帮你确认容器是否能访问 IMDS（实例元数据
+  169.254.169.254）。
+• 下面是一套可直接用 AWS CLI 创建 S3 最小权限 policy + EC2 role + 绑定到指定 EC2 实例 的命令（把变量改成你的实际值）。
+
+  # 0) 先填变量
+  export AWS_REGION=ap-southeast-1
+  export BUCKET_NAME='cse-training-bucket'
+  export PREFIX='CSETraining'          # 不要带开头的 /
+  export POLICY_NAME='cselearning-s3-policy'
+  export ROLE_NAME='cselearning-ec2-role'
+  export INSTANCE_PROFILE_NAME='cselearning-ec2-profile'
+  export INSTANCE_ID='i-xxxxxxxxxxxxxxxxx'
+
+  1. 创建 IAM Policy（限制到 bucket + prefix）
+
+  cat > /tmp/cselearning-s3-policy.json <<EOF
+  {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "ListBucketUnderPrefix",
+        "Effect": "Allow",
+        "Action": ["s3:ListBucket"],
+        "Resource": "arn:aws:s3:::${BUCKET_NAME}",
+        "Condition": { "StringLike": { "s3:prefix": ["${PREFIX}", "${PREFIX}/*"] } }
+      },
+      {
+        "Sid": "ObjectRWUnderPrefix",
+        "Effect": "Allow",
+        "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+        "Resource": "arn:aws:s3:::${BUCKET_NAME}/${PREFIX}/*"
+      }
+    ]
+  }
+  EOF
+
+  POLICY_ARN="$(aws iam create-policy \
+    --policy-name "${POLICY_NAME}" \
+    --policy-document file:///tmp/cselearning-s3-policy.json \
+    --query 'Policy.Arn' --output text)"
+  echo "POLICY_ARN=${POLICY_ARN}"
+
+  2. 创建 EC2 Role（信任策略）并挂载上面的 policy
+
+  cat > /tmp/ec2-trust.json <<'EOF'
+  {
+    "Version": "2012-10-17",
+    "Statement": [
+      { "Effect": "Allow", "Principal": { "Service": "ec2.amazonaws.com" }, "Action": "sts:AssumeRole" }
+    ]
+  }
+  EOF
+
+  aws iam create-role \
+    --role-name "${ROLE_NAME}" \
+    --assume-role-policy-document file:///tmp/ec2-trust.json
+
+  aws iam attach-role-policy \
+    --role-name "${ROLE_NAME}" \
+    --policy-arn "${POLICY_ARN}"
+
+  3. 创建 Instance Profile，把 role 放进去，并绑定到 EC2
+
+  aws iam create-instance-profile \
+    --instance-profile-name "${INSTANCE_PROFILE_NAME}"
+
+  aws iam add-role-to-instance-profile \
+    --instance-profile-name "${INSTANCE_PROFILE_NAME}" \
+    --role-name "${ROLE_NAME}"
+
+  # 绑定到实例（如果实例还没绑过 role）
+  aws ec2 associate-iam-instance-profile \
+    --region "${AWS_REGION}" \
+    --instance-id "${INSTANCE_ID}" \
+    --iam-instance-profile Name="${INSTANCE_PROFILE_NAME}"
+
+  如果你的实例已经绑定过 IAM role，需要 replace（先查 association-id，再替换）：
+
+  ASSOC_ID="$(aws ec2 describe-iam-instance-profile-associations \
+    --region "${AWS_REGION}" \
+    --filters Name=instance-id,Values="${INSTANCE_ID}" \
+    --query 'IamInstanceProfileAssociations[0].AssociationId' --output text)"
+
+  aws ec2 replace-iam-instance-profile-association \
+    --region "${AWS_REGION}" \
+    --association-id "${ASSOC_ID}" \
+    --iam-instance-profile Name="${INSTANCE_PROFILE_NAME}"
+
+  你把 BUCKET_NAME / PREFIX / INSTANCE_ID 发我，我也可以帮你把这套命令替换成“可直接复制粘贴”的最终版。
+
+
+› BUCKET_NAME=cse-training-bucket
+  PREFIX=CSETraining
+  INSTANCE_ID=i-0047c4804281f16bc
+
+
+• export AWS_REGION=ap-southeast-1
+  export BUCKET_NAME='cse-training-bucket'
+  export PREFIX='CSETraining'
+  export POLICY_NAME='cselearning-s3-policy'
+  export ROLE_NAME='cselearning-ec2-role'
+  export INSTANCE_PROFILE_NAME='cselearning-ec2-profile'
+  export INSTANCE_ID='i-0047c4804281f16bc'
+
+  cat > /tmp/cselearning-s3-policy.json <<EOF
+  {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "ListBucketUnderPrefix",
+        "Effect": "Allow",
+        "Action": ["s3:ListBucket"],
+        "Resource": "arn:aws:s3:::${BUCKET_NAME}",
+        "Condition": { "StringLike": { "s3:prefix": ["${PREFIX}", "${PREFIX}/*"] } }
+      },
+      {
+        "Sid": "ObjectRWUnderPrefix",
+        "Effect": "Allow",
+        "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+        "Resource": "arn:aws:s3:::${BUCKET_NAME}/${PREFIX}/*"
+      }
+    ]
+  }
+  EOF
+
+  POLICY_ARN="$(aws iam create-policy \
+    --policy-name "${POLICY_NAME}" \
+    --policy-document file:///tmp/cselearning-s3-policy.json \
+    --query 'Policy.Arn' --output text)"
+  echo "POLICY_ARN=${POLICY_ARN}"
+
+  cat > /tmp/ec2-trust.json <<'EOF'
+  {
+    "Version": "2012-10-17",
+    "Statement": [
+      { "Effect": "Allow", "Principal": { "Service": "ec2.amazonaws.com" }, "Action": "sts:AssumeRole" }
+    ]
+  }
+  EOF
+
+  aws iam create-role \
+    --role-name "${ROLE_NAME}" \
+    --assume-role-policy-document file:///tmp/ec2-trust.json
+
+  aws iam attach-role-policy \
+    --role-name "${ROLE_NAME}" \
+    --policy-arn "${POLICY_ARN}"
+
+  aws iam create-instance-profile \
+    --instance-profile-name "${INSTANCE_PROFILE_NAME}"
+
+  aws iam add-role-to-instance-profile \
+    --instance-profile-name "${INSTANCE_PROFILE_NAME}" \
+    --role-name "${ROLE_NAME}"
+
+  aws ec2 associate-iam-instance-profile \
+    --region "${AWS_REGION}" \
+    --instance-id "${INSTANCE_ID}" \
+    --iam-instance-profile Name="${INSTANCE_PROFILE_NAME}"
+
+  如果提示实例已有关联，改用 replace：
+
+  ASSOC_ID="$(aws ec2 describe-iam-instance-profile-associations \
+    --region "${AWS_REGION}" \
+    --filters Name=instance-id,Values="${INSTANCE_ID}" \
+    --query 'IamInstanceProfileAssociations[0].AssociationId' --output text)"
+
+  aws ec2 replace-iam-instance-profile-association \
+    --region "${AWS_REGION}" \
+    --association-id "${ASSOC_ID}" \
+    --iam-instance-profile Name="${INSTANCE_PROFILE_NAME}"
+
+  验证：
+
+  aws sts get-caller-identity

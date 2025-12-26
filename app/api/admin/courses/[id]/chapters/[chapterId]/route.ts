@@ -1,5 +1,16 @@
 import { NextResponse } from 'next/server'
 import { withAdminAuth } from '@/lib/auth-middleware'
+import jwt from 'jsonwebtoken'
+
+const getBackendInternalToken = (user: { id: string; email: string; role: string }) => {
+  const secret = process.env.JWT_SECRET
+  if (!secret) throw new Error('JWT_SECRET is not configured')
+  return jwt.sign(
+    { sub: user.id, id: user.id, email: user.email, role: user.role },
+    secret,
+    { algorithm: 'HS256', expiresIn: '5m' }
+  )
+}
 
 // DELETE /api/admin/courses/:id/chapters/:chapterId
 export const DELETE = withAdminAuth(async (req, user, { params }: { params: Promise<{ id: string; chapterId: string }> }) => {
@@ -18,8 +29,7 @@ export const DELETE = withAdminAuth(async (req, user, { params }: { params: Prom
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
-        // forward bearer token if present
-        ...(req.headers.get('authorization') ? { Authorization: req.headers.get('authorization') as string } : {}),
+        Authorization: `Bearer ${getBackendInternalToken(user)}`,
       },
     })
 
