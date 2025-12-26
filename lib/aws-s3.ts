@@ -12,16 +12,19 @@ const stripWrappingQuotes = (value: string): string => {
     return trimmed
 }
 
-const resolvedRegion = (() => {
-    const region =
-        stripWrappingQuotes(process.env.AWS_REGION || '') ||
-        stripWrappingQuotes(process.env.AWS_DEFAULT_REGION || '')
-    if (region) return region
-    if (process.env.NODE_ENV === 'production') {
+const configuredRegion =
+    stripWrappingQuotes(process.env.AWS_REGION || '') ||
+    stripWrappingQuotes(process.env.AWS_DEFAULT_REGION || '')
+
+// Defaulting avoids `next build` failures (build containers typically don't have AWS env set).
+// Runtime S3 operations that depend on correct signing should validate via `assertAwsRegionConfigured()`.
+export const AWS_REGION = configuredRegion || 'us-east-1'
+
+export const assertAwsRegionConfigured = () => {
+    if (!configuredRegion && process.env.NODE_ENV === 'production') {
         throw new Error('AWS_REGION_NOT_CONFIGURED')
     }
-    return 'us-east-1'
-})()
+}
 
 const explicitCredentials =
     process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY
@@ -34,7 +37,7 @@ const explicitCredentials =
 // In AWS (ECS/EC2/Lambda), prefer the default credential provider chain (task role/instance role).
 // Locally, you can still use env vars (above) or AWS_PROFILE via the default chain.
 const s3Client = new S3Client({
-    region: resolvedRegion,
+    region: AWS_REGION,
     credentials: explicitCredentials,
     // We presign PUT URLs and upload from the browser using `fetch` (not the AWS SDK).
     // If requestChecksumCalculation is WHEN_SUPPORTED (default), the SDK may add checksum

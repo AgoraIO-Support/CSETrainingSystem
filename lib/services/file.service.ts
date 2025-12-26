@@ -7,6 +7,7 @@ import s3Client, {
     S3_ASSET_BASE_PREFIX,
     ASSET_PUBLIC_BASE_URL,
     ASSET_S3_BUCKET_NAME,
+    assertAwsRegionConfigured,
 } from '@/lib/aws-s3'
 import { v4 as uuidv4 } from 'uuid'
 import { log, timeAsync } from '@/lib/logger'
@@ -75,6 +76,7 @@ export class FileService {
         contentType: string
         lessonId?: string
     }) {
+        assertAwsRegionConfigured()
         const key = `videos/${uuidv4()}-${params.filename}`
 
         const command = new PutObjectCommand({
@@ -106,6 +108,7 @@ export class FileService {
         filename: string
         lessonId?: string
     }) {
+        assertAwsRegionConfigured()
         const key = `subtitles/${uuidv4()}-${params.filename}`
 
         const command = new PutObjectCommand({
@@ -138,6 +141,7 @@ export class FileService {
         lessonId: string
         key?: string
     }) {
+        assertAwsRegionConfigured()
         const key =
             params.key ??
             (() => {
@@ -181,6 +185,7 @@ export class FileService {
         lessonId?: string
         key?: string
     }) {
+        assertAwsRegionConfigured()
         const key =
             params.key ??
             (() => {
