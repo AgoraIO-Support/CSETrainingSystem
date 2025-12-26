@@ -3,6 +3,7 @@ import { withAdminAuth } from '@/lib/auth-middleware'
 import { z } from 'zod'
 import { updateLessonSchema } from '@/lib/validations'
 import { CourseStructureService } from '@/lib/services/course-structure.service'
+import { getBackendInternalBaseUrl, getBackendInternalBearerToken } from '@/lib/backend-internal'
 
 // PATCH /admin/courses/:id/chapters/:chapterId/lessons/:lessonId
 export const PATCH = withAdminAuth(async (req, user, { params }: { params: Promise<{ id: string; chapterId: string; lessonId: string }> }) => {
@@ -54,27 +55,32 @@ export const DELETE = withAdminAuth(async (req, user, { params }: { params: Prom
   try {
     const { id: courseId, chapterId, lessonId } = await params
 
-    // Ensure lesson belongs to chapter and course
-    await CourseStructureService.assertLessonAncestry(courseId, chapterId, lessonId)
+    const backendBase = getBackendInternalBaseUrl()
+    if (!backendBase) {
+      return NextResponse.json(
+        { success: false, error: { code: 'CONFIG_ERROR', message: 'BACKEND_INTERNAL_URL is not configured' } },
+        { status: 500 }
+      )
+    }
 
-    // Delete the lesson
-    await CourseStructureService.deleteLesson(lessonId)
+    const res = await fetch(`${backendBase}/api/admin/courses/${courseId}/chapters/${chapterId}/lessons/${lessonId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: getBackendInternalBearerToken(user),
+      },
+    })
+
+    if (!res.ok) {
+      // backend 404 is idempotent success
+      if (res.status === 404) return NextResponse.json({ success: true })
+      const body = await res.json().catch(() => null)
+      return NextResponse.json(body ?? { success: false, error: { code: 'BACKEND_ERROR' } }, { status: res.status })
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Delete lesson error:', error)
-    if (error instanceof Error && error.message === 'LESSON_NOT_FOUND') {
-      return NextResponse.json(
-        { success: false, error: { code: 'LESSON_NOT_FOUND', message: 'Lesson not found' } },
-        { status: 404 }
-      )
-    }
-    if (error instanceof Error && error.message === 'ANCESTRY_MISMATCH') {
-      return NextResponse.json(
-        { success: false, error: { code: 'ANCESTRY_MISMATCH', message: 'Lesson does not belong to chapter/course' } },
-        { status: 400 }
-      )
-    }
     return NextResponse.json(
       { success: false, error: { code: 'SYSTEM_001', message: 'Failed to delete lesson' } },
       { status: 500 }

@@ -1,26 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withAuth } from '@/lib/auth-middleware'
-import jwt from 'jsonwebtoken'
-
-const getBackendInternalBaseUrl = () => {
-    // Server-only base URL for the Fastify backend.
-    // In production with Podman pods, `http://127.0.0.1:8080` works if both containers share a network namespace.
-    // Fallback to NEXT_PUBLIC_BACKEND_URL only for backward compatibility.
-    const raw = (process.env.BACKEND_INTERNAL_URL || process.env.NEXT_PUBLIC_BACKEND_URL || '').trim()
-    return raw.replace(/\/$/, '')
-}
-
-const getBackendInternalToken = (user: { id: string; email: string; role: string }) => {
-    const secret = process.env.JWT_SECRET
-    if (!secret) {
-        throw new Error('JWT_SECRET is not configured')
-    }
-    return jwt.sign(
-        { sub: user.id, id: user.id, email: user.email, role: user.role },
-        secret,
-        { algorithm: 'HS256', expiresIn: '5m' }
-    )
-}
+import { getBackendInternalBaseUrl, getBackendInternalBearerToken } from '@/lib/backend-internal'
 
 // GET /api/materials/:courseId/cf-cookie
 // Proxies the backend signed-cookie endpoint so the browser never talks to the backend directly.
@@ -37,7 +17,7 @@ export const GET = withAuth(async (req: NextRequest, _user, { params }: { params
 
     const res = await fetch(`${backendBase}/api/materials/${courseId}/cf-cookie`, {
         method: 'GET',
-        headers: { Authorization: `Bearer ${getBackendInternalToken(_user)}` },
+        headers: { Authorization: getBackendInternalBearerToken(_user) },
         // Backend returns 204 with Set-Cookie headers.
         redirect: 'manual',
     })
