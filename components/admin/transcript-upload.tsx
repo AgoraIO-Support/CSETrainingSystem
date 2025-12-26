@@ -94,7 +94,11 @@ export function TranscriptUpload({ lessonId, videoAssetId, onUploadComplete }: T
       });
 
       if (!s3Response.ok) {
-        throw new Error('Failed to upload file to S3');
+        const bodyText = await s3Response.text().catch(() => '');
+        throw new Error(
+          `S3 upload failed (${s3Response.status} ${s3Response.statusText})${bodyText ? `: ${bodyText.slice(0, 500)}` : ''
+          }`
+        );
       }
 
       setUploadProgress(70);

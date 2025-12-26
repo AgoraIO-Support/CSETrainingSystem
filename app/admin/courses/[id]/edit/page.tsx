@@ -687,7 +687,7 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                         type: assetTypeMap[upload.type] || 'DOCUMENT',
                     })
 
-                    await fetch(uploadMeta.data.uploadUrl, {
+                    const s3PutResponse = await fetch(uploadMeta.data.uploadUrl, {
                         method: 'PUT',
                         headers: {
                             'Content-Type': upload.file.type || 'application/octet-stream',
@@ -695,6 +695,13 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                         },
                         body: upload.file,
                     })
+                    if (!s3PutResponse.ok) {
+                        const bodyText = await s3PutResponse.text().catch(() => '')
+                        throw new Error(
+                            `S3 upload failed (${s3PutResponse.status} ${s3PutResponse.statusText})${bodyText ? `: ${bodyText.slice(0, 500)}` : ''
+                            }`
+                        )
+                    }
 
                     const asset = uploadMeta.data.asset
                     newAssetIds.push(asset.id)
