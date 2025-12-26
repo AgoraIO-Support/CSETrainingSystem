@@ -90,12 +90,6 @@ export default function LoginPage() {
                                 Create one
                             </Link>
                         </div>
-
-                        <div className="text-center text-sm text-muted-foreground mt-4">
-                            <p>Test Credentials:</p>
-                            <p>User: user@agora.io / password123</p>
-                            <p>Admin: admin@agora.io / password123</p>
-                        </div>
                     </form>
                 </CardContent>
             </Card>
