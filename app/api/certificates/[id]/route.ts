@@ -32,7 +32,8 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
     }
 
     // Check if user owns this certificate
-    if (certificate.userId !== user.id) {
+    const allowedUserIds = new Set([user.id, user.supabaseId].filter((value): value is string => Boolean(value)));
+    if (!allowedUserIds.has(certificate.userId)) {
       return NextResponse.json(
         {
           success: false,

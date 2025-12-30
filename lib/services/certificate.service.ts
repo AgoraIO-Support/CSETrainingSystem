@@ -687,8 +687,13 @@ export class CertificateService {
     }
 
     // Get user info
-    const user = await prisma.user.findUnique({
-      where: { id: certificate.userId },
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { id: certificate.userId },
+          { supabaseId: certificate.userId },
+        ],
+      },
       select: { name: true, email: true },
     });
 
@@ -767,15 +772,17 @@ export class CertificateService {
    * Get user's certificates
    */
   static async getUserCertificates(userId: string): Promise<CertificateData[]> {
-    const certificates = await prisma.certificate.findMany({
-      where: { userId },
-      orderBy: { issueDate: 'desc' },
-    });
-
     // Get user info once
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { name: true, email: true },
+      select: { name: true, email: true, supabaseId: true },
+    });
+
+    const userIds = [userId, user?.supabaseId].filter((value): value is string => Boolean(value));
+
+    const certificates = await prisma.certificate.findMany({
+      where: { userId: { in: userIds } },
+      orderBy: { issueDate: 'desc' },
     });
 
     // Get all exam IDs and fetch their total scores
