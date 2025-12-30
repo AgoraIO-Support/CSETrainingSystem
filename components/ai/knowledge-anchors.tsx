@@ -133,6 +133,12 @@ export function KnowledgeAnchors({
         onSeekToTimestamp?.(anchor.timestampStr)
     }
 
+    const truncateTitle = (value: string, maxChars: number) => {
+        if (!value) return ''
+        if (value.length <= maxChars) return value
+        return `${value.slice(0, maxChars)}…`
+    }
+
     return (
         <Card>
             <CardHeader className="pb-3">
@@ -182,27 +188,34 @@ export function KnowledgeAnchors({
                     )}
 
                     {!loading && !error && anchors.length > 0 && (
-                        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                        <div className="max-h-[320px] space-y-2 overflow-y-auto pr-1">
                             {anchors.map((anchor, index) => {
                                 const config = anchorTypeConfig[anchor.anchorType]
                                 const Icon = config.icon
                                 const isCurrent = index === currentAnchorIndex
-                                const keyTerms = anchor.keyTerms.slice(0, 4).join(' · ')
+                                const safeTitle = truncateTitle(anchor.title, 30)
+                                const tooltip = [
+                                    anchor.title,
+                                    anchor.keyTerms?.length ? `Key terms: ${anchor.keyTerms.join(', ')}` : null,
+                                ]
+                                    .filter(Boolean)
+                                    .join('\n')
 
                                 return (
                                     <button
                                         key={anchor.id}
                                         onClick={() => handleAnchorClick(anchor)}
+                                        title={tooltip}
                                         className={cn(
-                                            "w-full rounded-md border px-2.5 py-2 text-left transition-colors",
-                                            "hover:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-ring",
-                                            isCurrent && "bg-muted/50 ring-1 ring-ring/30"
+                                            'w-full rounded-md border px-2.5 py-2 text-left transition-colors',
+                                            'hover:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-ring',
+                                            isCurrent && 'bg-muted/50 ring-1 ring-ring/30'
                                         )}
                                     >
                                         <div className="flex items-center gap-2 min-w-0">
                                             <Badge
                                                 variant="outline"
-                                                className={cn("shrink-0 text-[10px] px-1.5 py-0.5", config.color)}
+                                                className={cn('shrink-0 text-[10px] px-1.5 py-0.5', config.color)}
                                             >
                                                 <span className="inline-flex items-center gap-1">
                                                     <Icon className="h-3 w-3" />
@@ -218,14 +231,8 @@ export function KnowledgeAnchors({
                                             </span>
 
                                             <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                                                {anchor.title}
+                                                {safeTitle}
                                             </span>
-
-                                            {keyTerms && (
-                                                <span className="min-w-0 truncate text-xs text-muted-foreground">
-                                                    {keyTerms}
-                                                </span>
-                                            )}
 
                                             {isCurrent && (
                                                 <Badge variant="default" className="shrink-0 text-[10px] px-1.5 py-0.5">

@@ -1,18 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { CourseService } from '@/lib/services/course.service'
-import { CourseLevel, CourseStatus } from '@prisma/client'
+import { CourseLevel } from '@prisma/client'
 
 const levelValues: CourseLevel[] = ['BEGINNER', 'INTERMEDIATE', 'ADVANCED']
-const statusValues: CourseStatus[] = ['DRAFT', 'PUBLISHED', 'ARCHIVED']
 
 const parseLevel = (value: string | null): CourseLevel | undefined => {
     if (!value) return undefined
-    return levelValues.includes(value as CourseLevel) ? (value as CourseLevel) : undefined
-}
 
-const parseStatus = (_value: string | null): CourseStatus | 'ALL' | undefined => {
-    // 公共列表接口不允许客户端覆盖状态过滤，强制只展示 PUBLISHED
-    return 'PUBLISHED'
+    const normalized = value.trim()
+    if (!normalized) return undefined
+
+    const upper = normalized
+        .toUpperCase()
+        .replace(/[\s-]+/g, '_')
+
+    if (upper === 'ALL' || upper === 'ALL_LEVELS') return undefined
+
+    return levelValues.includes(upper as CourseLevel) ? (upper as CourseLevel) : undefined
 }
 
 export async function GET(req: NextRequest) {

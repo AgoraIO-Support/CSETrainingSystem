@@ -11,6 +11,8 @@ import {
   DifficultyLevel,
   Prisma,
 } from '@prisma/client';
+import { FileService } from '@/lib/services/file.service';
+import { ASSET_S3_BUCKET_NAME, S3_BUCKET_NAME } from '@/lib/aws-s3';
 
 // Input types
 export interface CreateExamInput {
@@ -438,13 +440,62 @@ export class ExamService {
   /**
    * Delete an exam (soft delete by changing status to ARCHIVED)
    */
-  static async deleteExam(id: string): Promise<void> {
+  static async deleteExam(id: string, opts?: { force?: boolean }): Promise<void> {
     const existing = await prisma.exam.findUnique({
       where: { id },
     });
 
     if (!existing) {
       throw new Error('EXAM_NOT_FOUND');
+    }
+
+    if (opts?.force) {
+      const [recordings, certificates, template] = await Promise.all([
+        prisma.examAnswer.findMany({
+          where: {
+            recordingS3Key: { not: null },
+            question: { examId: id, type: ExamQuestionType.EXERCISE },
+          },
+          select: { recordingS3Key: true },
+        }),
+        prisma.certificate.findMany({
+          where: { examId: id },
+          select: { pdfS3Key: true, badgeS3Key: true },
+        }),
+        prisma.examCertificateTemplate.findUnique({
+          where: { examId: id },
+          select: { badgeS3Key: true },
+        }),
+      ]);
+
+      const recordingKeys = recordings.map((r) => r.recordingS3Key!).filter(Boolean);
+      const pdfKeys = certificates
+        .map((c) => c.pdfS3Key)
+        .filter((k): k is string => typeof k === 'string' && k.length > 0);
+      const badgeKeys = certificates
+        .map((c) => c.badgeS3Key)
+        .filter((k): k is string => typeof k === 'string' && k.length > 0);
+      const templateBadgeKeys = template?.badgeS3Key ? [template.badgeS3Key] : [];
+
+      // Cleanup S3 objects; if it fails, surface the error so admins don't assume data is removed.
+      if (recordingKeys.length > 0) {
+        await FileService.deleteFiles(recordingKeys);
+      }
+
+      if (pdfKeys.length > 0) {
+        await FileService.deleteFiles(Array.from(new Set(pdfKeys)), S3_BUCKET_NAME);
+      }
+
+      const allBadgeKeys = Array.from(new Set([...badgeKeys, ...templateBadgeKeys]));
+      if (allBadgeKeys.length > 0) {
+        await FileService.deleteFiles(allBadgeKeys, ASSET_S3_BUCKET_NAME);
+      }
+
+      // Remove certificates explicitly before deleting the exam (Certificate.examId uses onDelete:SetNull).
+      await prisma.certificate.deleteMany({ where: { examId: id } });
+
+      await prisma.exam.delete({ where: { id } });
+      return;
     }
 
     // If exam has attempts, archive instead of delete

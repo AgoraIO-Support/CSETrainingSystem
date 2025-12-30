@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint (non-blocking)
+        continue-on-error: true
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build (Next.js)
+        run: npm run build
+
+      - name: Build (backend)
+        run: npm run backend:build
+
+      - name: Container build (web)
+        run: docker build -t cselearning-web:ci -f Containerfile .
+
+      - name: Container build (backend)
+        run: docker build -t cselearning-backend:ci -f backend/Containerfile .

@@ -1,4 +1,4 @@
-import { PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
+import { PutObjectCommand, DeleteObjectCommand, GetObjectCommand, DeleteObjectsCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { getSignedUrl as getCloudFrontSignedUrl } from 'aws-cloudfront-sign'
 import s3Client, {
@@ -340,5 +340,31 @@ export class FileService {
 
         log('S3', 'info', 'deleteObject', { bucket, key })
         await timeAsync('S3', 'deleteObject result', { bucket, key }, () => s3Client.send(command).then(() => undefined))
+    }
+
+    static async deleteFiles(keys: string[], bucket: string = ASSET_S3_BUCKET_NAME): Promise<void> {
+        const normalized = keys.map(k => k.replace(/^\/+/, '')).filter(Boolean)
+        if (normalized.length === 0) return
+
+        // S3 DeleteObjects supports up to 1000 keys per request.
+        for (let i = 0; i < normalized.length; i += 1000) {
+            const batch = normalized.slice(i, i + 1000)
+            const command = new DeleteObjectsCommand({
+                Bucket: bucket,
+                Delete: {
+                    Objects: batch.map(Key => ({ Key })),
+                    Quiet: true,
+                },
+            })
+
+            log('S3', 'info', 'deleteObjects', { bucket, keysCount: batch.length })
+            await timeAsync('S3', 'deleteObjects result', { bucket, keysCount: batch.length }, async () => {
+                const res = await s3Client.send(command)
+                const errors = res.Errors ?? []
+                if (errors.length > 0) {
+                    throw new Error(`S3_DELETE_OBJECTS_FAILED: ${errors[0]?.Message || errors[0]?.Code || 'Unknown error'}`)
+                }
+            })
+        }
     }
 }

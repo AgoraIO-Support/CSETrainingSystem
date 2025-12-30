@@ -16,7 +16,7 @@ async function buildServer() {
     const server = Fastify({ logger: true })
     await server.register(sensible)
     await server.register(cors, {
-        origin: [/\.example\.com$/, 'http://localhost:3000', 'http://localhost:3002'],
+        origin: [/\.example\.com$/, 'http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:3002'],
         credentials: true,
     })
     await server.register(cookie)
@@ -31,7 +31,13 @@ async function buildServer() {
     server.register(chapterAdminRoutes, { prefix: '/api/admin' })
     server.register(lessonAdminRoutes, { prefix: '/api/admin' })
     server.register(courseAdminRoutes, { prefix: '/api/admin' })
-    server.register(cloudfrontCookieRoutes, { prefix: '/api/materials' })
+
+    // Optional: only register CloudFront signed-cookie endpoint when configured.
+    if (appConfig.cloudfront.enabled) {
+        server.register(cloudfrontCookieRoutes, { prefix: '/api/materials' })
+    } else {
+        server.log.info('CloudFront config not set; skipping /api/materials/* signed-cookie routes')
+    }
 
     return server
 }

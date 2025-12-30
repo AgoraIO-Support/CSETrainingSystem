@@ -305,7 +305,7 @@ export interface Achievement {
 // Exam System Types
 export type ExamStatus = 'DRAFT' | 'PENDING_REVIEW' | 'APPROVED' | 'PUBLISHED' | 'CLOSED'
 export type ExamType = 'COURSE_BASED' | 'STANDALONE'
-export type ExamQuestionType = 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'FILL_IN_BLANK' | 'ESSAY'
+export type ExamQuestionType = 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'FILL_IN_BLANK' | 'ESSAY' | 'EXERCISE'
 export type ExamAttemptStatus = 'IN_PROGRESS' | 'SUBMITTED' | 'GRADED' | 'EXPIRED'
 export type GradingStatus = 'PENDING' | 'AUTO_GRADED' | 'AI_SUGGESTED' | 'MANUALLY_GRADED'
 
@@ -390,6 +390,11 @@ export interface ExamAnswer {
     questionId: string
     answer?: string | null
     selectedOption?: number | null
+    recordingS3Key?: string | null
+    recordingMimeType?: string | null
+    recordingSizeBytes?: number | null
+    recordingDurationSeconds?: number | null
+    recordingStatus?: 'PENDING_UPLOAD' | 'UPLOADED' | 'FAILED' | null
     gradingStatus: GradingStatus
     isCorrect?: boolean | null
     pointsAwarded?: number | null

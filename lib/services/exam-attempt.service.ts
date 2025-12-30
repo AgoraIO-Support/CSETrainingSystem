@@ -8,6 +8,7 @@ import {
   ExamAttemptStatus,
   ExamStatus,
   ExamQuestionType,
+  ExamRecordingStatus,
   GradingStatus,
 } from '@prisma/client';
 import { ExamGradingService } from '@/lib/services/exam-grading.service';
@@ -29,6 +30,18 @@ export interface StartAttemptResult {
   }>;
   timeLimit: number | null;
   totalQuestions: number;
+}
+
+export interface CurrentAttemptResult extends StartAttemptResult {
+  existingAnswers: Record<
+    string,
+    {
+      answer: string | null;
+      selectedOption: number | null;
+      recordingS3Key: string | null;
+      recordingStatus: ExamRecordingStatus | null;
+    }
+  >;
 }
 
 export interface SaveAnswerInput {
@@ -54,6 +67,11 @@ export interface AttemptWithAnswers {
     questionId: string;
     answer: string | null;
     selectedOption: number | null;
+    recordingS3Key: string | null;
+    recordingMimeType: string | null;
+    recordingSizeBytes: number | null;
+    recordingDurationSeconds: number | null;
+    recordingStatus: ExamRecordingStatus | null;
     gradingStatus: GradingStatus;
     isCorrect: boolean | null;
     pointsAwarded: number | null;
@@ -174,7 +192,10 @@ export class ExamAttemptService {
 
     // Check if any questions require manual grading (not auto-graded).
     const hasEssays = exam.questions.some(
-      (q) => q.type === ExamQuestionType.ESSAY || q.type === ExamQuestionType.FILL_IN_BLANK
+      (q) =>
+        q.type === ExamQuestionType.ESSAY ||
+        q.type === ExamQuestionType.FILL_IN_BLANK ||
+        q.type === ExamQuestionType.EXERCISE
     );
 
     // Create new attempt
@@ -297,6 +318,10 @@ export class ExamAttemptService {
 
     if (!question) {
       throw new Error('QUESTION_NOT_FOUND');
+    }
+
+    if (question.type === ExamQuestionType.EXERCISE) {
+      throw new Error('EXERCISE_ANSWER_MUST_USE_UPLOAD');
     }
 
     // Upsert answer
@@ -448,6 +473,11 @@ export class ExamAttemptService {
         questionId: a.questionId,
         answer: a.answer,
         selectedOption: a.selectedOption,
+        recordingS3Key: a.recordingS3Key,
+        recordingMimeType: a.recordingMimeType,
+        recordingSizeBytes: a.recordingSizeBytes,
+        recordingDurationSeconds: a.recordingDurationSeconds,
+        recordingStatus: a.recordingStatus,
         gradingStatus: a.gradingStatus,
         isCorrect: a.isCorrect,
         pointsAwarded: a.pointsAwarded,
@@ -505,7 +535,7 @@ export class ExamAttemptService {
   static async getCurrentAttempt(
     userId: string,
     examId: string
-  ): Promise<StartAttemptResult | null> {
+  ): Promise<CurrentAttemptResult | null> {
     const attempt = await prisma.examAttempt.findFirst({
       where: {
         userId,
@@ -540,14 +570,15 @@ export class ExamAttemptService {
     // Include existing answers
     return {
       ...result,
-      // @ts-ignore - Adding existing answers
       existingAnswers: attempt.answers.reduce((acc, ans) => {
         acc[ans.questionId] = {
           answer: ans.answer,
           selectedOption: ans.selectedOption,
+          recordingS3Key: ans.recordingS3Key ?? null,
+          recordingStatus: ans.recordingStatus ?? null,
         };
         return acc;
-      }, {} as Record<string, any>),
+      }, {} as CurrentAttemptResult['existingAnswers']),
     };
   }
 

@@ -9,6 +9,11 @@ const paramsSchema = z.object({ courseId: z.string().uuid() })
 
 export async function cloudfrontCookieRoutes(fastify: FastifyInstance) {
     fastify.get('/:courseId/cf-cookie', { preHandler: [requireEnrollment] }, async (request, reply) => {
+        if (!appConfig.cloudfront.enabled) {
+            return reply
+                .status(501)
+                .send({ success: false, error: 'CloudFront signed cookies are not configured on this backend.' })
+        }
         const { courseId } = paramsSchema.parse(request.params)
         const expiresAt = addHours(new Date(), appConfig.cloudfront.cookieTtlHours)
         const epochExpires = Math.floor(expiresAt.getTime() / 1000)

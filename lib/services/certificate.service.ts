@@ -5,15 +5,20 @@
 
 import prisma from '@/lib/prisma';
 import { EmailService } from './email.service';
-import s3Client, { S3_BUCKET_NAME, CLOUDFRONT_DOMAIN } from '@/lib/aws-s3';
-import { PutObjectCommand } from '@aws-sdk/client-s3';
+import s3Client, { ASSET_S3_BUCKET_NAME, S3_BUCKET_NAME, CLOUDFRONT_DOMAIN } from '@/lib/aws-s3';
+import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { v4 as uuidv4 } from 'uuid';
+import { CertificateBadgeMode, CertificateStatus } from '@prisma/client';
+import { Readable } from 'stream';
+import { FileService } from '@/lib/services/file.service';
 
 export interface CertificateData {
   id: string;
   certificateNumber: string;
   userId: string;
   userName: string;
+  courseId: string | null;
+  courseTitle: string | null;
   examId: string | null;
   examTitle: string;
   score: number;
@@ -21,6 +26,12 @@ export interface CertificateData {
   percentageScore: number;
   issueDate: Date;
   pdfUrl: string | null;
+  status: 'ISSUED' | 'REVOKED';
+  revokedAt?: Date | null;
+  certificateTitle?: string | null;
+  badgeMode?: 'AUTO' | 'UPLOADED' | null;
+  badgeUrl?: string | null;
+  badgeStyle?: any | null;
 }
 
 export interface GenerateCertificateResult {
@@ -54,6 +65,41 @@ async function uploadBufferToS3(
   return `https://${S3_BUCKET_NAME}.s3.amazonaws.com/${key}`;
 }
 
+async function streamToBuffer(body: unknown): Promise<Buffer> {
+  if (!body) return Buffer.alloc(0);
+  if (Buffer.isBuffer(body)) return body;
+
+  // In Node.js, the AWS SDK returns a Readable stream for GetObject.Body.
+  if (body instanceof Readable) {
+    const chunks: Buffer[] = [];
+    for await (const chunk of body) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
+  }
+
+  // Fallback for web/undici streams (best-effort)
+  if (typeof (body as any).transformToByteArray === 'function') {
+    const arr = await (body as any).transformToByteArray();
+    return Buffer.from(arr);
+  }
+
+  throw new Error('UNSUPPORTED_S3_BODY');
+}
+
+function getPublicUrlForKey(key: string): string {
+  if (CLOUDFRONT_DOMAIN) return `${CLOUDFRONT_DOMAIN}/${key}`;
+  return `https://${S3_BUCKET_NAME}.s3.amazonaws.com/${key}`;
+}
+
+async function getBadgeAccessUrl(key: string): Promise<string | null> {
+  try {
+    return await FileService.getAssetAccessUrl(key);
+  } catch {
+    return null;
+  }
+}
+
 export class CertificateService {
   /**
    * Generate a certificate for a passed exam attempt
@@ -84,21 +130,86 @@ export class CertificateService {
       throw new Error('EXAM_NOT_PASSED');
     }
 
-    // Check if certificate already exists for this attempt
+    const result = await this.issueCertificateForAttempt(attemptId, {
+      requestUserId: userId,
+      sendEmail,
+      allowReissue: false,
+      silentIfNotEnabled: false,
+    });
+
+    if (!result) {
+      throw new Error('CERTIFICATE_NOT_ENABLED');
+    }
+
+    // Send email if requested
+    return result;
+  }
+
+  static async autoIssueForAttempt(attemptId: string): Promise<GenerateCertificateResult | null> {
+    return await this.issueCertificateForAttempt(attemptId, {
+      sendEmail: false,
+      allowReissue: false,
+      silentIfNotEnabled: true,
+    });
+  }
+
+  private static async issueCertificateForAttempt(
+    attemptId: string,
+    opts: {
+      requestUserId?: string;
+      sendEmail?: boolean;
+      allowReissue?: boolean;
+      silentIfNotEnabled?: boolean;
+    }
+  ): Promise<GenerateCertificateResult | null> {
+    const sendEmail = opts.sendEmail ?? true;
+
+    const attempt = await prisma.examAttempt.findUnique({
+      where: { id: attemptId },
+      include: {
+        user: true,
+        exam: true,
+      },
+    });
+
+    if (!attempt) {
+      throw new Error('ATTEMPT_NOT_FOUND');
+    }
+
+    if (opts.requestUserId && attempt.userId !== opts.requestUserId) {
+      throw new Error('UNAUTHORIZED');
+    }
+
+    if (!attempt.passed) {
+      throw new Error('EXAM_NOT_PASSED');
+    }
+
+    const template = await prisma.examCertificateTemplate.findUnique({
+      where: { examId: attempt.examId },
+    });
+
+    if (!template || !template.isEnabled) {
+      if (opts.silentIfNotEnabled) return null;
+      throw new Error('CERTIFICATE_NOT_ENABLED');
+    }
+
     const existingCert = await prisma.certificate.findFirst({
       where: {
-        userId,
+        userId: attempt.userId,
         examId: attempt.examId,
       },
     });
 
-    if (existingCert) {
+    if (existingCert?.status === CertificateStatus.ISSUED) {
+      const badgeUrl = existingCert.badgeS3Key ? await getBadgeAccessUrl(existingCert.badgeS3Key) : null;
       return {
         certificate: {
           id: existingCert.id,
           certificateNumber: existingCert.certificateNumber,
           userId: existingCert.userId,
           userName: existingCert.recipientName || attempt.user.name || attempt.user.email,
+          courseId: existingCert.courseId ?? null,
+          courseTitle: existingCert.courseTitle ?? null,
           examId: attempt.examId,
           examTitle: existingCert.examTitle || attempt.exam.title,
           score: existingCert.score || 0,
@@ -106,54 +217,121 @@ export class CertificateService {
           percentageScore: attempt.percentageScore || 0,
           issueDate: existingCert.issueDate,
           pdfUrl: existingCert.pdfUrl,
+          status: existingCert.status,
+          revokedAt: existingCert.revokedAt,
+          certificateTitle: existingCert.certificateTitle,
+          badgeMode: existingCert.badgeMode as any,
+          badgeUrl,
+          badgeStyle: existingCert.badgeStyle as any,
         },
         pdfUrl: existingCert.pdfUrl || '',
-        emailSent: false, // Already issued
+        emailSent: false,
       };
     }
 
-    // Generate unique certificate number
-    const certificateNumber = this.generateCertificateNumber();
+    if (existingCert?.status === CertificateStatus.REVOKED && !opts.allowReissue) {
+      throw new Error('CERTIFICATE_REVOKED');
+    }
 
-    // Generate PDF
+    const certificateNumber = existingCert?.certificateNumber || this.generateCertificateNumber();
+    const issueDate = new Date();
+
+    let badgeMode: CertificateBadgeMode = template.badgeMode;
+    let badgeS3Key: string | null = template.badgeS3Key ?? null;
+    let badgeMimeType: string | null = template.badgeMimeType ?? null;
+    let badgeStyle: any | null = template.badgeStyle ?? null;
+    let badgeImageDataUrl: string | null = null;
+
+    if (badgeMode === CertificateBadgeMode.UPLOADED) {
+      if (!badgeS3Key || !badgeMimeType) {
+        throw new Error('BADGE_NOT_CONFIGURED');
+      }
+      let buf: Buffer;
+      try {
+        const res = await s3Client.send(new GetObjectCommand({ Bucket: ASSET_S3_BUCKET_NAME, Key: badgeS3Key }));
+        buf = await streamToBuffer(res.Body);
+      } catch {
+        // Backward compatibility: older environments stored badges in the primary bucket.
+        const res = await s3Client.send(new GetObjectCommand({ Bucket: S3_BUCKET_NAME, Key: badgeS3Key }));
+        buf = await streamToBuffer(res.Body);
+      }
+      const base64 = buf.toString('base64');
+      badgeImageDataUrl = `data:${badgeMimeType};base64,${base64}`;
+    } else {
+      badgeS3Key = null;
+      badgeMimeType = null;
+      badgeStyle = badgeStyle ?? { theme: 'blue', variant: 'default' };
+    }
+
     const pdfBuffer = await this.generateCertificatePDF({
       userName: attempt.user.name || attempt.user.email,
       examTitle: attempt.exam.title,
+      certificateTitle: template.title,
       score: attempt.rawScore || 0,
       totalScore: attempt.exam.totalScore,
       percentageScore: attempt.percentageScore || 0,
       certificateNumber,
-      issueDate: new Date(),
-    });
-
-    // Upload to S3
-    const s3Key = `certificates/${userId}/${certificateNumber}.pdf`;
-    const pdfUrl = await uploadBufferToS3(
-      pdfBuffer,
-      s3Key,
-      'application/pdf'
-    );
-
-    // Create certificate record
-    const certificate = await prisma.certificate.create({
-      data: {
-        userId,
-        examId: attempt.examId,
-        certificateNumber,
-        pdfUrl,
-        issueDate: new Date(),
-        recipientName: attempt.user.name || attempt.user.email,
-        examTitle: attempt.exam.title,
-        score: attempt.rawScore || 0,
+      issueDate,
+      badge: {
+        mode: badgeMode,
+        style: badgeStyle,
+        imageDataUrl: badgeImageDataUrl,
+        mimeType: badgeMimeType,
       },
     });
 
-    // Send email if requested
+    const pdfS3Key = existingCert?.pdfS3Key || `certificates/${attempt.userId}/${certificateNumber}.pdf`;
+    const pdfUrl = await uploadBufferToS3(pdfBuffer, pdfS3Key, 'application/pdf');
+
+    const certificate = existingCert
+      ? await prisma.certificate.update({
+          where: { id: existingCert.id },
+          data: {
+            status: CertificateStatus.ISSUED,
+            revokedAt: null,
+            revokedById: null,
+            issueDate,
+            pdfUrl,
+            pdfS3Key,
+            attemptId,
+            recipientName: attempt.user.name || attempt.user.email,
+            examTitle: attempt.exam.title,
+            score: attempt.rawScore || 0,
+            certificateTitle: template.title,
+            badgeMode,
+            badgeS3Key: badgeMode === CertificateBadgeMode.UPLOADED ? badgeS3Key : null,
+            badgeMimeType: badgeMode === CertificateBadgeMode.UPLOADED ? badgeMimeType : null,
+            badgeStyle: badgeMode === CertificateBadgeMode.AUTO ? badgeStyle : null,
+          },
+        })
+      : await prisma.certificate.create({
+          data: {
+            userId: attempt.userId,
+            examId: attempt.examId,
+            attemptId,
+            certificateNumber,
+            pdfUrl,
+            pdfS3Key,
+            issueDate,
+            status: CertificateStatus.ISSUED,
+            recipientName: attempt.user.name || attempt.user.email,
+            examTitle: attempt.exam.title,
+            score: attempt.rawScore || 0,
+            certificateTitle: template.title,
+            badgeMode,
+            badgeS3Key: badgeMode === CertificateBadgeMode.UPLOADED ? badgeS3Key : null,
+            badgeMimeType: badgeMode === CertificateBadgeMode.UPLOADED ? badgeMimeType : null,
+            badgeStyle: badgeMode === CertificateBadgeMode.AUTO ? badgeStyle : null,
+          },
+        });
+
     let emailSent = false;
     if (sendEmail) {
-      const emailResult = await EmailService.sendCertificate(userId, certificate.id);
+      const emailResult = await EmailService.sendCertificate(attempt.userId, certificate.id);
       emailSent = emailResult.success;
     }
+
+    const badgeUrl = certificate.badgeS3Key ? await getBadgeAccessUrl(certificate.badgeS3Key) : null;
 
     return {
       certificate: {
@@ -161,6 +339,8 @@ export class CertificateService {
         certificateNumber: certificate.certificateNumber,
         userId: certificate.userId,
         userName: certificate.recipientName || attempt.user.name || attempt.user.email,
+        courseId: certificate.courseId ?? null,
+        courseTitle: certificate.courseTitle ?? null,
         examId: attempt.examId,
         examTitle: certificate.examTitle || attempt.exam.title,
         score: certificate.score || 0,
@@ -168,8 +348,14 @@ export class CertificateService {
         percentageScore: attempt.percentageScore || 0,
         issueDate: certificate.issueDate,
         pdfUrl: certificate.pdfUrl,
+        status: certificate.status,
+        revokedAt: certificate.revokedAt,
+        certificateTitle: certificate.certificateTitle,
+        badgeMode: certificate.badgeMode as any,
+        badgeUrl,
+        badgeStyle: certificate.badgeStyle as any,
       },
-      pdfUrl: pdfUrl,
+      pdfUrl,
       emailSent,
     };
   }
@@ -190,11 +376,18 @@ export class CertificateService {
   private static async generateCertificatePDF(data: {
     userName: string;
     examTitle: string;
+    certificateTitle: string;
     score: number;
     totalScore: number;
     percentageScore: number;
     certificateNumber: string;
     issueDate: Date;
+    badge?: {
+      mode: CertificateBadgeMode;
+      style: any | null;
+      imageDataUrl: string | null;
+      mimeType: string | null;
+    };
   }): Promise<Buffer> {
     // Use jspdf for reliable PDF generation without external font dependencies
     const { jsPDF } = await import('jspdf');
@@ -218,6 +411,24 @@ export class CertificateService {
     doc.setLineWidth(1);
     doc.rect(25, 25, width - 50, height - 50);
 
+    // Optional badge (top-left)
+    if (data.badge?.mode === CertificateBadgeMode.UPLOADED && data.badge.imageDataUrl) {
+      const imageType = data.badge.mimeType === 'image/png' ? 'PNG' : 'JPEG';
+      doc.addImage(data.badge.imageDataUrl, imageType, 50, 50, 80, 80);
+    }
+
+    if (data.badge?.mode === CertificateBadgeMode.AUTO) {
+      const cx = 90;
+      const cy = 90;
+      const r = 36;
+      doc.setFillColor(30, 64, 175);
+      doc.circle(cx, cy, r, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.text('PASS', cx, cy + 6, { align: 'center' });
+    }
+
     // Title
     doc.setFontSize(36);
     doc.setTextColor(30, 64, 175);
@@ -227,7 +438,7 @@ export class CertificateService {
     doc.setFontSize(16);
     doc.setTextColor(107, 114, 128); // #6b7280
     doc.setFont('helvetica', 'normal');
-    doc.text('OF COMPLETION', width / 2, 100, { align: 'center' });
+    doc.text((data.certificateTitle || 'OF COMPLETION').toUpperCase(), width / 2, 100, { align: 'center' });
 
     // Body
     doc.setFontSize(14);
@@ -338,6 +549,131 @@ export class CertificateService {
     return Buffer.from(pdfOutput);
   }
 
+  static async revokeCertificate(certificateId: string, adminId: string) {
+    const existing = await prisma.certificate.findUnique({ where: { id: certificateId } });
+    if (!existing) {
+      throw new Error('CERT_NOT_FOUND');
+    }
+
+    const updated = await prisma.certificate.update({
+      where: { id: certificateId },
+      data: {
+        status: CertificateStatus.REVOKED,
+        revokedAt: new Date(),
+        revokedById: adminId,
+      },
+      select: {
+        id: true,
+        status: true,
+        revokedAt: true,
+        certificateNumber: true,
+      },
+    });
+
+    return updated;
+  }
+
+  static async reissueCertificate(certificateId: string, adminId: string) {
+    const existing = await prisma.certificate.findUnique({ where: { id: certificateId } });
+    if (!existing) {
+      throw new Error('CERT_NOT_FOUND');
+    }
+
+    if (!existing.userId) {
+      throw new Error('CERT_INVALID');
+    }
+
+    const exam = existing.examId
+      ? await prisma.exam.findUnique({ where: { id: existing.examId }, select: { id: true, title: true, totalScore: true } })
+      : null;
+
+    const template = existing.examId
+      ? await prisma.examCertificateTemplate.findUnique({ where: { examId: existing.examId } })
+      : null;
+
+    const examTitle = existing.examTitle || exam?.title || 'Exam';
+    const totalScore = exam?.totalScore ?? 100;
+    const score = existing.score || 0;
+    const percentageScore = totalScore > 0 ? (score / totalScore) * 100 : 0;
+
+    const certificateTitle = template?.title || existing.certificateTitle || 'OF COMPLETION';
+
+    const badgeMode: CertificateBadgeMode =
+      template?.badgeMode ||
+      (existing.badgeMode as CertificateBadgeMode) ||
+      CertificateBadgeMode.AUTO;
+
+    const badgeS3Key = template?.badgeS3Key ?? existing.badgeS3Key ?? null;
+    const badgeMimeType = template?.badgeMimeType ?? existing.badgeMimeType ?? null;
+    const badgeStyle = template?.badgeStyle ?? (existing.badgeStyle as any) ?? { theme: 'blue', variant: 'default' };
+
+    let badgeImageDataUrl: string | null = null;
+    if (badgeMode === CertificateBadgeMode.UPLOADED) {
+      if (!badgeS3Key || !badgeMimeType) {
+        throw new Error('BADGE_NOT_CONFIGURED');
+      }
+      let buf: Buffer;
+      try {
+        const res = await s3Client.send(new GetObjectCommand({ Bucket: ASSET_S3_BUCKET_NAME, Key: badgeS3Key }));
+        buf = await streamToBuffer(res.Body);
+      } catch {
+        const res = await s3Client.send(new GetObjectCommand({ Bucket: S3_BUCKET_NAME, Key: badgeS3Key }));
+        buf = await streamToBuffer(res.Body);
+      }
+      badgeImageDataUrl = `data:${badgeMimeType};base64,${buf.toString('base64')}`;
+    }
+
+    const issueDate = new Date();
+    const pdfBuffer = await this.generateCertificatePDF({
+      userName: existing.recipientName || 'Learner',
+      examTitle,
+      certificateTitle,
+      score,
+      totalScore,
+      percentageScore,
+      certificateNumber: existing.certificateNumber,
+      issueDate,
+      badge: {
+        mode: badgeMode,
+        style: badgeStyle,
+        imageDataUrl: badgeImageDataUrl,
+        mimeType: badgeMimeType,
+      },
+    });
+
+    const pdfS3Key = existing.pdfS3Key || `certificates/${existing.userId}/${existing.certificateNumber}.pdf`;
+    const pdfUrl = await uploadBufferToS3(pdfBuffer, pdfS3Key, 'application/pdf');
+
+    const updated = await prisma.certificate.update({
+      where: { id: certificateId },
+      data: {
+        status: CertificateStatus.ISSUED,
+        revokedAt: null,
+        revokedById: null,
+        issueDate,
+        pdfUrl,
+        pdfS3Key,
+        certificateTitle,
+        badgeMode,
+        badgeS3Key: badgeMode === CertificateBadgeMode.UPLOADED ? badgeS3Key : null,
+        badgeMimeType: badgeMode === CertificateBadgeMode.UPLOADED ? badgeMimeType : null,
+        badgeStyle: badgeMode === CertificateBadgeMode.AUTO ? badgeStyle : null,
+      },
+      select: {
+        id: true,
+        status: true,
+        issueDate: true,
+        pdfUrl: true,
+        certificateNumber: true,
+      },
+    });
+
+    // Audit info (best-effort): track who reissued by setting `revokedById`? Not available; keep as-is.
+    void adminId;
+
+    return updated;
+  }
+
   /**
    * Get certificate by ID
    */
@@ -372,18 +708,28 @@ export class CertificateService {
       ? ((certificate.score || 0) / examTotalScore) * 100
       : 0;
 
+    const badgeUrl = certificate.badgeS3Key ? await getBadgeAccessUrl(certificate.badgeS3Key) : null;
+
     return {
       id: certificate.id,
       certificateNumber: certificate.certificateNumber,
       userId: certificate.userId,
       userName: certificate.recipientName || user?.name || user?.email || 'Unknown',
+      courseId: certificate.courseId,
+      courseTitle: certificate.courseTitle ?? null,
       examId: certificate.examId,
-      examTitle: certificate.examTitle || 'Completed Exam',
+      examTitle: certificate.examTitle || certificate.courseTitle || 'Certificate',
       score: certificate.score || 0,
       totalScore: examTotalScore,
       percentageScore,
       issueDate: certificate.issueDate,
       pdfUrl: certificate.pdfUrl,
+      status: certificate.status,
+      revokedAt: certificate.revokedAt,
+      certificateTitle: certificate.certificateTitle,
+      badgeMode: certificate.badgeMode as any,
+      badgeUrl,
+      badgeStyle: certificate.badgeStyle as any,
     };
   }
 
@@ -399,6 +745,10 @@ export class CertificateService {
     });
 
     if (!certificate) {
+      return { valid: false };
+    }
+
+    if (certificate.status === CertificateStatus.REVOKED) {
       return { valid: false };
     }
 
@@ -442,27 +792,39 @@ export class CertificateService {
 
     const examScoreMap = new Map(exams.map(e => [e.id, e.totalScore]));
 
-    return certificates.map(cert => {
-      const totalScore = cert.examId
-        ? examScoreMap.get(cert.examId) || 100
-        : 100;
-      const percentageScore = totalScore > 0
-        ? ((cert.score || 0) / totalScore) * 100
-        : 0;
+    return await Promise.all(
+      certificates.map(async (cert) => {
+        const totalScore = cert.examId
+          ? examScoreMap.get(cert.examId) || 100
+          : 100;
+        const percentageScore = totalScore > 0
+          ? ((cert.score || 0) / totalScore) * 100
+          : 0;
 
-      return {
-        id: cert.id,
-        certificateNumber: cert.certificateNumber,
-        userId: cert.userId,
-        userName: cert.recipientName || user?.name || user?.email || 'Unknown',
-        examId: cert.examId,
-        examTitle: cert.examTitle || 'Completed Exam',
-        score: cert.score || 0,
-        totalScore,
-        percentageScore,
-        issueDate: cert.issueDate,
-        pdfUrl: cert.pdfUrl,
-      };
-    });
+        const badgeUrl = cert.badgeS3Key ? await getBadgeAccessUrl(cert.badgeS3Key) : null;
+
+        return {
+          id: cert.id,
+          certificateNumber: cert.certificateNumber,
+          userId: cert.userId,
+          userName: cert.recipientName || user?.name || user?.email || 'Unknown',
+          courseId: cert.courseId,
+          courseTitle: cert.courseTitle ?? null,
+          examId: cert.examId,
+          examTitle: cert.examTitle || cert.courseTitle || 'Certificate',
+          score: cert.score || 0,
+          totalScore,
+          percentageScore,
+          issueDate: cert.issueDate,
+          pdfUrl: cert.pdfUrl,
+          status: cert.status,
+          revokedAt: cert.revokedAt,
+          certificateTitle: cert.certificateTitle,
+          badgeMode: cert.badgeMode as any,
+          badgeUrl,
+          badgeStyle: cert.badgeStyle as any,
+        };
+      })
+    );
   }
 }

@@ -512,8 +512,13 @@ const handleDeleteLessonAsset = async (assetId: string) => {
 
     const handleDeleteChapter = async (chapterId: string) => {
         if (!window.confirm('Delete this chapter and its lessons?')) return
-        await ApiClient.deleteChapter(id, chapterId)
-        await reloadCourse()
+        setError(null)
+        try {
+            await ApiClient.deleteChapter(id, chapterId)
+            await reloadCourse()
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to delete chapter')
+        }
     };
 
     const handleAddLesson = (chapterId: string) => {
@@ -522,11 +527,16 @@ const handleDeleteLessonAsset = async (assetId: string) => {
 
     const handleDeleteLesson = async (chapterId: string, lessonId: string) => {
         if (!window.confirm('Delete this lesson?')) return
-        await ApiClient.deleteLesson(id, chapterId, lessonId)
-        if (selectedLessonId === lessonId) {
-            setSelectedLessonId(null)
+        setError(null)
+        try {
+            await ApiClient.deleteLesson(id, chapterId, lessonId)
+            if (selectedLessonId === lessonId) {
+                setSelectedLessonId(null)
+            }
+            await reloadCourse()
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to delete lesson')
         }
-        await reloadCourse()
     };
 
     const handleMoveChapter = async (chapterId: string, direction: 'up' | 'down') => {

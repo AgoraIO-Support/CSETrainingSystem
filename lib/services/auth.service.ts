@@ -177,6 +177,49 @@ export class AuthService {
         throw new Error('INVALID_CREDENTIALS')
     }
 
+    static async changePassword(userId: string, data: { currentPassword?: string; newPassword: string }) {
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: {
+                id: true,
+                password: true,
+                supabaseId: true,
+            },
+        })
+
+        if (!user) {
+            throw new Error('USER_NOT_FOUND')
+        }
+
+        if (user.password) {
+            if (!data.currentPassword) {
+                throw new Error('CURRENT_PASSWORD_REQUIRED')
+            }
+
+            const isValid = await bcrypt.compare(data.currentPassword, user.password)
+            if (!isValid) {
+                throw new Error('INVALID_CURRENT_PASSWORD')
+            }
+        }
+
+        const hashedPassword = await bcrypt.hash(data.newPassword, 10)
+
+        await prisma.user.update({
+            where: { id: userId },
+            data: { password: hashedPassword },
+        })
+
+        if (!IS_LOCAL_AUTH && user.supabaseId) {
+            try {
+                await supabaseAdmin.auth.admin.updateUserById(user.supabaseId, {
+                    password: data.newPassword,
+                })
+            } catch (error) {
+                console.warn('Supabase password update failed; local password updated', error)
+            }
+        }
+    }
+
     /**
      * Get current user by ID (Local) or Supabase ID
      */

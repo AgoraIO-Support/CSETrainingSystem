@@ -10,10 +10,11 @@ import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { ApiClient } from '@/lib/api-client'
 import type { UserProfile, UserProgressOverview } from '@/types'
 import { formatDate } from '@/lib/utils'
-import { Mail, Award, BookOpen, Clock, TrendingUp, Edit, Loader2, Play, Download } from 'lucide-react'
+import { Mail, Award, BookOpen, Clock, TrendingUp, Edit, Loader2, Play } from 'lucide-react'
 
 export default function ProfilePage() {
     const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -35,6 +36,15 @@ export default function ProfilePage() {
         bio: '',
         avatar: '',
     })
+
+    const [passwordForm, setPasswordForm] = useState({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+    })
+    const [passwordSaving, setPasswordSaving] = useState(false)
+    const [passwordError, setPasswordError] = useState<string | null>(null)
+    const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
 
     useEffect(() => {
         let cancelled = false
@@ -141,6 +151,36 @@ export default function ProfilePage() {
         }
     }
 
+    const handlePasswordSave = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        setPasswordError(null)
+        setPasswordSuccess(null)
+
+        if (passwordForm.newPassword.length < 8) {
+            setPasswordError('New password must be at least 8 characters')
+            return
+        }
+
+        if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+            setPasswordError('Passwords do not match')
+            return
+        }
+
+        setPasswordSaving(true)
+        try {
+            await ApiClient.changePassword({
+                currentPassword: passwordForm.currentPassword.trim() ? passwordForm.currentPassword : undefined,
+                newPassword: passwordForm.newPassword,
+            })
+            setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' })
+            setPasswordSuccess('Password updated')
+        } catch (error) {
+            setPasswordError(error instanceof Error ? error.message : 'Failed to update password')
+        } finally {
+            setPasswordSaving(false)
+        }
+    }
+
     const isLoading = profileLoading || overviewLoading
 
     return (
@@ -224,6 +264,65 @@ export default function ProfilePage() {
                     </CardContent>
                 </Card>
 
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Security</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <form className="space-y-4 max-w-lg" onSubmit={handlePasswordSave}>
+                            {passwordError && (
+                                <Alert variant="destructive">
+                                    <AlertDescription>{passwordError}</AlertDescription>
+                                </Alert>
+                            )}
+                            {passwordSuccess && !passwordError && (
+                                <Alert className="border-emerald-200 bg-emerald-50 text-emerald-900">
+                                    <AlertDescription>{passwordSuccess}</AlertDescription>
+                                </Alert>
+                            )}
+
+                            <div className="grid gap-4 md:grid-cols-2">
+                                <div className="space-y-2 md:col-span-2">
+                                    <label className="text-sm font-medium">Current password</label>
+                                    <Input
+                                        type="password"
+                                        value={passwordForm.currentPassword}
+                                        onChange={(e) => setPasswordForm(prev => ({ ...prev, currentPassword: e.target.value }))}
+                                        autoComplete="current-password"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium">New password</label>
+                                    <Input
+                                        type="password"
+                                        value={passwordForm.newPassword}
+                                        onChange={(e) => setPasswordForm(prev => ({ ...prev, newPassword: e.target.value }))}
+                                        autoComplete="new-password"
+                                        required
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium">Confirm new password</label>
+                                    <Input
+                                        type="password"
+                                        value={passwordForm.confirmPassword}
+                                        onChange={(e) => setPasswordForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                                        autoComplete="new-password"
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <Button type="submit" disabled={passwordSaving}>
+                                    {passwordSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                                    Update password
+                                </Button>
+                            </div>
+                        </form>
+                    </CardContent>
+                </Card>
+
                 <div className="grid gap-4 md:grid-cols-4">
                     <StatCard
                         title="Courses Enrolled"
@@ -254,47 +353,12 @@ export default function ProfilePage() {
                 <Tabs defaultValue="courses" className="w-full">
                     <TabsList>
                         <TabsTrigger value="courses">My Courses</TabsTrigger>
-                        <TabsTrigger value="achievements">Certificates</TabsTrigger>
                         <TabsTrigger value="activity">Activity</TabsTrigger>
                     </TabsList>
 
                     <TabsContent value="courses" className="mt-6 space-y-6">
                         <CourseSection title="In Progress" courses={inProgressCourses} loading={overviewLoading} emptyMessage="No courses in progress yet." />
                         <CourseSection title="Completed" courses={completedCourses} loading={overviewLoading} emptyMessage="You have not completed any courses." showCompleted />
-                    </TabsContent>
-
-                    <TabsContent value="achievements" className="mt-6">
-                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                            {certificates.length ? (
-                                certificates.map(certificate => (
-                                    <Card key={certificate.id}>
-                                        <CardContent className="p-6 space-y-3">
-                                            <div>
-                                                <h4 className="font-semibold">{certificate.courseTitle}</h4>
-                                                <p className="text-sm text-muted-foreground">
-                                                    Issued {formatDate(certificate.issueDate)}
-                                                </p>
-                                            </div>
-                                            <Badge variant="outline">{certificate.certificateNumber}</Badge>
-                                            {certificate.instructorName && (
-                                                <p className="text-xs text-muted-foreground">Instructor: {certificate.instructorName}</p>
-                                            )}
-                                            {certificate.pdfUrl ? (
-                                                <Button asChild variant="ghost" className="px-0">
-                                                    <a href={certificate.pdfUrl} target="_blank" rel="noreferrer">
-                                                        <Download className="h-4 w-4 mr-2" /> Download PDF
-                                                    </a>
-                                                </Button>
-                                            ) : (
-                                                <p className="text-xs text-muted-foreground">PDF not available.</p>
-                                            )}
-                                        </CardContent>
-                                    </Card>
-                                ))
-                            ) : (
-                                <p className="text-sm text-muted-foreground">Complete a course to earn your first certificate.</p>
-                            )}
-                        </div>
                     </TabsContent>
 
                     <TabsContent value="activity" className="mt-6">

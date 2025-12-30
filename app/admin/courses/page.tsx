@@ -19,30 +19,39 @@ export default function AdminCoursesPage() {
 
     useEffect(() => {
         let cancelled = false
-        const loadCourses = async () => {
-            setLoading(true)
-            setError(null)
-            try {
-                const response = await ApiClient.getAdminCourses({ limit: 50, status: 'ALL' })
-                if (!cancelled) {
-                    setCourses(response.data)
-                }
-            } catch (err) {
-                if (!cancelled) {
-                    setError(err instanceof Error ? err.message : 'Failed to load courses')
-                }
-            } finally {
-                if (!cancelled) {
-                    setLoading(false)
+        const timeout = window.setTimeout(() => {
+            const loadCourses = async () => {
+                setLoading(true)
+                setError(null)
+                try {
+                    const query = searchQuery.trim()
+                    const response = await ApiClient.getAdminCourses({
+                        limit: 200,
+                        status: 'ALL',
+                        search: query ? query : undefined,
+                    })
+                    if (!cancelled) {
+                        setCourses(response.data)
+                    }
+                } catch (err) {
+                    if (!cancelled) {
+                        setError(err instanceof Error ? err.message : 'Failed to load courses')
+                    }
+                } finally {
+                    if (!cancelled) {
+                        setLoading(false)
+                    }
                 }
             }
-        }
 
-        loadCourses()
+            loadCourses()
+        }, 250)
+
         return () => {
             cancelled = true
+            window.clearTimeout(timeout)
         }
-    }, [])
+    }, [searchQuery])
 
     const filteredCourses = useMemo(() => {
         const query = searchQuery.toLowerCase().trim()

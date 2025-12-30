@@ -11,9 +11,6 @@ This is a Next.js (TypeScript) monorepo for a CSE Training System. It features a
 - `types/` — Shared TypeScript types for models and API responses.
 
 ## Developer Workflows
-- **Local Development:**
-  - Start with `docker-compose up` for database and dependencies.
-  - Use `npm run dev` to launch the Next.js app.
 - **Database:**
   - Migrations via Prisma: `npx prisma migrate dev`.
   - Seed data: `npx ts-node prisma/seed.ts`.

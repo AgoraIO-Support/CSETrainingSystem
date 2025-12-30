@@ -88,6 +88,21 @@ export const POST = withAuth(async (req: NextRequest, user) => {
           message: 'Certificate can only be generated for passed exams',
           status: 400,
         },
+        'CERTIFICATE_NOT_ENABLED': {
+          code: 'CERTIFICATE_NOT_ENABLED',
+          message: 'This exam does not have certificates enabled',
+          status: 400,
+        },
+        'CERTIFICATE_REVOKED': {
+          code: 'CERTIFICATE_REVOKED',
+          message: 'This certificate was revoked and cannot be regenerated',
+          status: 400,
+        },
+        'BADGE_NOT_CONFIGURED': {
+          code: 'BADGE_NOT_CONFIGURED',
+          message: 'Certificate badge is not configured',
+          status: 400,
+        },
       };
 
       const errorInfo = errorMap[error.message];

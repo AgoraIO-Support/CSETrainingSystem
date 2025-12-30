@@ -45,6 +45,19 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
       );
     }
 
+    if (certificate.status === 'REVOKED') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'CERT_REVOKED',
+            message: 'This certificate has been revoked',
+          },
+        },
+        { status: 410 }
+      );
+    }
+
     if (!certificate.pdfUrl) {
       return NextResponse.json(
         {

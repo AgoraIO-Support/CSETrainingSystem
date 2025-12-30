@@ -34,6 +34,19 @@ export const adminUpdateUserSchema = z.object({
     }
 )
 
+export const adminCreateUserSchema = z.object({
+    email: z.string().email('Invalid email address'),
+    password: z.string().min(8, 'Password must be at least 8 characters'),
+    name: z.string().min(1, 'Name is required').max(100, 'Name is too long'),
+    department: z.string().max(120, 'Department is too long').optional(),
+    title: z.string().max(120, 'Title is too long').optional(),
+})
+
+export const changePasswordSchema = z.object({
+    currentPassword: z.string().min(1, 'Current password is required').optional(),
+    newPassword: z.string().min(8, 'Password must be at least 8 characters'),
+})
+
 // Course schemas
 export const createCourseSchema = z.object({
     title: z.string().min(1, 'Title is required'),
@@ -135,6 +148,36 @@ export function validateRequestBody<T>(schema: z.ZodSchema<T>, data: unknown): T
 // EXAM SCHEMAS
 // ============================================================================
 
+const optionalDateTimeInput = () =>
+    z.preprocess(
+        (value) => {
+            if (value === undefined || value === null) return undefined
+            if (typeof value === 'string') {
+                const trimmed = value.trim()
+                if (!trimmed) return undefined
+                return trimmed
+            }
+            return value
+        },
+        // Accept both ISO datetime strings and `datetime-local` inputs like "2025-12-29T06:40".
+        z.coerce.date().optional()
+    )
+
+const optionalNullableDateTimeInput = () =>
+    z.preprocess(
+        (value) => {
+            if (value === undefined) return undefined
+            if (value === null) return null
+            if (typeof value === 'string') {
+                const trimmed = value.trim()
+                if (!trimmed) return null
+                return trimmed
+            }
+            return value
+        },
+        z.coerce.date().nullable().optional()
+    )
+
 export const createExamSchema = z.object({
     examType: z.nativeEnum(ExamType),
     courseId: z.string().uuid().optional(),
@@ -142,8 +185,8 @@ export const createExamSchema = z.object({
     description: z.string().optional(),
     instructions: z.string().optional(),
     timeLimit: z.number().int().positive().optional(),
-    deadline: z.string().datetime().optional().transform(val => val ? new Date(val) : undefined),
-    availableFrom: z.string().datetime().optional().transform(val => val ? new Date(val) : undefined),
+    deadline: optionalDateTimeInput(),
+    availableFrom: optionalDateTimeInput(),
     totalScore: z.number().int().positive().default(100),
     passingScore: z.number().int().min(0).max(100).default(70),
     randomizeQuestions: z.boolean().default(false),
@@ -158,8 +201,8 @@ export const updateExamSchema = z.object({
     description: z.string().optional().nullable(),
     instructions: z.string().optional().nullable(),
     timeLimit: z.number().int().positive().optional().nullable(),
-    deadline: z.string().datetime().optional().nullable().transform(val => val ? new Date(val) : null),
-    availableFrom: z.string().datetime().optional().nullable().transform(val => val ? new Date(val) : null),
+    deadline: optionalNullableDateTimeInput(),
+    availableFrom: optionalNullableDateTimeInput(),
     totalScore: z.number().int().positive().optional(),
     passingScore: z.number().int().min(0).max(100).optional(),
     randomizeQuestions: z.boolean().optional(),
@@ -173,7 +216,7 @@ export const changeExamStatusSchema = z.object({
     status: z.nativeEnum(ExamStatus),
 })
 
-export const createExamQuestionSchema = z.object({
+const examQuestionSchemaBase = z.object({
     type: z.nativeEnum(ExamQuestionType),
     difficulty: z.nativeEnum(DifficultyLevel).default(DifficultyLevel.MEDIUM),
     question: z.string().min(1, 'Question text is required'),
@@ -188,7 +231,51 @@ export const createExamQuestionSchema = z.object({
     tags: z.array(z.string()).default([]),
 })
 
-export const updateExamQuestionSchema = createExamQuestionSchema.partial()
+const refineExerciseQuestionFields = (
+    data: z.infer<typeof examQuestionSchemaBase> | Partial<z.infer<typeof examQuestionSchemaBase>>,
+    ctx: z.RefinementCtx
+) => {
+    if (data.type !== ExamQuestionType.EXERCISE) return
+
+    if (Array.isArray(data.options) && data.options.some((o) => o.trim())) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Exercise questions do not support options',
+            path: ['options'],
+        })
+    }
+    if (typeof data.correctAnswer === 'string' && data.correctAnswer.trim()) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Exercise questions do not have a correctAnswer',
+            path: ['correctAnswer'],
+        })
+    }
+    if (typeof data.rubric === 'string' && data.rubric.trim()) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Exercise questions do not support rubric',
+            path: ['rubric'],
+        })
+    }
+    if (typeof data.sampleAnswer === 'string' && data.sampleAnswer.trim()) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Exercise questions do not support sampleAnswer',
+            path: ['sampleAnswer'],
+        })
+    }
+    if (typeof data.maxWords === 'number') {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Exercise questions do not support maxWords',
+            path: ['maxWords'],
+        })
+    }
+}
+
+export const createExamQuestionSchema = examQuestionSchemaBase.superRefine(refineExerciseQuestionFields)
+export const updateExamQuestionSchema = examQuestionSchemaBase.partial().superRefine(refineExerciseQuestionFields)
 
 export const reorderExamQuestionsSchema = z.object({
     questionIds: z.array(z.string().uuid()).nonempty(),

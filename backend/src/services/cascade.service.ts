@@ -56,14 +56,34 @@ export class CascadeService {
       await tx.lesson.delete({ where: { id: lessonId } })
     })
 
-    // 事务提交后：先精准删除，再兜底前缀清理（best-effort）
-    if (s3Keys.length) {
-      await deleteKeys([...new Set(s3Keys)])
+    // 事务提交后：先精准删除，再兜底前缀清理
+    // 注意：DB 已提交，S3 清理如果失败需要明确报错（避免 UI 误以为已删除）。
+    const cleanupErrors: string[] = []
+    try {
+      if (s3Keys.length) {
+        await deleteKeys([...new Set(s3Keys)])
+      }
+    } catch (err) {
+      cleanupErrors.push(err instanceof Error ? err.message : String(err))
     }
-    await deletePrefix(`${appConfig.s3.uploadPrefix}/${courseId}/${chapterId}/${lessonId}/`)
+
+    try {
+      await deletePrefix(`${appConfig.s3.uploadPrefix}/${courseId}/${chapterId}/${lessonId}/`, undefined, { bestEffort: false })
+    } catch (err) {
+      cleanupErrors.push(err instanceof Error ? err.message : String(err))
+    }
+
     // 可选：老路径按开关清理（避免误删）
     if (appConfig.s3.enableLegacySweepOnLessonDelete) {
-      await deletePrefix(`${appConfig.s3.legacyLessonFolder}/${lessonId}/`)
+      try {
+        await deletePrefix(`${appConfig.s3.legacyLessonFolder}/${lessonId}/`, undefined, { bestEffort: false })
+      } catch (err) {
+        cleanupErrors.push(err instanceof Error ? err.message : String(err))
+      }
+    }
+
+    if (cleanupErrors.length) {
+      throw new Error(`S3_CLEANUP_FAILED: ${cleanupErrors.join(' | ')}`)
     }
   }
 
@@ -120,14 +140,32 @@ export class CascadeService {
       await tx.chapter.delete({ where: { id: chapterId } })
     })
 
-    // 提交后：先精准删除，再兜底前缀清理
-    if (s3Keys.length) {
-      await deleteKeys([...new Set(s3Keys)])
+    const cleanupErrors: string[] = []
+    try {
+      if (s3Keys.length) {
+        await deleteKeys([...new Set(s3Keys)])
+      }
+    } catch (err) {
+      cleanupErrors.push(err instanceof Error ? err.message : String(err))
     }
-    await deletePrefix(`${appConfig.s3.uploadPrefix}/${chapter.courseId}/${chapterId}/`)
+
+    try {
+      await deletePrefix(`${appConfig.s3.uploadPrefix}/${chapter.courseId}/${chapterId}/`, undefined, { bestEffort: false })
+    } catch (err) {
+      cleanupErrors.push(err instanceof Error ? err.message : String(err))
+    }
+
     // legacy:
     for (const lid of lessonIds) {
-      await deletePrefix(`${appConfig.s3.legacyLessonFolder}/${lid}/`)
+      try {
+        await deletePrefix(`${appConfig.s3.legacyLessonFolder}/${lid}/`, undefined, { bestEffort: false })
+      } catch (err) {
+        cleanupErrors.push(err instanceof Error ? err.message : String(err))
+      }
+    }
+
+    if (cleanupErrors.length) {
+      throw new Error(`S3_CLEANUP_FAILED: ${cleanupErrors.join(' | ')}`)
     }
   }
 
@@ -184,13 +222,31 @@ export class CascadeService {
       await tx.course.delete({ where: { id: courseId } })
     })
 
-    // 提交后：先精准删除，再兜底前缀清理
-    if (s3Keys.length) {
-      await deleteKeys([...new Set(s3Keys)])
+    const cleanupErrors: string[] = []
+    try {
+      if (s3Keys.length) {
+        await deleteKeys([...new Set(s3Keys)])
+      }
+    } catch (err) {
+      cleanupErrors.push(err instanceof Error ? err.message : String(err))
     }
-    await deletePrefix(`${appConfig.s3.uploadPrefix}/${courseId}/`)
+
+    try {
+      await deletePrefix(`${appConfig.s3.uploadPrefix}/${courseId}/`, undefined, { bestEffort: false })
+    } catch (err) {
+      cleanupErrors.push(err instanceof Error ? err.message : String(err))
+    }
+
     for (const lid of lessonIds) {
-      await deletePrefix(`${appConfig.s3.legacyLessonFolder}/${lid}/`)
+      try {
+        await deletePrefix(`${appConfig.s3.legacyLessonFolder}/${lid}/`, undefined, { bestEffort: false })
+      } catch (err) {
+        cleanupErrors.push(err instanceof Error ? err.message : String(err))
+      }
+    }
+
+    if (cleanupErrors.length) {
+      throw new Error(`S3_CLEANUP_FAILED: ${cleanupErrors.join(' | ')}`)
     }
   }
 }

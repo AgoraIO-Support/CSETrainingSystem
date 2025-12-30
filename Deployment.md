@@ -53,7 +53,11 @@ podman build --target migrator -t cselearning-migrator:latest -f Containerfile .
 
 ### 1.3 Create a local env file (do NOT commit secrets)
 
-Create `tmp/podman/local.env` (already ignored by `.gitignore`):
+Create a single env file `tmp/podman/local.env` (already ignored by `.gitignore`).
+This file can be shared by BOTH containers:
+
+- `cselearning-web` (Next.js)
+- `cselearning-backend` (Fastify, optional)
 
 ```bash
 mkdir -p tmp/podman
@@ -75,6 +79,9 @@ AWS_SECRET_ACCESS_KEY=REPLACE_ME
 # Optional: AI (only needed if you will use AI endpoints)
 OPENAI_API_KEY=REPLACE_ME
 OPENAI_MODEL=gpt-4o-mini
+
+# Optional: enable Next.js -> backend internal proxy (only needed if you run the Fastify backend)
+BACKEND_INTERNAL_URL=http://cselearning-backend:8080
 EOF
 ```
 
@@ -137,13 +144,19 @@ podman run -d --name cselearning-backend --network cselearning \
   -p 8080:8080 \
   --env-file tmp/podman/local.env \
   -e PORT=8080 \
-  -e CLOUDFRONT_DOMAIN=d1la0fzxo5jnb.cloudfront.net \
-  -e CLOUDFRONT_KEY_PAIR_ID=REPLACE_ME \
-  -e CLOUDFRONT_PRIVATE_KEY='-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n' \
   cselearning-backend:latest
 ```
 
-Then set the frontend env (for local dev) so the browser can reach it:
+Notes:
+
+- CloudFront signed-cookie routes are optional; if you want `/api/materials/*/cf-cookie`, set:
+  - `CLOUDFRONT_DOMAIN`
+  - `CLOUDFRONT_KEY_PAIR_ID`
+  - `CLOUDFRONT_PRIVATE_KEY`
+  - `CLOUDFRONT_SIGNED_COOKIE_TTL_HOURS` (optional)
+- For Next.js server-to-server proxies, keep `BACKEND_INTERNAL_URL=http://cselearning-backend:8080` in `tmp/podman/local.env`.
+
+Then set the frontend env (for local dev) so the browser can reach it (only if you have browser-direct calls):
 
 - `BACKEND_INTERNAL_URL=http://127.0.0.1:8080`
 
@@ -675,7 +688,6 @@ systemctl --user list-unit-files | grep cselearning
   podman run -d --name cselearning-backend --network cselearning -p 8080:8080 \
     --env-file tmp/podman/local.env -e PORT=8080 cselearning-backend:latest
 
-  访问：http://127.0.0.1:3000/login（默认账号：user@agora.io/password123，管理员：admin@agora.io/password123）。
 
 
 

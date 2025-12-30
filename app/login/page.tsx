@@ -9,7 +9,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Loader2 } from 'lucide-react'
-import Link from 'next/link'
 
 export default function LoginPage() {
     const router = useRouter()
@@ -85,10 +84,7 @@ export default function LoginPage() {
                         </Button>
 
                         <div className="text-center text-sm text-muted-foreground">
-                            <span>Don&apos;t have an account? </span>
-                            <Link href="/register" className="text-primary underline-offset-4 hover:underline">
-                                Create one
-                            </Link>
+                            Don&apos;t have an account? Contact your administrator.
                         </div>
                     </form>
                 </CardContent>

@@ -39,10 +39,15 @@ export class CourseService {
         }
 
         if (params.search) {
-            where.OR = [
-                { title: { contains: params.search, mode: 'insensitive' } },
-                { description: { contains: params.search, mode: 'insensitive' } },
-            ]
+            const query = params.search.trim()
+            if (query) {
+                where.OR = [
+                    { title: { contains: query, mode: 'insensitive' } },
+                    { description: { contains: query, mode: 'insensitive' } },
+                    { category: { contains: query, mode: 'insensitive' } },
+                    { instructor: { name: { contains: query, mode: 'insensitive' } } },
+                ]
+            }
         }
 
         const [courses, total] = await Promise.all([

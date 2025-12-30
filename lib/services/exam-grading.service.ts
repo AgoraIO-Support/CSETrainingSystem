@@ -11,6 +11,7 @@ import {
 } from '@prisma/client';
 import OpenAI from 'openai';
 import { log, timeAsync } from '@/lib/logger';
+import { CertificateService } from '@/lib/services/certificate.service';
 
 export interface GradingResult {
   attemptId: string;
@@ -115,7 +116,8 @@ export class ExamGradingService {
         .filter(
           (q) =>
             q.type === ExamQuestionType.ESSAY ||
-            q.type === ExamQuestionType.FILL_IN_BLANK
+            q.type === ExamQuestionType.FILL_IN_BLANK ||
+            q.type === ExamQuestionType.EXERCISE
         )
         .map((q) => q.id)
     );
@@ -130,7 +132,11 @@ export class ExamGradingService {
     for (const answer of attempt.answers) {
       const question = answer.question;
 
-      if (question.type === ExamQuestionType.ESSAY || question.type === ExamQuestionType.FILL_IN_BLANK) {
+      if (
+        question.type === ExamQuestionType.ESSAY ||
+        question.type === ExamQuestionType.FILL_IN_BLANK ||
+        question.type === ExamQuestionType.EXERCISE
+      ) {
         // Essays and fill-in-blank questions require manual grading in this system.
         // Auto-grading is limited to Multiple Choice + True/False.
         continue;
@@ -414,7 +420,8 @@ Please evaluate this essay and provide a score out of ${maxPoints} points, along
 
     if (
       answer.question.type !== ExamQuestionType.ESSAY &&
-      answer.question.type !== ExamQuestionType.FILL_IN_BLANK
+      answer.question.type !== ExamQuestionType.FILL_IN_BLANK &&
+      answer.question.type !== ExamQuestionType.EXERCISE
     ) {
       throw new Error('NOT_MANUAL_GRADEABLE');
     }
@@ -438,7 +445,7 @@ Please evaluate this essay and provide a score out of ${maxPoints} points, along
     const pendingEssays = await prisma.examAnswer.count({
       where: {
         attemptId: answer.attemptId,
-        question: { type: { in: [ExamQuestionType.ESSAY, ExamQuestionType.FILL_IN_BLANK] } },
+        question: { type: { in: [ExamQuestionType.ESSAY, ExamQuestionType.FILL_IN_BLANK, ExamQuestionType.EXERCISE] } },
         gradingStatus: {
           in: [GradingStatus.PENDING, GradingStatus.AI_SUGGESTED],
         },
@@ -493,6 +500,17 @@ Please evaluate this essay and provide a score out of ${maxPoints} points, along
         essaysGraded: true,
       },
     });
+
+    if (passed) {
+      try {
+        await CertificateService.autoIssueForAttempt(attemptId);
+      } catch (error) {
+        log('API', 'error', 'certificate auto-issue failed', {
+          attemptId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
 
     return {
       attemptId,

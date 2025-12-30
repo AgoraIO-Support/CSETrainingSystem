@@ -85,6 +85,11 @@ export const POST = withAuth(async (req: NextRequest, user, context: RouteContex
           message: 'Question not found',
           status: 404,
         },
+        'EXERCISE_ANSWER_MUST_USE_UPLOAD': {
+          code: 'EXERCISE_ANSWER_MUST_USE_UPLOAD',
+          message: 'Exercise answers must be recorded and uploaded as WebM',
+          status: 400,
+        },
       };
 
       const errorInfo = errorMessages[error.message];

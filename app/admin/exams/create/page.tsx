@@ -20,6 +20,8 @@ export default function CreateExamPage() {
     const [error, setError] = useState<string | null>(null)
     const [courses, setCourses] = useState<Course[]>([])
     const [loadingCourses, setLoadingCourses] = useState(true)
+    const [badgeFile, setBadgeFile] = useState<File | null>(null)
+    const [badgePreviewUrl, setBadgePreviewUrl] = useState<string | null>(null)
 
     const [form, setForm] = useState({
         title: '',
@@ -37,6 +39,9 @@ export default function CreateExamPage() {
         allowReview: true,
         availableFrom: '',
         deadline: '',
+        certificateEnabled: false,
+        certificateTitle: '',
+        certificateBadgeMode: 'AUTO' as 'AUTO' | 'UPLOADED',
     })
 
     useEffect(() => {
@@ -52,6 +57,15 @@ export default function CreateExamPage() {
         }
         loadCourses()
     }, [])
+
+    useEffect(() => {
+        if (!badgeFile) return
+        const url = URL.createObjectURL(badgeFile)
+        setBadgePreviewUrl(url)
+        return () => {
+            URL.revokeObjectURL(url)
+        }
+    }, [badgeFile])
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -78,7 +92,65 @@ export default function CreateExamPage() {
             }
 
             const response = await ApiClient.createExam(payload)
-            router.push(`/admin/exams/${response.data.id}/questions`)
+            const examId = response.data.id
+
+            try {
+                if (form.certificateEnabled) {
+                    if (!form.certificateTitle.trim()) {
+                        throw new Error('Certificate name is required')
+                    }
+
+                    let badgeS3Key: string | null = null
+                    let badgeMimeType: string | null = null
+
+                    if (form.certificateBadgeMode === 'UPLOADED') {
+                        if (!badgeFile) {
+                            throw new Error('Badge file is required when using uploaded badge')
+                        }
+                        if (!['image/png', 'image/jpeg'].includes(badgeFile.type)) {
+                            throw new Error('Badge file must be PNG or JPEG')
+                        }
+
+                        const upload = await ApiClient.getAdminExamCertificateBadgeUploadUrl(examId, {
+                            filename: badgeFile.name,
+                            contentType: badgeFile.type as 'image/png' | 'image/jpeg',
+                        })
+
+                        const putRes = await fetch(upload.data.uploadUrl, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': badgeFile.type,
+                                'x-amz-server-side-encryption': 'AES256',
+                            },
+                            body: badgeFile,
+                        })
+
+                        if (!putRes.ok) {
+                            const text = await putRes.text().catch(() => '')
+                            throw new Error(`Failed to upload badge (HTTP ${putRes.status})${text ? `: ${text.slice(0, 500)}` : ''}`)
+                        }
+
+                        badgeS3Key = upload.data.key
+                        badgeMimeType = badgeFile.type
+                        setBadgePreviewUrl(upload.data.accessUrl || upload.data.publicUrl)
+                        setBadgeFile(null)
+                    }
+
+                    await ApiClient.upsertAdminExamCertificateTemplate(examId, {
+                        isEnabled: true,
+                        title: form.certificateTitle.trim(),
+                        badgeMode: form.certificateBadgeMode,
+                        badgeS3Key,
+                        badgeMimeType,
+                        badgeStyle: null,
+                    })
+                }
+            } catch (templateErr) {
+                try { await ApiClient.deleteExamForce(examId) } catch { /* ignore */ }
+                throw templateErr
+            }
+
+            router.push(`/admin/exams/${examId}/questions`)
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to create exam')
         } finally {
@@ -227,6 +299,85 @@ export default function CreateExamPage() {
                                     />
                                 </div>
                             </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Certificate (Optional)</CardTitle>
+                            <CardDescription>Issue a certificate automatically when the learner passes</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <div className="space-y-0.5">
+                                    <Label>Enable certificate on pass</Label>
+                                    <p className="text-sm text-muted-foreground">
+                                        Auto-issue after the attempt is graded and passed
+                                    </p>
+                                </div>
+                                <Switch
+                                    checked={form.certificateEnabled}
+                                    onCheckedChange={(checked: boolean) => updateForm('certificateEnabled', checked)}
+                                />
+                            </div>
+
+                            {form.certificateEnabled && (
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="certificateTitle">Certificate Name *</Label>
+                                        <Input
+                                            id="certificateTitle"
+                                            value={form.certificateTitle}
+                                            onChange={(e) => updateForm('certificateTitle', e.target.value)}
+                                            placeholder="e.g., Conversational AI Workshop Certificate"
+                                        />
+                                    </div>
+
+                                    <div className="grid gap-4 md:grid-cols-2">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="certificateBadgeMode">Badge</Label>
+                                            <select
+                                                id="certificateBadgeMode"
+                                                className="w-full h-10 px-3 border rounded-md bg-background"
+                                                value={form.certificateBadgeMode}
+                                                onChange={(e) => {
+                                                    const mode = e.target.value as 'AUTO' | 'UPLOADED'
+                                                    updateForm('certificateBadgeMode', mode)
+                                                    if (mode === 'AUTO') {
+                                                        setBadgeFile(null)
+                                                        setBadgePreviewUrl(null)
+                                                    }
+                                                }}
+                                            >
+                                                <option value="AUTO">Auto-generate</option>
+                                                <option value="UPLOADED">Upload image</option>
+                                            </select>
+                                        </div>
+
+                                        {form.certificateBadgeMode === 'UPLOADED' && (
+                                            <div className="space-y-2">
+                                                <Label htmlFor="badgeFile">Badge File (PNG/JPEG)</Label>
+                                                <Input
+                                                    id="badgeFile"
+                                                    type="file"
+                                                    accept="image/png,image/jpeg"
+                                                    onChange={(e) => setBadgeFile(e.target.files?.[0] ?? null)}
+                                                />
+                                                {badgePreviewUrl && (
+                                                    <div className="mt-2 rounded-lg border p-2 bg-muted">
+                                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                        <img
+                                                            src={badgePreviewUrl}
+                                                            alt="Badge preview"
+                                                            className="h-24 w-24 rounded-md object-cover"
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
 

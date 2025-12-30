@@ -5,11 +5,11 @@ import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
 import { ApiClient } from '@/lib/api-client'
 import {
     Loader2,
     Award,
-    Download,
     Eye,
     Calendar,
     Trophy,
@@ -23,19 +23,25 @@ interface Certificate {
     certificateNumber: string
     userId: string
     userName: string
+    courseId: string | null
+    courseTitle: string | null
     examId: string | null
     examTitle: string
+    certificateTitle?: string | null
     score: number
     totalScore: number
     percentageScore: number
     issueDate: string
     pdfUrl: string | null
+    status: 'ISSUED' | 'REVOKED'
 }
 
 export default function CertificatesPage() {
     const [certificates, setCertificates] = useState<Certificate[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
+    const [search, setSearch] = useState('')
+    const [statusFilter, setStatusFilter] = useState<'ALL' | 'ISSUED' | 'REVOKED'>('ALL')
 
     useEffect(() => {
         loadCertificates()
@@ -62,16 +68,25 @@ export default function CertificatesPage() {
         })
     }
 
-    const handleDownload = (certificateId: string, certificateNumber: string) => {
-        const downloadUrl = ApiClient.downloadCertificateUrl(certificateId)
-        const link = document.createElement('a')
-        link.href = downloadUrl
-        link.download = `certificate-${certificateNumber}.pdf`
-        link.target = '_blank'
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-    }
+    const filteredCertificates = certificates.filter((certificate) => {
+        if (statusFilter !== 'ALL' && certificate.status !== statusFilter) return false
+
+        const query = search.trim().toLowerCase()
+        if (!query) return true
+
+        const title = (certificate.certificateTitle || certificate.examTitle || '').toLowerCase()
+        const secondary = (certificate.courseTitle || '').toLowerCase()
+        const number = (certificate.certificateNumber || '').toLowerCase()
+        return title.includes(query) || secondary.includes(query) || number.includes(query)
+    })
+
+    const highestExamPercentage = certificates
+        .filter((c) => c.status !== 'REVOKED' && c.examId)
+        .reduce((max, c) => Math.max(max, c.percentageScore || 0), 0)
+
+    const latestIssued = certificates
+        .filter((c) => c.status !== 'REVOKED')
+        .sort((a, b) => new Date(b.issueDate).getTime() - new Date(a.issueDate).getTime())[0]
 
     if (loading) {
         return (
@@ -119,9 +134,7 @@ export default function CertificatesPage() {
                         </CardHeader>
                         <CardContent>
                             <div className="text-2xl font-bold text-green-600">
-                                {certificates.length > 0
-                                    ? `${Math.max(...certificates.map(c => c.percentageScore)).toFixed(1)}%`
-                                    : '-'}
+                                {certificates.length > 0 ? `${highestExamPercentage.toFixed(1)}%` : '-'}
                             </div>
                         </CardContent>
                     </Card>
@@ -133,9 +146,7 @@ export default function CertificatesPage() {
                         </CardHeader>
                         <CardContent>
                             <div className="text-2xl font-bold">
-                                {certificates.length > 0
-                                    ? formatDate(certificates[0].issueDate)
-                                    : '-'}
+                                {latestIssued ? formatDate(latestIssued.issueDate) : '-'}
                             </div>
                         </CardContent>
                     </Card>
@@ -149,7 +160,7 @@ export default function CertificatesPage() {
                             Earned Certificates
                         </CardTitle>
                         <CardDescription>
-                            Certificates you have earned by passing exams
+                            Certificates you have earned by passing exams or completing courses
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -158,15 +169,60 @@ export default function CertificatesPage() {
                                 <Award className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
                                 <h3 className="text-lg font-semibold mb-2">No Certificates Yet</h3>
                                 <p className="text-muted-foreground mb-4">
-                                    Complete exams to earn certificates
+                                    Complete exams or courses to earn certificates
                                 </p>
-                                <Link href="/exams">
-                                    <Button>Browse Exams</Button>
-                                </Link>
+                                <div className="flex items-center justify-center gap-2">
+                                    <Link href="/exams">
+                                        <Button>Browse Exams</Button>
+                                    </Link>
+                                    <Link href="/courses">
+                                        <Button variant="outline">Browse Courses</Button>
+                                    </Link>
+                                </div>
                             </div>
                         ) : (
                             <div className="space-y-4">
-                                {certificates.map(certificate => (
+                                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+                                        <Input
+                                            value={search}
+                                            onChange={(e) => setSearch(e.target.value)}
+                                            placeholder="Search by title or certificate number..."
+                                            className="md:w-[320px]"
+                                        />
+                                        <div className="flex items-center gap-2">
+                                            <Button
+                                                type="button"
+                                                variant={statusFilter === 'ALL' ? 'default' : 'outline'}
+                                                size="sm"
+                                                onClick={() => setStatusFilter('ALL')}
+                                            >
+                                                All
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant={statusFilter === 'ISSUED' ? 'default' : 'outline'}
+                                                size="sm"
+                                                onClick={() => setStatusFilter('ISSUED')}
+                                            >
+                                                Issued
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant={statusFilter === 'REVOKED' ? 'default' : 'outline'}
+                                                size="sm"
+                                                onClick={() => setStatusFilter('REVOKED')}
+                                            >
+                                                Revoked
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    <p className="text-sm text-muted-foreground">
+                                        Showing {filteredCertificates.length} of {certificates.length}
+                                    </p>
+                                </div>
+
+                                {filteredCertificates.map(certificate => (
                                     <div
                                         key={certificate.id}
                                         className="flex items-center justify-between p-4 border rounded-lg bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-yellow-900/10 dark:to-amber-900/10 border-yellow-200 dark:border-yellow-800"
@@ -177,7 +233,7 @@ export default function CertificatesPage() {
                                             </div>
                                             <div>
                                                 <h3 className="font-semibold text-lg">
-                                                    {certificate.examTitle}
+                                                    {certificate.certificateTitle || certificate.examTitle}
                                                 </h3>
                                                 <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
                                                     <span className="flex items-center gap-1">
@@ -187,13 +243,22 @@ export default function CertificatesPage() {
                                                     <span>
                                                         Certificate: {certificate.certificateNumber}
                                                     </span>
+                                                    <Badge variant="outline">
+                                                        {certificate.examId ? 'Exam' : 'Course'}
+                                                    </Badge>
                                                 </div>
                                             </div>
                                         </div>
 
                                         <div className="flex items-center gap-4">
-                                            <Badge className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-200">
-                                                {certificate.percentageScore.toFixed(1)}%
+                                            <Badge className={certificate.status === 'REVOKED'
+                                                ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-200'
+                                                : 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-200'}>
+                                                {certificate.status === 'REVOKED'
+                                                    ? 'Revoked'
+                                                    : certificate.examId
+                                                        ? `${certificate.percentageScore.toFixed(1)}%`
+                                                        : 'Issued'}
                                             </Badge>
 
                                             <div className="flex items-center gap-2">
@@ -203,19 +268,16 @@ export default function CertificatesPage() {
                                                         View
                                                     </Button>
                                                 </Link>
-                                                {certificate.pdfUrl && (
-                                                    <Button
-                                                        size="sm"
-                                                        onClick={() => handleDownload(certificate.id, certificate.certificateNumber)}
-                                                    >
-                                                        <Download className="h-4 w-4 mr-1" />
-                                                        Download
-                                                    </Button>
-                                                )}
                                             </div>
                                         </div>
                                     </div>
                                 ))}
+
+                                {filteredCertificates.length === 0 && (
+                                    <div className="text-center py-12 text-muted-foreground">
+                                        No certificates match your filters.
+                                    </div>
+                                )}
                             </div>
                         )}
                     </CardContent>

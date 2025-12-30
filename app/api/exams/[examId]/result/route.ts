@@ -20,6 +20,30 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
     const { searchParams } = new URL(req.url);
     const attemptId = searchParams.get('attemptId');
 
+    const examMeta = await prisma.exam.findUnique({
+      where: { id: examId },
+      select: { maxAttempts: true },
+    });
+    if (!examMeta) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: { code: 'EXAM_NOT_FOUND', message: 'Exam not found' },
+        },
+        { status: 404 }
+      );
+    }
+
+    const attemptsUsed = await prisma.examAttempt.count({
+      where: {
+        examId,
+        userId: user.id,
+        status: { in: [ExamAttemptStatus.SUBMITTED, ExamAttemptStatus.GRADED] },
+      },
+    });
+    const maxAttempts = examMeta.maxAttempts;
+    const reviewUnlocked = attemptsUsed >= maxAttempts;
+
     let attempt;
 
     if (attemptId) {
@@ -81,6 +105,9 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
           totalScore: attempt.exam.totalScore,
           passingScore: attempt.exam.passingScore,
           allowReview: attempt.exam.allowReview,
+          maxAttempts,
+          attemptsUsed,
+          reviewUnlocked,
           message: 'Results are not yet available. Please check back after grading is complete.',
         },
       });
@@ -102,10 +129,13 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
       totalScore: attempt.exam.totalScore,
       passingScore: attempt.exam.passingScore,
       allowReview: attempt.exam.allowReview,
+      maxAttempts,
+      attemptsUsed,
+      reviewUnlocked,
     };
 
     // Include answers if review is allowed
-    if (attempt.exam.allowReview) {
+    if (attempt.exam.allowReview && reviewUnlocked) {
       result.answers = attempt.answers.map(answer => {
         const questionType = answer.question.type;
         const options = answer.question.options as string[] | null;
@@ -122,6 +152,8 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
         } else if (questionType === 'TRUE_FALSE') {
           userAnswer =
             answer.answer === 'true' ? 'True' : answer.answer === 'false' ? 'False' : null;
+        } else if (questionType === 'EXERCISE') {
+          userAnswer = answer.recordingStatus === 'UPLOADED' ? 'Video submitted' : null;
         }
 
         let correctAnswer: string | null = answer.question.correctAnswer;
@@ -138,6 +170,9 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
                   : answer.question.correctAnswer;
           }
         }
+        if (questionType === 'EXERCISE') {
+          correctAnswer = null;
+        }
 
         const answerResult: any = {
           questionId: answer.questionId,
@@ -150,6 +185,7 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
           isCorrect: answer.isCorrect,
           pointsAwarded: answer.pointsAwarded,
           gradingStatus: answer.gradingStatus,
+          recordingStatus: answer.recordingStatus ?? null,
         };
 
         // Include options for MC questions

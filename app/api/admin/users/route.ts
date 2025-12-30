@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withAdminAuth } from '@/lib/auth-middleware'
 import { UserService } from '@/lib/services/user.service'
 import type { UserRole, UserStatus } from '@prisma/client'
+import { adminCreateUserSchema } from '@/lib/validations'
+import { z } from 'zod'
 
 function parseRole(value: string | null): UserRole | undefined {
     if (value === 'ADMIN' || value === 'USER') {
@@ -48,6 +50,69 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
                 error: {
                     code: 'SYSTEM_001',
                     message: 'Failed to load users',
+                },
+            },
+            { status: 500 }
+        )
+    }
+})
+
+export const POST = withAdminAuth(async (req: NextRequest) => {
+    try {
+        const body = await req.json()
+        const data = adminCreateUserSchema.parse(body)
+
+        const user = await UserService.createUser({
+            email: data.email,
+            password: data.password,
+            name: data.name,
+            department: data.department,
+            title: data.title,
+        })
+
+        return NextResponse.json(
+            {
+                success: true,
+                data: user,
+            },
+            { status: 201 }
+        )
+    } catch (error) {
+        console.error('Create user error:', error)
+
+        if (error instanceof z.ZodError) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: {
+                        code: 'VALIDATION_ERROR',
+                        message: 'Invalid input data',
+                        details: error.errors,
+                    },
+                },
+                { status: 400 }
+            )
+        }
+
+        if (error instanceof Error && error.message === 'EMAIL_EXISTS') {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: {
+                        code: 'USER_003',
+                        message: 'Email already registered',
+                    },
+                },
+                { status: 409 }
+            )
+        }
+
+        return NextResponse.json(
+            {
+                success: false,
+                error: {
+                    code: 'SYSTEM_001',
+                    message: 'Failed to create user',
                 },
             },
             { status: 500 }

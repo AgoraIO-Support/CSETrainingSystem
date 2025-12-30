@@ -1,3 +1,5 @@
+export {}
+
 const { PrismaClient } = require('@prisma/client')
 const bcrypt = require('bcryptjs')
 

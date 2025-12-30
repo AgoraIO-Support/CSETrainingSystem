@@ -1,0 +1,42 @@
+name: Deploy (Production)
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+
+      - name: Deploy via SSM
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          SERVICE_USER: ${{ vars.SERVICE_USER }}
+          ENV_FILE: ${{ vars.ENV_FILE }}
+          WEB_SERVICE: ${{ vars.WEB_SERVICE }}
+          BACKEND_SERVICE: ${{ vars.BACKEND_SERVICE }}
+          DEPLOY_REF: ${{ github.ref_name }}
+          SMOKE_URL: ${{ vars.SMOKE_URL }}
+        run: bash scripts/deploy/ssm-deploy.sh
+

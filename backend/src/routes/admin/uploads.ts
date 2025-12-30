@@ -21,6 +21,12 @@ const presignBody = z.object({
 
 export async function presignUploadRoutes(fastify: FastifyInstance) {
     fastify.post('/', { preHandler: [requireRole('ADMIN')] }, async (request, reply) => {
+        if (!appConfig.cloudfront.enabled) {
+            return reply.status(501).send({
+                success: false,
+                error: 'CloudFront is not configured on this backend (set CLOUDFRONT_DOMAIN/CLOUDFRONT_KEY_PAIR_ID/CLOUDFRONT_PRIVATE_KEY).',
+            })
+        }
         const body = presignBody.parse(request.body)
         const safeName = body.filename.replace(/[^\w.-]/g, '_')
         const key = `${appConfig.s3.uploadPrefix}/${body.courseId}/${body.chapterId}/${body.lessonId}/${safeName}`

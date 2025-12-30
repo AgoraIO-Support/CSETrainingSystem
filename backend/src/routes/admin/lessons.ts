@@ -26,7 +26,22 @@ export async function lessonAdminRoutes(fastify: FastifyInstance) {
       return reply.status(409).send({ success: false, error: 'HierarchyMismatch', message: 'Lesson does not belong to chapter/course' })
     }
 
-    await request.services.cascadeService.deleteLessonCascade(params.lessonId)
-    return reply.send({ success: true })
+    try {
+      await request.services.cascadeService.deleteLessonCascade(params.lessonId)
+      return reply.send({ success: true })
+    } catch (error) {
+      request.log.error({ error }, 'Delete lesson cascade failed')
+      const message = error instanceof Error ? error.message : String(error)
+      if (message.startsWith('S3_CLEANUP_FAILED')) {
+        return reply.status(502).send({
+          success: false,
+          error: { code: 'S3_CLEANUP_FAILED', message },
+        })
+      }
+      return reply.status(500).send({
+        success: false,
+        error: { code: 'SYSTEM_001', message: 'Failed to delete lesson' },
+      })
+    }
   })
 }

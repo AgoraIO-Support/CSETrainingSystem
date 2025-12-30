@@ -10,6 +10,7 @@ interface CourseCardProps {
     course: Course
     progress?: number
     showProgress?: boolean
+    actions?: React.ReactNode
 }
 
 const formatLevelLabel = (level?: string) => {
@@ -20,7 +21,7 @@ const formatLevelLabel = (level?: string) => {
         .replace(/(^|\s)\S/g, (c) => c.toUpperCase())
 }
 
-export function CourseCard({ course, progress, showProgress = false }: CourseCardProps) {
+export function CourseCard({ course, progress, showProgress = false, actions }: CourseCardProps) {
     const duration = `${Math.floor(course.duration / 3600)}h ${Math.floor((course.duration % 3600) / 60)}m`
     const levelLabel = formatLevelLabel(course.level)
     const defaultThumbnail = 'https://placehold.co/800x450/0f172a/ffffff?text=Course'
@@ -110,11 +111,14 @@ export function CourseCard({ course, progress, showProgress = false }: CourseCar
                     </div>
 
                     {/* Action Button */}
-                    <Link href={`/courses/${course.id}`} className="block">
-                        <Button className="w-full" variant={showProgress ? "default" : "outline"}>
-                            {showProgress ? 'Continue Learning' : 'View Course'}
-                        </Button>
-                    </Link>
+                    <div className="space-y-2">
+                        <Link href={`/courses/${course.id}`} className="block">
+                            <Button className="w-full" variant={showProgress ? "default" : "outline"}>
+                                {showProgress ? 'Continue Learning' : 'View Course'}
+                            </Button>
+                        </Link>
+                        {actions}
+                    </div>
                 </div>
             </CardContent>
         </Card>

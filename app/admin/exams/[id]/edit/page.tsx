@@ -37,6 +37,26 @@ export default function EditExamPage({ params }: PageProps) {
     const [successMessage, setSuccessMessage] = useState<string | null>(null)
     const [questionPointsSum, setQuestionPointsSum] = useState<number | null>(null)
     const [questionPointsLoading, setQuestionPointsLoading] = useState(false)
+    const [certificateSaving, setCertificateSaving] = useState(false)
+    const [certificateError, setCertificateError] = useState<string | null>(null)
+    const [badgeFile, setBadgeFile] = useState<File | null>(null)
+    const [badgePreviewUrl, setBadgePreviewUrl] = useState<string | null>(null)
+    const [certificateForm, setCertificateForm] = useState({
+        isEnabled: false,
+        title: '',
+        badgeMode: 'AUTO' as 'AUTO' | 'UPLOADED',
+        badgeS3Key: null as string | null,
+        badgeMimeType: null as string | null,
+    })
+
+    useEffect(() => {
+        if (!badgeFile) return
+        const url = URL.createObjectURL(badgeFile)
+        setBadgePreviewUrl(url)
+        return () => {
+            URL.revokeObjectURL(url)
+        }
+    }, [badgeFile])
 
     const [form, setForm] = useState({
         title: '',
@@ -82,6 +102,31 @@ export default function EditExamPage({ params }: PageProps) {
             }
         }
         loadExam()
+    }, [examId])
+
+    useEffect(() => {
+        let cancelled = false
+        const loadTemplate = async () => {
+            try {
+                const res = await ApiClient.getAdminExamCertificateTemplate(examId)
+                if (cancelled) return
+                if (res.data) {
+                    setCertificateForm({
+                        isEnabled: res.data.isEnabled,
+                        title: res.data.title || '',
+                        badgeMode: res.data.badgeMode,
+                        badgeS3Key: res.data.badgeS3Key ?? null,
+                        badgeMimeType: res.data.badgeMimeType ?? null,
+                    })
+                } else {
+                    setCertificateForm(prev => ({ ...prev, isEnabled: false }))
+                }
+            } catch (err) {
+                if (!cancelled) setCertificateError(err instanceof Error ? err.message : 'Failed to load certificate settings')
+            }
+        }
+        loadTemplate()
+        return () => { cancelled = true }
     }, [examId])
 
     useEffect(() => {
@@ -153,6 +198,75 @@ export default function EditExamPage({ params }: PageProps) {
             setTimeout(() => setSuccessMessage(null), 3000)
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to update status')
+        }
+    }
+
+    const handleSaveCertificate = async () => {
+        setCertificateSaving(true)
+        setCertificateError(null)
+        setSuccessMessage(null)
+
+        try {
+            const title = certificateForm.title.trim() || exam?.title || 'Certificate'
+
+            let badgeS3Key = certificateForm.badgeS3Key
+            let badgeMimeType = certificateForm.badgeMimeType
+
+            if (certificateForm.badgeMode === 'UPLOADED') {
+                if (badgeFile) {
+                    if (!['image/png', 'image/jpeg'].includes(badgeFile.type)) {
+                        throw new Error('Badge file must be PNG or JPEG')
+                    }
+
+                    const upload = await ApiClient.getAdminExamCertificateBadgeUploadUrl(examId, {
+                        filename: badgeFile.name,
+                        contentType: badgeFile.type as 'image/png' | 'image/jpeg',
+                    })
+
+                    const putRes = await fetch(upload.data.uploadUrl, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': badgeFile.type,
+                            'x-amz-server-side-encryption': 'AES256',
+                        },
+                        body: badgeFile,
+                    })
+
+                    if (!putRes.ok) {
+                        const text = await putRes.text().catch(() => '')
+                        throw new Error(`Failed to upload badge (HTTP ${putRes.status})${text ? `: ${text.slice(0, 500)}` : ''}`)
+                    }
+
+                    badgeS3Key = upload.data.key
+                    badgeMimeType = badgeFile.type
+                    setBadgePreviewUrl(upload.data.accessUrl || upload.data.publicUrl)
+                    setBadgeFile(null)
+                }
+
+                if (!badgeS3Key || !badgeMimeType) {
+                    throw new Error('Please upload a badge image')
+                }
+            } else {
+                badgeS3Key = null
+                badgeMimeType = null
+            }
+
+            await ApiClient.upsertAdminExamCertificateTemplate(examId, {
+                isEnabled: certificateForm.isEnabled,
+                title,
+                badgeMode: certificateForm.badgeMode,
+                badgeS3Key,
+                badgeMimeType,
+                badgeStyle: null,
+            })
+
+            setCertificateForm(prev => ({ ...prev, title, badgeS3Key, badgeMimeType }))
+            setSuccessMessage('Certificate settings saved!')
+            setTimeout(() => setSuccessMessage(null), 3000)
+        } catch (err) {
+            setCertificateError(err instanceof Error ? err.message : 'Failed to save certificate settings')
+        } finally {
+            setCertificateSaving(false)
         }
     }
 
@@ -412,6 +526,105 @@ export default function EditExamPage({ params }: PageProps) {
                                         required
                                     />
                                 </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Certificate (Optional)</CardTitle>
+                            <CardDescription>Issue a certificate automatically when the learner passes</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <div className="space-y-0.5">
+                                    <Label>Enable certificate on pass</Label>
+                                    <p className="text-sm text-muted-foreground">
+                                        Auto-issue after the attempt is graded and passed
+                                    </p>
+                                </div>
+                                <Switch
+                                    checked={certificateForm.isEnabled}
+                                    onCheckedChange={(checked: boolean) => setCertificateForm(prev => ({ ...prev, isEnabled: checked }))}
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="certificateTitle">Certificate Name</Label>
+                                <Input
+                                    id="certificateTitle"
+                                    value={certificateForm.title}
+                                    onChange={(e) => setCertificateForm(prev => ({ ...prev, title: e.target.value }))}
+                                    placeholder="e.g., Conversational AI Workshop Certificate"
+                                />
+                            </div>
+
+                            <div className="grid gap-4 md:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label htmlFor="certificateBadgeMode">Badge</Label>
+                                    <select
+                                        id="certificateBadgeMode"
+                                        className="w-full h-10 px-3 border rounded-md bg-background"
+                                        value={certificateForm.badgeMode}
+                                        onChange={(e) => {
+                                            const mode = e.target.value as 'AUTO' | 'UPLOADED'
+                                            setCertificateForm(prev => ({ ...prev, badgeMode: mode }))
+                                            if (mode === 'AUTO') {
+                                                setBadgeFile(null)
+                                                setBadgePreviewUrl(null)
+                                            }
+                                        }}
+                                    >
+                                        <option value="AUTO">Auto-generate</option>
+                                        <option value="UPLOADED">Upload image</option>
+                                    </select>
+                                </div>
+
+                                {certificateForm.badgeMode === 'UPLOADED' && (
+                                    <div className="space-y-2">
+                                        <Label htmlFor="badgeFile">Badge File (PNG/JPEG)</Label>
+                                        <Input
+                                            id="badgeFile"
+                                            type="file"
+                                            accept="image/png,image/jpeg"
+                                            onChange={(e) => setBadgeFile(e.target.files?.[0] ?? null)}
+                                        />
+                                        {badgePreviewUrl && (
+                                            <div className="mt-2 rounded-lg border p-2 bg-muted">
+                                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                <img
+                                                    src={badgePreviewUrl}
+                                                    alt="Badge preview"
+                                                    className="h-24 w-24 rounded-md object-cover"
+                                                />
+                                            </div>
+                                        )}
+                                        {certificateForm.badgeS3Key && (
+                                            <p className="text-xs text-muted-foreground">
+                                                Current badge: {certificateForm.badgeS3Key.split('/').pop()}
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            {certificateError && (
+                                <div className="p-3 bg-destructive/10 text-destructive rounded-lg">
+                                    {certificateError}
+                                </div>
+                            )}
+
+                            <div className="flex justify-end">
+                                <Button type="button" variant="outline" onClick={handleSaveCertificate} disabled={certificateSaving}>
+                                    {certificateSaving ? (
+                                        <>
+                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                            Saving...
+                                        </>
+                                    ) : (
+                                        'Save Certificate Settings'
+                                    )}
+                                </Button>
                             </div>
                         </CardContent>
                     </Card>

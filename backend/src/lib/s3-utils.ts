@@ -3,7 +3,9 @@ import { appConfig } from '../config/env.js'
 import { s3Client } from './aws.js'
 import { log, timeAsync } from '../logger.js'
 
-export async function deletePrefix(prefix: string, client: S3Client = s3Client): Promise<void> {
+type DeleteOpts = { bestEffort?: boolean }
+
+export async function deletePrefix(prefix: string, client: S3Client = s3Client, opts: DeleteOpts = { bestEffort: true }): Promise<void> {
   let continuationToken: string | undefined = undefined
   try {
     do {
@@ -39,12 +41,12 @@ export async function deletePrefix(prefix: string, client: S3Client = s3Client):
       continuationToken = listRes.IsTruncated ? listRes.NextContinuationToken : undefined
     } while (continuationToken)
   } catch (err) {
-    // best-effort; log and continue
     log('S3', 'error', 'deletePrefix error', { prefix, error: err instanceof Error ? err.message : String(err) })
+    if (!opts.bestEffort) throw err
   }
 }
 
-export async function deleteKeys(keys: string[], client: S3Client = s3Client): Promise<void> {
+export async function deleteKeys(keys: string[], client: S3Client = s3Client, opts: DeleteOpts = { bestEffort: false }): Promise<void> {
   if (!keys || keys.length === 0) return
   try {
     const toDelete = keys.map(k => ({ Key: k }))
@@ -58,9 +60,10 @@ export async function deleteKeys(keys: string[], client: S3Client = s3Client): P
           Bucket: appConfig.s3.bucket,
           Delete: { Objects: chunk, Quiet: true },
         })).then(() => undefined)
-      )
+        )
     }
   } catch (err) {
     log('S3', 'error', 'deleteKeys error', { keysCount: keys.length, error: err instanceof Error ? err.message : String(err) })
+    if (!opts.bestEffort) throw err
   }
 }

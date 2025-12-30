@@ -28,6 +28,7 @@ const questionTypeLabels: Record<ExamQuestionType, string> = {
     TRUE_FALSE: 'True/False',
     FILL_IN_BLANK: 'Fill in Blank',
     ESSAY: 'Essay',
+    EXERCISE: 'Exercise',
 }
 
 const gradingStatusConfig: Record<GradingStatus, { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }> = {
@@ -66,11 +67,23 @@ interface AttemptDetail {
         totalScore: number
         passingScore: number
     }
+    certificate?: {
+        id: string
+        certificateNumber: string
+        issueDate: string | Date
+        pdfUrl: string | null
+        status: 'ISSUED' | 'REVOKED'
+        revokedAt: string | Date | null
+        certificateTitle: string | null
+    } | null
     answers: Array<{
         id: string
         questionId: string
         answer: string | null
         selectedOption: number | null
+        recordingS3Key?: string | null
+        recordingStatus?: 'PENDING_UPLOAD' | 'UPLOADED' | 'FAILED' | null
+        recordingUrl?: string | null
         gradingStatus: GradingStatus
         isCorrect: boolean | null
         pointsAwarded: number | null
@@ -88,6 +101,7 @@ export default function AttemptDetailPage({ params }: PageProps) {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [successMessage, setSuccessMessage] = useState<string | null>(null)
+    const [certificateActionLoading, setCertificateActionLoading] = useState(false)
 
     // Grading state for each manually-graded answer (essay + fill-in-blank)
     const [gradingForms, setGradingForms] = useState<Record<string, { score: string; feedback: string }>>({})
@@ -106,7 +120,7 @@ export default function AttemptDetailPage({ params }: PageProps) {
             // Initialize grading forms for manually-graded questions
             const forms: Record<string, { score: string; feedback: string }> = {}
             response.data.answers.forEach(answer => {
-                if (answer.question.type === 'ESSAY' || answer.question.type === 'FILL_IN_BLANK') {
+                if (answer.question.type === 'ESSAY' || answer.question.type === 'FILL_IN_BLANK' || answer.question.type === 'EXERCISE') {
                     forms[answer.id] = {
                         score: answer.adminScore?.toString() || answer.aiSuggestedScore?.toString() || '',
                         feedback: answer.adminFeedback || answer.aiFeedback || '',
@@ -145,6 +159,36 @@ export default function AttemptDetailPage({ params }: PageProps) {
         }
     }
 
+    const handleRevokeCertificate = async () => {
+        if (!attempt?.certificate?.id) return
+        setCertificateActionLoading(true)
+        setError(null)
+        try {
+            await ApiClient.adminRevokeCertificate(attempt.certificate.id)
+            showSuccess('Certificate revoked')
+            await loadData()
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to revoke certificate')
+        } finally {
+            setCertificateActionLoading(false)
+        }
+    }
+
+    const handleReissueCertificate = async () => {
+        if (!attempt?.certificate?.id) return
+        setCertificateActionLoading(true)
+        setError(null)
+        try {
+            await ApiClient.adminReissueCertificate(attempt.certificate.id)
+            showSuccess('Certificate reissued')
+            await loadData()
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to reissue certificate')
+        } finally {
+            setCertificateActionLoading(false)
+        }
+    }
+
     const updateGradingForm = (answerId: string, field: 'score' | 'feedback', value: string) => {
         setGradingForms(prev => ({
             ...prev,
@@ -179,6 +223,9 @@ export default function AttemptDetailPage({ params }: PageProps) {
         if (question.type === 'TRUE_FALSE') {
             return question.correctAnswer === 'true' ? 'True' : 'False'
         }
+        if (question.type === 'EXERCISE') {
+            return '-'
+        }
         return question.correctAnswer || '-'
     }
 
@@ -188,6 +235,9 @@ export default function AttemptDetailPage({ params }: PageProps) {
         }
         if (answer.question.type === 'TRUE_FALSE' && answer.answer) {
             return answer.answer === 'true' ? 'True' : 'False'
+        }
+        if (answer.question.type === 'EXERCISE') {
+            return answer.recordingStatus === 'UPLOADED' ? 'Video uploaded' : 'No recording uploaded'
         }
         return answer.answer || 'No answer provided'
     }
@@ -216,7 +266,7 @@ export default function AttemptDetailPage({ params }: PageProps) {
     }
 
     const manualAnswers = attempt.answers.filter(
-        a => a.question.type === 'ESSAY' || a.question.type === 'FILL_IN_BLANK'
+        a => a.question.type === 'ESSAY' || a.question.type === 'FILL_IN_BLANK' || a.question.type === 'EXERCISE'
     )
     const ungradedManual = manualAnswers.filter(a => a.gradingStatus !== 'MANUALLY_GRADED')
 
@@ -301,6 +351,46 @@ export default function AttemptDetailPage({ params }: PageProps) {
                                 </span>
                             </div>
                         )}
+
+                        <div className="mt-4 border-t pt-4">
+                            <p className="text-sm text-muted-foreground mb-2">Certificate</p>
+                            {attempt.certificate ? (
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <Badge variant={attempt.certificate.status === 'ISSUED' ? 'default' : 'destructive'}>
+                                        {attempt.certificate.status}
+                                    </Badge>
+                                    <span className="text-sm text-muted-foreground">
+                                        No: {attempt.certificate.certificateNumber}
+                                    </span>
+                                    <Link href={`/certificates/verify/${encodeURIComponent(attempt.certificate.certificateNumber)}`} target="_blank">
+                                        <Button variant="outline" size="sm" disabled={!attempt.certificate.certificateNumber}>
+                                            Verify
+                                        </Button>
+                                    </Link>
+                                    {attempt.certificate.status === 'ISSUED' ? (
+                                        <Button
+                                            variant="destructive"
+                                            size="sm"
+                                            onClick={handleRevokeCertificate}
+                                            disabled={certificateActionLoading}
+                                        >
+                                            {certificateActionLoading ? 'Working…' : 'Revoke'}
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            variant="default"
+                                            size="sm"
+                                            onClick={handleReissueCertificate}
+                                            disabled={certificateActionLoading}
+                                        >
+                                            {certificateActionLoading ? 'Working…' : 'Reissue'}
+                                        </Button>
+                                    )}
+                                </div>
+                            ) : (
+                                <p className="text-sm text-muted-foreground">No certificate issued</p>
+                            )}
+                        </div>
                     </CardContent>
                 </Card>
 
@@ -377,7 +467,7 @@ export default function AttemptDetailPage({ params }: PageProps) {
                                     </div>
                                 )}
 
-                                {answer.question.type !== 'ESSAY' && (
+                                {answer.question.type !== 'ESSAY' && answer.question.type !== 'EXERCISE' && (
                                     <div className="grid gap-4 md:grid-cols-2">
                                         <div>
                                             <p className="text-sm text-muted-foreground mb-1">User Answer</p>
@@ -392,8 +482,30 @@ export default function AttemptDetailPage({ params }: PageProps) {
                                     </div>
                                 )}
 
-                                {(answer.question.type === 'ESSAY' || answer.question.type === 'FILL_IN_BLANK') && (
+                                {(answer.question.type === 'ESSAY' || answer.question.type === 'FILL_IN_BLANK' || answer.question.type === 'EXERCISE') && (
                                     <>
+                                        {answer.question.type === 'EXERCISE' && (
+                                            <div>
+                                                <p className="text-sm text-muted-foreground mb-1">Student Recording</p>
+                                                {answer.recordingUrl ? (
+                                                    <video
+                                                        className="w-full rounded-lg border bg-black"
+                                                        controls
+                                                        preload="metadata"
+                                                        src={answer.recordingUrl}
+                                                    />
+                                                ) : answer.recordingS3Key ? (
+                                                    <div className="p-3 border rounded-lg text-sm text-muted-foreground break-all">
+                                                        Recording key: {answer.recordingS3Key}
+                                                    </div>
+                                                ) : (
+                                                    <div className="p-3 border rounded-lg text-sm text-muted-foreground">
+                                                        No recording uploaded.
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
                                         {answer.question.type === 'ESSAY' && (
                                             <>
                                                 <div>
@@ -463,6 +575,7 @@ export default function AttemptDetailPage({ params }: PageProps) {
                                                 <div className="space-y-2">
                                                     <Label>Feedback (optional)</Label>
                                                     <Textarea
+                                                        className="text-foreground"
                                                         value={gradingForms[answer.id]?.feedback || ''}
                                                         onChange={(e) => updateGradingForm(answer.id, 'feedback', e.target.value)}
                                                         rows={3}
@@ -485,7 +598,7 @@ export default function AttemptDetailPage({ params }: PageProps) {
                                     </>
                                 )}
 
-                                {answer.question.explanation && answer.question.type !== 'ESSAY' && (
+                                {answer.question.explanation && answer.question.type !== 'ESSAY' && answer.question.type !== 'EXERCISE' && (
                                     <div>
                                         <p className="text-sm text-muted-foreground mb-1">Explanation</p>
                                         <p className="text-sm">{answer.question.explanation}</p>

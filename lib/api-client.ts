@@ -42,6 +42,14 @@ export interface RegisterPayload {
 
 export type RegisterResponse = LoginResponse
 
+export interface AdminCreateUserPayload {
+    email: string
+    password: string
+    name: string
+    department?: string
+    title?: string
+}
+
 export interface ApiError {
     success: false
     error: {
@@ -176,6 +184,13 @@ export class ApiClient {
         })
     }
 
+    static async changePassword(payload: { currentPassword?: string; newPassword: string }): Promise<{ success: boolean }> {
+        return this.request('/profile/password', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
     // Courses (public)
     static async getCourses(params: Record<string, string | number | undefined> = {}): Promise<{
         success: boolean
@@ -219,6 +234,33 @@ export class ApiClient {
         })
         const search = query.toString() ? `?${query.toString()}` : ''
         return this.request(`/admin/courses${search}`)
+    }
+
+    static async getAdminCourseAnalytics(courseId: string): Promise<{
+        success: boolean
+        data: {
+            courseId: string
+            enrolledUsers: Array<{
+                user: {
+                    id: string
+                    name: string
+                    email: string
+                    avatar?: string | null
+                    department?: string | null
+                    title?: string | null
+                }
+                status: 'ACTIVE' | 'COMPLETED' | 'DROPPED'
+                progress: number
+                enrolledAt: string | Date
+                lastAccessedAt?: string | Date | null
+                completedAt?: string | Date | null
+            }>
+            activeLearners: { d7: number; d14: number; d30: number }
+            completionRate: number
+            averageCompletionTimeSeconds: number | null
+        }
+    }> {
+        return this.request(`/admin/courses/${courseId}/analytics`)
     }
 
     static async getCourse(id: string): Promise<{ success: boolean; data: Course & { isEnrolled: boolean; progress: number } }> {
@@ -382,6 +424,16 @@ export class ApiClient {
         })
     }
 
+    static async createAdminUser(payload: AdminCreateUserPayload): Promise<{
+        success: boolean
+        data: AdminUser
+    }> {
+        return this.request('/admin/users', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
     static async getAnalytics(params: Record<string, string | number | undefined> = {}): Promise<{
         success: boolean
         data: AdminAnalyticsSummary
@@ -534,6 +586,12 @@ export class ApiClient {
         })
     }
 
+    static async deleteExamForce(examId: string): Promise<{ success: boolean; message: string }> {
+        return this.request(`/admin/exams/${examId}?force=1`, {
+            method: 'DELETE',
+        })
+    }
+
     static async updateExamStatus(examId: string, status: ExamStatus): Promise<{ success: boolean; data: Exam }> {
         return this.request(`/admin/exams/${examId}/status`, {
             method: 'POST',
@@ -543,6 +601,52 @@ export class ApiClient {
 
     static async publishExam(examId: string, payload: { userIds: string[]; sendEmail?: boolean }): Promise<{ success: boolean; data: Exam; meta?: { invited: number; skipped: number; emailsSent: number; emailsFailed: number } }> {
         return this.request(`/admin/exams/${examId}/publish`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    // Exam Certificate Template
+    static async getAdminExamCertificateTemplate(examId: string): Promise<{
+        success: boolean
+        data: {
+            id: string
+            examId: string
+            isEnabled: boolean
+            title: string
+            badgeMode: 'AUTO' | 'UPLOADED'
+            badgeS3Key?: string | null
+            badgeMimeType?: string | null
+            badgeStyle?: any | null
+            createdAt: string | Date
+            updatedAt: string | Date
+        } | null
+    }> {
+        return this.request(`/admin/exams/${examId}/certificate-template`)
+    }
+
+    static async upsertAdminExamCertificateTemplate(
+        examId: string,
+        payload: {
+            isEnabled: boolean
+            title: string
+            badgeMode: 'AUTO' | 'UPLOADED'
+            badgeS3Key?: string | null
+            badgeMimeType?: string | null
+            badgeStyle?: any | null
+        }
+    ): Promise<{ success: boolean; data: any }> {
+        return this.request(`/admin/exams/${examId}/certificate-template`, {
+            method: 'PUT',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async getAdminExamCertificateBadgeUploadUrl(
+        examId: string,
+        payload: { filename: string; contentType: 'image/png' | 'image/jpeg' }
+    ): Promise<{ success: boolean; data: { uploadUrl: string; key: string; bucket: string; publicUrl: string; accessUrl: string; expiresIn: number } }> {
+        return this.request(`/admin/exams/${examId}/certificate-template/badge-upload-url`, {
             method: 'POST',
             body: JSON.stringify(payload),
         })
@@ -689,6 +793,12 @@ export class ApiClient {
                 questionId: string
                 answer?: string | null
                 selectedOption?: number | null
+                recordingS3Key?: string | null
+                recordingStatus?: 'PENDING_UPLOAD' | 'UPLOADED' | 'FAILED' | null
+                recordingMimeType?: string | null
+                recordingSizeBytes?: number | null
+                recordingDurationSeconds?: number | null
+                recordingUrl?: string | null
                 gradingStatus: string
                 isCorrect?: boolean | null
                 pointsAwarded?: number | null
@@ -698,6 +808,15 @@ export class ApiClient {
                 adminFeedback?: string | null
                 question: ExamQuestion
             }>
+            certificate?: {
+                id: string
+                certificateNumber: string
+                issueDate: string | Date
+                pdfUrl: string | null
+                status: 'ISSUED' | 'REVOKED'
+                revokedAt?: string | Date | null
+                certificateTitle?: string | null
+            } | null
         }
     }> {
         return this.request(`/admin/exams/${examId}/attempts/${attemptId}`)
@@ -892,6 +1011,35 @@ export class ApiClient {
         })
     }
 
+    static async createExerciseUploadUrl(examId: string, payload: {
+        attemptId: string
+        questionId: string
+    }): Promise<{ success: boolean; data: { uploadUrl: string; key: string; bucket: string; contentType: string; expiresIn: number } }> {
+        return this.request(`/exams/${examId}/exercise/upload-url`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async confirmExerciseUpload(examId: string, payload: {
+        attemptId: string
+        questionId: string
+        durationSeconds?: number
+    }): Promise<{ success: boolean; data: { answerId: string; recordingS3Key: string; bucket: string; recordingMimeType: string | null; recordingSizeBytes: number | null } }> {
+        return this.request(`/exams/${examId}/exercise/confirm`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async getExerciseAccessUrl(examId: string, payload: {
+        attemptId: string
+        questionId: string
+    }): Promise<{ success: boolean; data: { url: string } }> {
+        const qs = new URLSearchParams(payload).toString()
+        return this.request(`/exams/${examId}/exercise/access-url?${qs}`)
+    }
+
     static async submitExam(examId: string, attemptId: string): Promise<{
         success: boolean
         data: {
@@ -926,6 +1074,9 @@ export class ApiClient {
             totalScore: number
             passingScore: number
             allowReview: boolean
+            maxAttempts: number
+            attemptsUsed: number
+            reviewUnlocked: boolean
             answers?: Array<{
                 questionId: string
                 question: string
@@ -981,6 +1132,8 @@ export class ApiClient {
             existingAnswers: Record<string, {
                 answer: string | null
                 selectedOption: number | null
+                recordingS3Key?: string | null
+                recordingStatus?: 'PENDING_UPLOAD' | 'UPLOADED' | 'FAILED' | null
             }>
         } | null
     }> {
@@ -996,6 +1149,8 @@ export class ApiClient {
             certificateNumber: string
             userId: string
             userName: string
+            courseId: string | null
+            courseTitle: string | null
             examId: string | null
             examTitle: string
             score: number
@@ -1003,6 +1158,11 @@ export class ApiClient {
             percentageScore: number
             issueDate: string
             pdfUrl: string | null
+            status: 'ISSUED' | 'REVOKED'
+            revokedAt?: string | null
+            certificateTitle?: string | null
+            badgeMode?: 'AUTO' | 'UPLOADED' | null
+            badgeUrl?: string | null
         }>
     }> {
         return this.request('/certificates')
@@ -1015,6 +1175,8 @@ export class ApiClient {
             certificateNumber: string
             userId: string
             userName: string
+            courseId: string | null
+            courseTitle: string | null
             examId: string | null
             examTitle: string
             score: number
@@ -1022,6 +1184,12 @@ export class ApiClient {
             percentageScore: number
             issueDate: string
             pdfUrl: string | null
+            status: 'ISSUED' | 'REVOKED'
+            revokedAt?: string | null
+            certificateTitle?: string | null
+            badgeMode?: 'AUTO' | 'UPLOADED' | null
+            badgeUrl?: string | null
+            badgeStyle?: any | null
         }
     }> {
         return this.request(`/certificates/${certificateId}`)
@@ -1040,6 +1208,7 @@ export class ApiClient {
                 percentageScore: number
                 issueDate: string
                 pdfUrl: string | null
+                status: 'ISSUED' | 'REVOKED'
             }
             pdfUrl: string
             emailSent: boolean
@@ -1071,5 +1240,25 @@ export class ApiClient {
     static downloadCertificateUrl(certificateId: string): string {
         // Returns the redirect URL for the PDF
         return `/api/certificates/${certificateId}/download`
+    }
+
+    static async adminRevokeCertificate(certificateId: string): Promise<{
+        success: boolean
+        data: { id: string; status: 'REVOKED'; revokedAt: string; certificateNumber: string }
+    }> {
+        return this.request(`/admin/certificates/${certificateId}/revoke`, {
+            method: 'POST',
+            body: JSON.stringify({}),
+        })
+    }
+
+    static async adminReissueCertificate(certificateId: string): Promise<{
+        success: boolean
+        data: { id: string; status: 'ISSUED'; issueDate: string; pdfUrl: string | null; certificateNumber: string }
+    }> {
+        return this.request(`/admin/certificates/${certificateId}/reissue`, {
+            method: 'POST',
+            body: JSON.stringify({}),
+        })
     }
 }

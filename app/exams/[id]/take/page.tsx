@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
+import { ScreenRecorderAnswer } from '@/components/exam/screen-recorder-answer'
 import { ApiClient } from '@/lib/api-client'
 import {
     Loader2,
@@ -44,7 +45,16 @@ interface AttemptData {
     existingAnswers?: Record<string, {
         answer: string | null
         selectedOption: number | null
+        recordingS3Key?: string | null
+        recordingStatus?: 'PENDING_UPLOAD' | 'UPLOADED' | 'FAILED' | null
     }>
+}
+
+type AnswerState = {
+    answer?: string
+    selectedOption?: number
+    recordingS3Key?: string
+    recordingStatus?: 'PENDING_UPLOAD' | 'UPLOADED' | 'FAILED'
 }
 
 type PageProps = {
@@ -60,7 +70,7 @@ export default function TakeExamPage({ params }: PageProps) {
     const [error, setError] = useState<string | null>(null)
 
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
-    const [answers, setAnswers] = useState<Record<string, { answer?: string; selectedOption?: number }>>({})
+    const [answers, setAnswers] = useState<Record<string, AnswerState>>({})
     const [flaggedQuestions, setFlaggedQuestions] = useState<Set<string>>(new Set())
     const [saving, setSaving] = useState(false)
     const [submitting, setSubmitting] = useState(false)
@@ -82,11 +92,13 @@ export default function TakeExamPage({ params }: PageProps) {
                 setAttemptData(currentResponse.data)
                 // Load existing answers
                 if (currentResponse.data.existingAnswers) {
-                    const existingAnswers: Record<string, { answer?: string; selectedOption?: number }> = {}
+                    const existingAnswers: Record<string, AnswerState> = {}
                     Object.entries(currentResponse.data.existingAnswers).forEach(([questionId, ans]) => {
                         existingAnswers[questionId] = {
                             answer: ans.answer || undefined,
                             selectedOption: ans.selectedOption ?? undefined,
+                            recordingS3Key: ans.recordingS3Key || undefined,
+                            recordingStatus: ans.recordingStatus || undefined,
                         }
                     })
                     setAnswers(existingAnswers)
@@ -155,6 +167,17 @@ export default function TakeExamPage({ params }: PageProps) {
         }, 500)
 
         return () => clearTimeout(timeoutId)
+    }
+
+    const handleExerciseUploaded = (questionId: string, payload: { recordingS3Key: string }) => {
+        setAnswers(prev => ({
+            ...prev,
+            [questionId]: {
+                ...prev[questionId],
+                recordingS3Key: payload.recordingS3Key,
+                recordingStatus: 'UPLOADED',
+            },
+        }))
     }
 
     // Handle submit
@@ -226,9 +249,12 @@ export default function TakeExamPage({ params }: PageProps) {
 
     const currentQuestion = attemptData.questions[currentQuestionIndex]
     const currentAnswer = answers[currentQuestion.id]
-    const answeredCount = Object.keys(answers).filter(qId =>
-        answers[qId].answer || answers[qId].selectedOption !== undefined
-    ).length
+    const isAnswered = (value?: AnswerState) =>
+        Boolean(value?.answer) ||
+        value?.selectedOption !== undefined ||
+        value?.recordingStatus === 'UPLOADED'
+
+    const answeredCount = Object.keys(answers).filter(qId => isAnswered(answers[qId])).length
     const progress = (answeredCount / attemptData.totalQuestions) * 100
 
     const isTimeWarning = timeRemaining !== null && timeRemaining < 300 // Less than 5 minutes
@@ -413,6 +439,20 @@ export default function TakeExamPage({ params }: PageProps) {
                                 </div>
                             )}
 
+                            {/* Exercise (Screen Recording) */}
+                            {currentQuestion.type === 'EXERCISE' && (
+                                <ScreenRecorderAnswer
+                                    examId={examId}
+                                    attemptId={attemptData.attemptId}
+                                    questionId={currentQuestion.id}
+                                    initial={{
+                                        recordingStatus: currentAnswer?.recordingStatus ?? null,
+                                        recordingS3Key: currentAnswer?.recordingS3Key ?? null,
+                                    }}
+                                    onUploaded={(value) => handleExerciseUploaded(currentQuestion.id, { recordingS3Key: value.recordingS3Key })}
+                                />
+                            )}
+
                             {/* Navigation */}
                             <div className="flex items-center justify-between pt-4 border-t">
                                 <Button
@@ -443,7 +483,7 @@ export default function TakeExamPage({ params }: PageProps) {
                         <CardContent>
                             <div className="grid grid-cols-5 gap-2">
                                 {attemptData.questions.map((question, index) => {
-                                    const isAnswered = answers[question.id]?.answer || answers[question.id]?.selectedOption !== undefined
+                                    const isAnsweredValue = isAnswered(answers[question.id])
                                     const isFlagged = flaggedQuestions.has(question.id)
                                     const isCurrent = index === currentQuestionIndex
 
@@ -453,7 +493,7 @@ export default function TakeExamPage({ params }: PageProps) {
                                             className={`relative w-10 h-10 rounded-lg border font-medium text-sm transition-colors ${
                                                 isCurrent
                                                     ? 'bg-primary text-primary-foreground border-primary'
-                                                    : isAnswered
+                                                    : isAnsweredValue
                                                         ? 'bg-green-100 border-green-300 dark:bg-green-900/20 dark:border-green-700'
                                                         : 'hover:bg-accent'
                                             }`}

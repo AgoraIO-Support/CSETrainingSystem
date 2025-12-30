@@ -145,7 +145,10 @@ export const DELETE = withAdminAuth(
     try {
       const { examId } = await context.params;
 
-      await ExamService.deleteExam(examId);
+      const { searchParams } = new URL(req.url);
+      const force = searchParams.get('force') === '1';
+
+      await ExamService.deleteExam(examId, { force });
 
       return NextResponse.json({
         success: true,
@@ -172,7 +175,7 @@ export const DELETE = withAdminAuth(
           success: false,
           error: {
             code: 'EXAM_001',
-            message: 'Failed to delete exam',
+            message: error instanceof Error ? error.message : 'Failed to delete exam',
           },
         },
         { status: 500 }

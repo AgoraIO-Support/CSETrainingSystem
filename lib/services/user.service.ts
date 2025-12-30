@@ -1,5 +1,6 @@
 import prisma from '@/lib/prisma'
 import { Prisma, UserRole, UserStatus } from '@prisma/client'
+import bcrypt from 'bcryptjs'
 
 interface GetUserParams {
     page?: number
@@ -10,6 +11,55 @@ interface GetUserParams {
 }
 
 export class UserService {
+    static async createUser(data: {
+        email: string
+        password: string
+        name: string
+        department?: string
+        title?: string
+    }) {
+        const existingUser = await prisma.user.findUnique({
+            where: { email: data.email },
+            select: { id: true },
+        })
+
+        if (existingUser) {
+            throw new Error('EMAIL_EXISTS')
+        }
+
+        const hashedPassword = await bcrypt.hash(data.password, 10)
+
+        const created = await prisma.user.create({
+            data: {
+                email: data.email,
+                name: data.name,
+                password: hashedPassword,
+                department: data.department?.trim() || null,
+                title: data.title?.trim() || null,
+                role: 'USER',
+                status: 'ACTIVE',
+            },
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                avatar: true,
+                role: true,
+                status: true,
+                department: true,
+                title: true,
+                createdAt: true,
+                lastLoginAt: true,
+            },
+        })
+
+        return {
+            ...created,
+            enrollmentCount: 0,
+            completedCourses: 0,
+        }
+    }
+
     static async getUsers(params: GetUserParams) {
         const page = params.page && params.page > 0 ? params.page : 1
         const limit = params.limit && params.limit > 0 ? params.limit : 20

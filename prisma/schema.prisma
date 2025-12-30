@@ -69,6 +69,7 @@ model User {
   examInvitations ExamInvitation[]
   createdExams    Exam[]           @relation("ExamCreator")
   approvedExams   Exam[]           @relation("ExamApprover")
+  revokedCertificates Certificate[] @relation("CertificateRevoker")
 
   @@index([email])
   @@index([role])
@@ -357,6 +358,16 @@ model QuizAttempt {
 // ACHIEVEMENTS & CERTIFICATIONS
 // ============================================================================
 
+enum CertificateStatus {
+  ISSUED
+  REVOKED
+}
+
+enum CertificateBadgeMode {
+  AUTO
+  UPLOADED
+}
+
 model Achievement {
   id          String @id @default(uuid())
   title       String
@@ -397,20 +408,62 @@ model Certificate {
   examId String?
   exam   Exam?   @relation(fields: [examId], references: [id], onDelete: SetNull)
 
+  // Issued from a specific exam attempt (for traceability)
+  attemptId String?
+  attempt   ExamAttempt? @relation(fields: [attemptId], references: [id], onDelete: SetNull)
+
   certificateNumber String   @unique
   issueDate         DateTime @default(now())
   pdfUrl            String? // S3 URL for generated PDF
+  pdfS3Key          String? // S3 key for generated PDF (for deletion/cleanup)
+
+  status       CertificateStatus @default(ISSUED)
+  revokedAt    DateTime?
+  revokedById  String?
+  revokedBy    User?             @relation("CertificateRevoker", fields: [revokedById], references: [id], onDelete: SetNull)
 
   // Certificate metadata
   recipientName String? // Name on certificate (snapshot at time of issue)
   examTitle     String? // Exam title snapshot
   courseTitle   String? // Course title snapshot
   score         Float? // Score achieved
+  certificateTitle String? // Certificate name/title snapshot
+
+  // Badge snapshot (auto-generated or uploaded)
+  badgeMode     CertificateBadgeMode?
+  badgeS3Key    String?
+  badgeMimeType String?
+  badgeStyle    Json?
 
   @@index([userId])
   @@index([courseId])
   @@index([examId])
+  @@index([status])
+  @@index([revokedById])
+  @@index([attemptId])
   @@map("certificates")
+}
+
+model ExamCertificateTemplate {
+  id String @id @default(uuid())
+
+  examId String @unique
+  exam   Exam   @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  isEnabled Boolean @default(true)
+
+  title String
+
+  badgeMode     CertificateBadgeMode @default(AUTO)
+  badgeS3Key    String?
+  badgeMimeType String?
+  badgeStyle    Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([examId])
+  @@map("exam_certificate_templates")
 }
 
 // ============================================================================
@@ -934,6 +987,13 @@ enum ExamQuestionType {
   TRUE_FALSE
   FILL_IN_BLANK
   ESSAY
+  EXERCISE
+}
+
+enum ExamRecordingStatus {
+  PENDING_UPLOAD
+  UPLOADED
+  FAILED
 }
 
 enum DifficultyLevel {
@@ -1031,6 +1091,7 @@ model Exam {
   invitations  ExamInvitation[]
   analytics    ExamAnalytics?
   certificates Certificate[]
+  certificateTemplate ExamCertificateTemplate?
 
   @@index([status])
   @@index([courseId])
@@ -1137,6 +1198,7 @@ model ExamAttempt {
   updatedAt DateTime @updatedAt
 
   answers ExamAnswer[]
+  certificates Certificate[]
 
   @@index([userId])
   @@index([examId])
@@ -1155,6 +1217,13 @@ model ExamAnswer {
   // User's answer
   answer         String? @db.Text // User's response
   selectedOption Int? // For MC: index of selected option
+
+  // Exercise recording (screen recording answer)
+  recordingS3Key           String?
+  recordingMimeType        String?
+  recordingSizeBytes       Int?
+  recordingDurationSeconds Int?
+  recordingStatus          ExamRecordingStatus?
 
   // Grading
   gradingStatus GradingStatus @default(PENDING)

@@ -8,6 +8,9 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
 import { ApiClient } from '@/lib/api-client'
 import type { AdminUser, AdminUserStats } from '@/types'
 import { formatDate } from '@/lib/utils'
@@ -58,6 +61,18 @@ export default function AdminUsersPage() {
     const [error, setError] = useState<string | null>(null)
     const [refreshIndex, setRefreshIndex] = useState(0)
     const [actionUserId, setActionUserId] = useState<string | null>(null)
+
+    const [createOpen, setCreateOpen] = useState(false)
+    const [creatingUser, setCreatingUser] = useState(false)
+    const [createError, setCreateError] = useState<string | null>(null)
+    const [createForm, setCreateForm] = useState({
+        name: '',
+        email: '',
+        department: '',
+        title: '',
+        password: '',
+        confirmPassword: '',
+    })
 
     useEffect(() => {
         let cancelled = false
@@ -135,6 +150,61 @@ export default function AdminUsersPage() {
         setRefreshIndex(prev => prev + 1)
     }
 
+    const resetCreateForm = () => {
+        setCreateForm({
+            name: '',
+            email: '',
+            department: '',
+            title: '',
+            password: '',
+            confirmPassword: '',
+        })
+        setCreateError(null)
+    }
+
+    const handleCreateSubmit = async (event: React.FormEvent) => {
+        event.preventDefault()
+        setCreateError(null)
+
+        const name = createForm.name.trim()
+        const email = createForm.email.trim()
+        const department = createForm.department.trim()
+        const title = createForm.title.trim()
+
+        if (!name || !email) {
+            setCreateError('Name and email are required')
+            return
+        }
+
+        if (createForm.password.length < 8) {
+            setCreateError('Password must be at least 8 characters')
+            return
+        }
+
+        if (createForm.password !== createForm.confirmPassword) {
+            setCreateError('Passwords do not match')
+            return
+        }
+
+        setCreatingUser(true)
+        try {
+            await ApiClient.createAdminUser({
+                name,
+                email,
+                password: createForm.password,
+                department: department ? department : undefined,
+                title: title ? title : undefined,
+            })
+            setCreateOpen(false)
+            resetCreateForm()
+            refreshData()
+        } catch (err) {
+            setCreateError(err instanceof Error ? err.message : 'Failed to create user')
+        } finally {
+            setCreatingUser(false)
+        }
+    }
+
     const handleRoleToggle = async (user: AdminUser) => {
         const targetRole: 'ADMIN' | 'USER' = user.role === 'ADMIN' ? 'USER' : 'ADMIN'
         const confirmMessage =
@@ -194,11 +264,111 @@ export default function AdminUsersPage() {
                             Monitor user activity, roles, and access levels
                         </p>
                     </div>
-                    <Button variant="outline" onClick={refreshData} disabled={loading}>
-                        <RefreshCcw className="h-4 w-4 mr-2" />
-                        Refresh
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        <Button onClick={() => setCreateOpen(true)} disabled={loading}>
+                            <UserPlus className="h-4 w-4 mr-2" />
+                            Create user
+                        </Button>
+                        <Button variant="outline" onClick={refreshData} disabled={loading}>
+                            <RefreshCcw className="h-4 w-4 mr-2" />
+                            Refresh
+                        </Button>
+                    </div>
                 </div>
+
+                <Dialog
+                    open={createOpen}
+                    onOpenChange={(open) => {
+                        setCreateOpen(open)
+                        if (!open) resetCreateForm()
+                    }}
+                >
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Create user</DialogTitle>
+                            <DialogDescription>
+                                Create a login for a learner. They can change their password after signing in.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <form className="space-y-4" onSubmit={handleCreateSubmit}>
+                            {createError && (
+                                <Alert variant="destructive">
+                                    <AlertDescription>{createError}</AlertDescription>
+                                </Alert>
+                            )}
+
+                            <div className="grid gap-4 md:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label htmlFor="create-user-name">Name</Label>
+                                    <Input
+                                        id="create-user-name"
+                                        value={createForm.name}
+                                        onChange={(e) => setCreateForm(prev => ({ ...prev, name: e.target.value }))}
+                                        required
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="create-user-email">Email</Label>
+                                    <Input
+                                        id="create-user-email"
+                                        type="email"
+                                        value={createForm.email}
+                                        onChange={(e) => setCreateForm(prev => ({ ...prev, email: e.target.value }))}
+                                        placeholder="name@agora.io"
+                                        required
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="create-user-department">Department (optional)</Label>
+                                    <Input
+                                        id="create-user-department"
+                                        value={createForm.department}
+                                        onChange={(e) => setCreateForm(prev => ({ ...prev, department: e.target.value }))}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="create-user-title">Title (optional)</Label>
+                                    <Input
+                                        id="create-user-title"
+                                        value={createForm.title}
+                                        onChange={(e) => setCreateForm(prev => ({ ...prev, title: e.target.value }))}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="create-user-password">Password</Label>
+                                    <Input
+                                        id="create-user-password"
+                                        type="password"
+                                        value={createForm.password}
+                                        onChange={(e) => setCreateForm(prev => ({ ...prev, password: e.target.value }))}
+                                        required
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="create-user-confirm-password">Confirm password</Label>
+                                    <Input
+                                        id="create-user-confirm-password"
+                                        type="password"
+                                        value={createForm.confirmPassword}
+                                        onChange={(e) => setCreateForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            <DialogFooter>
+                                <Button type="button" variant="ghost" onClick={() => setCreateOpen(false)} disabled={creatingUser}>
+                                    Cancel
+                                </Button>
+                                <Button type="submit" disabled={creatingUser}>
+                                    {creatingUser ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                                    Create
+                                </Button>
+                            </DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
 
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                     {[

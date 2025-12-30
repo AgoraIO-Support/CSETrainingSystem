@@ -37,6 +37,9 @@ interface ResultData {
     totalScore: number
     passingScore: number
     allowReview: boolean
+    maxAttempts: number
+    attemptsUsed: number
+    reviewUnlocked: boolean
     answers?: Array<{
         questionId: string
         question: string
@@ -56,6 +59,7 @@ const questionTypeLabels: Record<ExamQuestionType, string> = {
     TRUE_FALSE: 'True/False',
     FILL_IN_BLANK: 'Fill in Blank',
     ESSAY: 'Essay',
+    EXERCISE: 'Exercise',
 }
 
 type PageProps = {
@@ -75,6 +79,12 @@ export default function ExamResultPage({ params }: PageProps) {
     useEffect(() => {
         loadResult()
     }, [examId, attemptId])
+
+    useEffect(() => {
+        if (!result?.reviewUnlocked && showAnswers) {
+            setShowAnswers(false)
+        }
+    }, [result?.reviewUnlocked, showAnswers])
 
     const loadResult = async () => {
         setLoading(true)
@@ -135,6 +145,7 @@ export default function ExamResultPage({ params }: PageProps) {
     }
 
     const isPending = result.status === 'SUBMITTED' && result.percentageScore === null
+    const attemptsRemaining = Math.max(0, (result.maxAttempts ?? 0) - (result.attemptsUsed ?? 0))
 
     return (
         <DashboardLayout>
@@ -275,23 +286,40 @@ export default function ExamResultPage({ params }: PageProps) {
                 )}
 
                 {/* Answer Review */}
-                {result.allowReview && result.answers && result.answers.length > 0 && (
+                {result.allowReview && (
                     <Card>
                         <CardHeader>
                             <div className="flex items-center justify-between">
                                 <div>
                                     <CardTitle>Answer Review</CardTitle>
-                                    <CardDescription>Review your answers and explanations</CardDescription>
+                                    <CardDescription>
+                                        {result.reviewUnlocked
+                                            ? 'Review your answers and explanations'
+                                            : `Unlocks after you use all attempts (${result.attemptsUsed}/${result.maxAttempts} used)`}
+                                    </CardDescription>
                                 </div>
                                 <Button
                                     variant="outline"
+                                    disabled={!result.reviewUnlocked || !result.answers || result.answers.length === 0}
+                                    title={
+                                        !result.reviewUnlocked
+                                            ? `Answer review unlocks after you use all attempts (${attemptsRemaining} remaining)`
+                                            : undefined
+                                    }
                                     onClick={() => setShowAnswers(!showAnswers)}
                                 >
                                     {showAnswers ? 'Hide Answers' : 'Show Answers'}
                                 </Button>
                             </div>
                         </CardHeader>
-                        {showAnswers && (
+                        {!result.reviewUnlocked && (
+                            <CardContent>
+                                <div className="p-3 rounded-lg bg-muted text-sm text-muted-foreground">
+                                    Use all attempts to unlock answer review. Remaining attempts: {attemptsRemaining}.
+                                </div>
+                            </CardContent>
+                        )}
+                        {result.reviewUnlocked && showAnswers && result.answers && result.answers.length > 0 && (
                             <CardContent className="space-y-6">
                                 {result.answers.map((answer, index) => (
                                     <div
@@ -336,7 +364,7 @@ export default function ExamResultPage({ params }: PageProps) {
                                                     {answer.userAnswer || 'No answer provided'}
                                                 </p>
                                             </div>
-                                            {answer.type !== 'ESSAY' && (
+                                            {answer.type !== 'ESSAY' && answer.type !== 'EXERCISE' && (
                                                 <div>
                                                     <p className="text-sm text-muted-foreground mb-1">Correct Answer</p>
                                                     <p className="text-green-600">

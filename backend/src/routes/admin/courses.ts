@@ -18,7 +18,22 @@ export async function courseAdminRoutes(fastify: FastifyInstance) {
       return reply.send({ success: true })
     }
 
-    await request.services.cascadeService.deleteCourseCascade(params.courseId)
-    return reply.send({ success: true })
+    try {
+      await request.services.cascadeService.deleteCourseCascade(params.courseId)
+      return reply.send({ success: true })
+    } catch (error) {
+      request.log.error({ error }, 'Delete course cascade failed')
+      const message = error instanceof Error ? error.message : String(error)
+      if (message.startsWith('S3_CLEANUP_FAILED')) {
+        return reply.status(502).send({
+          success: false,
+          error: { code: 'S3_CLEANUP_FAILED', message },
+        })
+      }
+      return reply.status(500).send({
+        success: false,
+        error: { code: 'SYSTEM_001', message: 'Failed to delete course' },
+      })
+    }
   })
 }

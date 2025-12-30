@@ -2,33 +2,50 @@
 
 import { useState } from 'react'
 import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Search, Filter, X } from 'lucide-react'
+import type { CourseLevel } from '@/types'
 
 interface CourseFilterProps {
+    searchQuery: string
     onSearch: (query: string) => void
     onFilterCategory: (category: string | null) => void
     selectedCategory: string | null
     categories?: string[]
+    selectedLevel: CourseLevel | null
+    onFilterLevel: (level: CourseLevel | null) => void
 }
 
 const defaultCategories = ['All', 'SDK Integration', 'Video Solutions', 'Recording', 'Messaging', 'Advanced']
-const levels = ['All Levels', 'Beginner', 'Intermediate', 'Advanced']
+const levelOptions: Array<{ label: string; value: CourseLevel | null }> = [
+    { label: 'All Levels', value: null },
+    { label: 'Beginner', value: 'BEGINNER' },
+    { label: 'Intermediate', value: 'INTERMEDIATE' },
+    { label: 'Advanced', value: 'ADVANCED' },
+]
 
-export function CourseFilter({ onSearch, onFilterCategory, selectedCategory, categories = defaultCategories }: CourseFilterProps) {
-    const [searchQuery, setSearchQuery] = useState('')
-    const [selectedLevel, setSelectedLevel] = useState('All Levels')
-
-    const handleSearch = (value: string) => {
-        setSearchQuery(value)
-        onSearch(value)
-    }
+export function CourseFilter({
+    searchQuery,
+    onSearch,
+    onFilterCategory,
+    selectedCategory,
+    categories = defaultCategories,
+    selectedLevel,
+    onFilterLevel,
+}: CourseFilterProps) {
+    const handleSearch = (value: string) => onSearch(value)
 
     const handleCategoryClick = (category: string) => {
         const newCategory = category === 'All' ? null : category
-        onFilterCategory(newCategory)
+        onFilterCategory(newCategory === selectedCategory ? null : newCategory)
     }
+
+    const handleLevelClick = (level: CourseLevel | null) => {
+        onFilterLevel(level === selectedLevel ? null : level)
+    }
+
+    const safeCategories = categories?.length ? categories : defaultCategories
+    const normalizedCategories = safeCategories.includes('All') ? safeCategories : ['All', ...safeCategories]
 
     return (
         <div className="space-y-4">
@@ -43,8 +60,10 @@ export function CourseFilter({ onSearch, onFilterCategory, selectedCategory, cat
                 />
                 {searchQuery && (
                     <button
+                        type="button"
                         onClick={() => handleSearch('')}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        aria-label="Clear search"
                     >
                         <X className="h-4 w-4" />
                     </button>
@@ -58,16 +77,25 @@ export function CourseFilter({ onSearch, onFilterCategory, selectedCategory, cat
                     <span className="text-sm font-medium">Category:</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                    {categories.map(category => (
-                        <Badge
-                            key={category}
-                            variant={selectedCategory === (category === 'All' ? null : category) ? 'default' : 'outline'}
-                            className="cursor-pointer"
-                            onClick={() => handleCategoryClick(category)}
-                        >
-                            {category}
-                        </Badge>
-                    ))}
+                    {normalizedCategories.map(category => {
+                        const normalized = category === 'All' ? null : category
+                        const active = selectedCategory === normalized
+                        return (
+                            <button
+                                key={category}
+                                type="button"
+                                onClick={() => handleCategoryClick(category)}
+                                aria-pressed={active}
+                            >
+                                <Badge
+                                    variant={active ? 'default' : 'outline'}
+                                    className="cursor-pointer"
+                                >
+                                    {category}
+                                </Badge>
+                            </button>
+                        )
+                    })}
                 </div>
             </div>
 
@@ -76,15 +104,20 @@ export function CourseFilter({ onSearch, onFilterCategory, selectedCategory, cat
                     <span className="text-sm font-medium">Level:</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                    {levels.map(level => (
-                        <Badge
-                            key={level}
-                            variant={selectedLevel === level ? 'default' : 'outline'}
-                            className="cursor-pointer"
-                            onClick={() => setSelectedLevel(level)}
+                    {levelOptions.map(option => (
+                        <button
+                            key={option.label}
+                            type="button"
+                            onClick={() => handleLevelClick(option.value)}
+                            aria-pressed={selectedLevel === option.value}
                         >
-                            {level}
-                        </Badge>
+                            <Badge
+                                variant={selectedLevel === option.value ? 'default' : 'outline'}
+                                className="cursor-pointer"
+                            >
+                                {option.label}
+                            </Badge>
+                        </button>
                     ))}
                 </div>
             </div>

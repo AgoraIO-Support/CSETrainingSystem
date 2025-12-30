@@ -30,6 +30,7 @@ const questionTypeLabels: Record<ExamQuestionType, string> = {
     TRUE_FALSE: 'True/False',
     FILL_IN_BLANK: 'Fill in Blank',
     ESSAY: 'Essay',
+    EXERCISE: 'Exercise',
 }
 
 const difficultyColors: Record<string, string> = {
@@ -204,11 +205,13 @@ export default function ExamQuestionsPage({ params }: PageProps) {
         setError(null)
 
         try {
+            const hasCorrectAnswer =
+                form.type === 'MULTIPLE_CHOICE' || form.type === 'TRUE_FALSE' || form.type === 'FILL_IN_BLANK'
             const payload = {
                 type: form.type,
                 question: form.question,
                 options: form.type === 'MULTIPLE_CHOICE' ? form.options.filter(o => o.trim()) : undefined,
-                correctAnswer: form.type !== 'ESSAY' ? form.correctAnswer : undefined,
+                correctAnswer: hasCorrectAnswer ? form.correctAnswer : undefined,
                 explanation: form.explanation || undefined,
                 points: form.points,
                 difficulty: form.difficulty,
@@ -422,6 +425,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                             <option value="TRUE_FALSE">True/False</option>
                                             <option value="FILL_IN_BLANK">Fill in Blank</option>
                                             <option value="ESSAY">Essay</option>
+                                            <option value="EXERCISE">Exercise (Screen Recording)</option>
                                         </select>
                                     </div>
                                     <div className="space-y-2">
@@ -475,7 +479,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                     </div>
                                 )}
 
-                                {form.type !== 'ESSAY' && (
+                                {(form.type === 'MULTIPLE_CHOICE' || form.type === 'TRUE_FALSE' || form.type === 'FILL_IN_BLANK') && (
                                     <div className="space-y-2">
                                         <Label>Correct Answer *</Label>
                                         {form.type === 'MULTIPLE_CHOICE' ? (

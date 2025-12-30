@@ -8,13 +8,13 @@ import {
     BookOpen,
     TrendingUp,
     User,
-    FileText,
     Settings,
     LayoutDashboard,
     Users,
     BarChart3,
     Bot,
     GraduationCap,
+    Award,
 } from 'lucide-react'
 
 interface NavItem {
@@ -29,7 +29,7 @@ const navItems: NavItem[] = [
     { title: 'Courses', href: '/courses', icon: BookOpen },
     { title: 'My Progress', href: '/progress', icon: TrendingUp },
     { title: 'My Exams', href: '/exams', icon: GraduationCap },
-    { title: 'Reports', href: '/reports', icon: FileText },
+    { title: 'My Certificates', href: '/certificates', icon: Award },
     { title: 'Profile', href: '/profile', icon: User },
 ]
 

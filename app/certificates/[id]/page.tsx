@@ -19,6 +19,7 @@ import {
     Copy,
     Check,
     AlertCircle,
+    XCircle,
     ExternalLink,
 } from 'lucide-react'
 import Link from 'next/link'
@@ -28,13 +29,20 @@ interface Certificate {
     certificateNumber: string
     userId: string
     userName: string
+    courseId: string | null
+    courseTitle: string | null
     examId: string | null
     examTitle: string
+    certificateTitle?: string | null
     score: number
     totalScore: number
     percentageScore: number
     issueDate: string
     pdfUrl: string | null
+    status: 'ISSUED' | 'REVOKED'
+    revokedAt?: string | null
+    badgeUrl?: string | null
+    badgeMode?: 'AUTO' | 'UPLOADED' | null
 }
 
 type PageProps = {
@@ -139,6 +147,13 @@ export default function CertificateDetailPage({ params }: PageProps) {
                     </div>
                 </div>
 
+                {certificate.status === 'REVOKED' && (
+                    <div className="p-4 bg-destructive/10 text-destructive rounded-lg flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4" />
+                        This certificate has been revoked.
+                    </div>
+                )}
+
                 {/* Certificate Preview Card */}
                 <Card className="bg-gradient-to-br from-yellow-50 via-amber-50 to-orange-50 dark:from-yellow-900/20 dark:via-amber-900/20 dark:to-orange-900/20 border-yellow-200 dark:border-yellow-800 overflow-hidden">
                     <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-yellow-400 via-amber-400 to-orange-400" />
@@ -146,17 +161,26 @@ export default function CertificateDetailPage({ params }: PageProps) {
                         <div className="text-center">
                             <div className="flex justify-center mb-6">
                                 <div className="relative">
-                                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-yellow-400 to-amber-500 flex items-center justify-center shadow-lg">
-                                        <Award className="h-12 w-12 text-white" />
+                                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-yellow-400 to-amber-500 flex items-center justify-center shadow-lg overflow-hidden">
+                                        {certificate.badgeUrl ? (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img src={certificate.badgeUrl} alt="Badge" className="w-full h-full object-cover" />
+                                        ) : (
+                                            <Award className="h-12 w-12 text-white" />
+                                        )}
                                     </div>
-                                    <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-green-500 flex items-center justify-center">
-                                        <Check className="h-5 w-5 text-white" />
+                                    <div className={`absolute -bottom-1 -right-1 w-8 h-8 rounded-full flex items-center justify-center ${certificate.status === 'REVOKED' ? 'bg-red-500' : 'bg-green-500'}`}>
+                                        {certificate.status === 'REVOKED' ? (
+                                            <XCircle className="h-5 w-5 text-white" />
+                                        ) : (
+                                            <Check className="h-5 w-5 text-white" />
+                                        )}
                                     </div>
                                 </div>
                             </div>
 
                             <h2 className="text-sm text-muted-foreground uppercase tracking-wider mb-2">
-                                Certificate of Completion
+                                {certificate.certificateTitle || 'Certificate'}
                             </h2>
                             <h3 className="text-3xl font-bold text-foreground mb-4">
                                 {certificate.examTitle}
@@ -260,7 +284,7 @@ export default function CertificateDetailPage({ params }: PageProps) {
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="flex flex-wrap gap-3">
-                            {certificate.pdfUrl && (
+                            {certificate.pdfUrl && certificate.status !== 'REVOKED' && (
                                 <Button onClick={handleDownload}>
                                     <Download className="h-4 w-4 mr-2" />
                                     Download PDF
