@@ -692,6 +692,7 @@ export class CertificateService {
         OR: [
           { id: certificate.userId },
           { supabaseId: certificate.userId },
+          { email: certificate.userId },
         ],
       },
       select: { name: true, email: true },
@@ -778,7 +779,7 @@ export class CertificateService {
       select: { name: true, email: true, supabaseId: true },
     });
 
-    const userIds = [userId, user?.supabaseId].filter((value): value is string => Boolean(value));
+    const userIds = [userId, user?.supabaseId, user?.email].filter((value): value is string => Boolean(value));
 
     const certificates = await prisma.certificate.findMany({
       where: { userId: { in: userIds } },

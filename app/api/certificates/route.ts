@@ -9,6 +9,9 @@ import { withAuth } from '@/lib/auth-middleware';
 import { CertificateService } from '@/lib/services/certificate.service';
 import { z } from 'zod';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const generateCertificateSchema = z.object({
   attemptId: z.string().min(1, 'Attempt ID is required'),
   sendEmail: z.boolean().optional().default(true),
@@ -22,6 +25,11 @@ export const GET = withAuth(async (req: NextRequest, user) => {
     return NextResponse.json({
       success: true,
       data: certificates,
+    }, {
+      headers: {
+        'Cache-Control': 'no-store',
+        'Vary': 'Authorization',
+      },
     });
   } catch (error) {
     console.error('Get certificates error:', error);
@@ -33,7 +41,13 @@ export const GET = withAuth(async (req: NextRequest, user) => {
           message: 'Failed to get certificates',
         },
       },
-      { status: 500 }
+      {
+        status: 500,
+        headers: {
+          'Cache-Control': 'no-store',
+          'Vary': 'Authorization',
+        },
+      }
     );
   }
 });

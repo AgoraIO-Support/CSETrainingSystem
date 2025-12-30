@@ -49,7 +49,7 @@ describe('CertificateService userId compatibility', () => {
         })
 
         prisma.certificate.findMany.mockImplementation(async (args: any) => {
-            expect(args.where.userId.in).toEqual(['db-user-id', 'sb-user-id'])
+            expect(args.where.userId.in).toEqual(['db-user-id', 'sb-user-id', 'alice@agora.io'])
             return [
                 {
                     id: 'cert-1',
@@ -107,7 +107,7 @@ describe('CertificateService userId compatibility', () => {
         })
 
         prisma.user.findFirst.mockImplementation(async (args: any) => {
-            expect(args.where.OR).toEqual([{ id: 'sb-user-id' }, { supabaseId: 'sb-user-id' }])
+            expect(args.where.OR).toEqual([{ id: 'sb-user-id' }, { supabaseId: 'sb-user-id' }, { email: 'sb-user-id' }])
             return { name: 'Alice', email: 'alice@agora.io' }
         })
 
@@ -116,5 +116,46 @@ describe('CertificateService userId compatibility', () => {
         const certificate = await CertificateService.getCertificateById('cert-1')
         expect(certificate?.userName).toBe('Alice')
     })
-})
 
+    it('lists certificates when they are keyed by user email', async () => {
+        prisma.user.findUnique.mockResolvedValue({
+            id: 'db-user-id',
+            name: 'Alice',
+            email: 'alice@agora.io',
+            supabaseId: null,
+        })
+
+        prisma.certificate.findMany.mockImplementation(async (args: any) => {
+            expect(args.where.userId.in).toEqual(['db-user-id', 'alice@agora.io'])
+            return [
+                {
+                    id: 'cert-1',
+                    certificateNumber: 'CERT-001',
+                    userId: 'alice@agora.io',
+                    courseId: null,
+                    examId: null,
+                    issueDate: new Date('2025-01-01T00:00:00Z'),
+                    pdfUrl: null,
+                    pdfS3Key: null,
+                    status: 'ISSUED',
+                    revokedAt: null,
+                    recipientName: 'Alice',
+                    examTitle: 'Exam 1',
+                    courseTitle: null,
+                    score: 80,
+                    certificateTitle: 'Completion',
+                    badgeMode: null,
+                    badgeS3Key: null,
+                    badgeMimeType: null,
+                    badgeStyle: null,
+                },
+            ]
+        })
+
+        prisma.exam.findMany.mockResolvedValue([])
+
+        const result = await CertificateService.getUserCertificates('db-user-id')
+        expect(result).toHaveLength(1)
+        expect(result[0]?.userId).toBe('alice@agora.io')
+    })
+})

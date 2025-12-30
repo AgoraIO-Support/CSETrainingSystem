@@ -7,6 +7,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth-middleware';
 import { CertificateService } from '@/lib/services/certificate.service';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
@@ -32,8 +35,13 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
     }
 
     // Check if user owns this certificate
-    const allowedUserIds = new Set([user.id, user.supabaseId].filter((value): value is string => Boolean(value)));
-    if (!allowedUserIds.has(certificate.userId)) {
+    const allowedUserIds = new Set(
+      [user.id, user.supabaseId, user.email]
+        .filter((value): value is string => Boolean(value))
+        .map(value => value.toLowerCase())
+    );
+
+    if (!allowedUserIds.has((certificate.userId || '').toLowerCase())) {
       return NextResponse.json(
         {
           success: false,
@@ -49,6 +57,11 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
     return NextResponse.json({
       success: true,
       data: certificate,
+    }, {
+      headers: {
+        'Cache-Control': 'no-store',
+        'Vary': 'Authorization',
+      },
     });
   } catch (error) {
     console.error('Get certificate error:', error);
@@ -60,7 +73,13 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
           message: 'Failed to get certificate',
         },
       },
-      { status: 500 }
+      {
+        status: 500,
+        headers: {
+          'Cache-Control': 'no-store',
+          'Vary': 'Authorization',
+        },
+      }
     );
   }
 });

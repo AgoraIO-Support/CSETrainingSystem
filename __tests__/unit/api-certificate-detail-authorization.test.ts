@@ -47,6 +47,28 @@ describe('GET /api/certificates/[id] authorization', () => {
         expect(res.status).toBe(200)
     })
 
+    it('allows access when certificate.userId matches user.email', async () => {
+        mockedCertService.getCertificateById.mockResolvedValue({
+            id: 'cert-1',
+            certificateNumber: 'CERT-001',
+            userId: 'u@agora.io',
+            userName: 'Alice',
+            courseId: null,
+            courseTitle: null,
+            examId: null,
+            examTitle: 'Exam 1',
+            score: 0,
+            totalScore: 100,
+            percentageScore: 0,
+            issueDate: new Date().toISOString(),
+            pdfUrl: null,
+            status: 'ISSUED',
+        })
+
+        const res = await GET({} as any, { params: Promise.resolve({ id: 'cert-1' }) } as any)
+        expect(res.status).toBe(200)
+    })
+
     it('rejects access when certificate.userId does not match user.id nor user.supabaseId', async () => {
         mockedCertService.getCertificateById.mockResolvedValue({
             id: 'cert-1',
@@ -69,4 +91,3 @@ describe('GET /api/certificates/[id] authorization', () => {
         expect(res.status).toBe(403)
     })
 })
-
