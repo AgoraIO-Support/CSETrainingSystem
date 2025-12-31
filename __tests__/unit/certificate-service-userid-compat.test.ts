@@ -179,7 +179,7 @@ describe('CertificateService userId compatibility', () => {
 
         // certificate.findMany call order:
         // 1) initial list -> []
-        // 2) existingByAttempt in backfill -> []
+        // 2) existingByExam in backfill -> []
         // 3) final list -> [cert]
         prisma.certificate.findMany
             .mockResolvedValueOnce([])
@@ -241,5 +241,102 @@ describe('CertificateService userId compatibility', () => {
         const result = await CertificateService.getUserCertificates('db-user-id')
         expect(result).toHaveLength(1)
         expect(prisma.certificate.create).toHaveBeenCalledTimes(1)
+    })
+
+    it('backfills only one certificate per exam when multiple passed attempts exist', async () => {
+        prisma.user.findUnique.mockResolvedValue({
+            id: 'db-user-id',
+            name: 'Alice',
+            email: 'alice@agora.io',
+            supabaseId: null,
+        })
+
+        prisma.certificate.findMany
+            .mockResolvedValueOnce([]) // initial list
+            .mockResolvedValueOnce([]) // existingByExam
+            .mockResolvedValueOnce([
+                {
+                    id: 'cert-1',
+                    certificateNumber: 'CERT-001',
+                    userId: 'db-user-id',
+                    courseId: null,
+                    examId: 'exam-1',
+                    issueDate: new Date('2025-01-01T00:00:00Z'),
+                    pdfUrl: null,
+                    pdfS3Key: null,
+                    status: 'ISSUED',
+                    revokedAt: null,
+                    recipientName: 'Alice',
+                    examTitle: 'Exam 1',
+                    courseTitle: null,
+                    score: 100,
+                    certificateTitle: 'Completion',
+                    badgeMode: 'AUTO',
+                    badgeS3Key: null,
+                    badgeMimeType: null,
+                    badgeStyle: { theme: 'blue' },
+                },
+            ])
+
+        prisma.examAttempt.findMany.mockResolvedValue([
+            {
+                id: 'attempt-2',
+                userId: 'db-user-id',
+                examId: 'exam-1',
+                rawScore: 100,
+                status: 'GRADED',
+                passed: true,
+                user: { name: 'Alice', email: 'alice@agora.io' },
+                exam: {
+                    id: 'exam-1',
+                    title: 'Exam 1',
+                    courseId: null,
+                    course: null,
+                    totalScore: 100,
+                    certificateTemplate: {
+                        isEnabled: true,
+                        title: 'Completion',
+                        badgeMode: 'AUTO',
+                        badgeS3Key: null,
+                        badgeMimeType: null,
+                        badgeStyle: { theme: 'blue' },
+                    },
+                },
+                updatedAt: new Date('2025-02-01T00:00:00Z'),
+            },
+            {
+                id: 'attempt-1',
+                userId: 'db-user-id',
+                examId: 'exam-1',
+                rawScore: 95,
+                status: 'GRADED',
+                passed: true,
+                user: { name: 'Alice', email: 'alice@agora.io' },
+                exam: {
+                    id: 'exam-1',
+                    title: 'Exam 1',
+                    courseId: null,
+                    course: null,
+                    totalScore: 100,
+                    certificateTemplate: {
+                        isEnabled: true,
+                        title: 'Completion',
+                        badgeMode: 'AUTO',
+                        badgeS3Key: null,
+                        badgeMimeType: null,
+                        badgeStyle: { theme: 'blue' },
+                    },
+                },
+                updatedAt: new Date('2025-01-01T00:00:00Z'),
+            },
+        ])
+
+        prisma.exam.findMany.mockResolvedValue([{ id: 'exam-1', totalScore: 100 }])
+
+        await CertificateService.getUserCertificates('db-user-id')
+
+        expect(prisma.certificate.create).toHaveBeenCalledTimes(1)
+        expect(prisma.certificate.create.mock.calls[0]?.[0]?.data?.attemptId).toBe('attempt-2')
+        expect(prisma.certificate.create.mock.calls[0]?.[0]?.data?.examId).toBe('exam-1')
     })
 })

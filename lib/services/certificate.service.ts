@@ -155,21 +155,39 @@ export class CertificateService {
           },
         },
       },
+      // Prefer the most recently graded attempt for each exam.
       orderBy: { updatedAt: 'desc' },
       take: 50,
     });
 
     if (!eligibleAttempts.length) return;
 
-    const attemptIds = eligibleAttempts.map(a => a.id);
-    const existingByAttempt = await prisma.certificate.findMany({
-      where: { attemptId: { in: attemptIds } },
-      select: { attemptId: true },
-    });
-    const existingAttemptIds = new Set(existingByAttempt.map(row => row.attemptId).filter(Boolean) as string[]);
-
+    // Backfill should create at most one certificate per (user, exam).
+    const attemptByExamId = new Map<string, (typeof eligibleAttempts)[number]>();
     for (const attempt of eligibleAttempts) {
-      if (existingAttemptIds.has(attempt.id)) continue;
+      if (!attemptByExamId.has(attempt.examId)) {
+        attemptByExamId.set(attempt.examId, attempt);
+      }
+    }
+
+    const examIds = [...attemptByExamId.keys()];
+
+    const existingByExam = await prisma.certificate.findMany({
+      where: {
+        examId: { in: examIds },
+        OR: [
+          { userId },
+          // If certificate.userId is inconsistent, fall back to the attempt relation.
+          { attempt: { is: { userId } } },
+        ],
+      },
+      select: { examId: true },
+    });
+
+    const existingExamIds = new Set(existingByExam.map(row => row.examId).filter(Boolean) as string[]);
+
+    for (const attempt of attemptByExamId.values()) {
+      if (existingExamIds.has(attempt.examId)) continue;
 
       const template = attempt.exam.certificateTemplate;
       if (!template || !template.isEnabled) continue;
