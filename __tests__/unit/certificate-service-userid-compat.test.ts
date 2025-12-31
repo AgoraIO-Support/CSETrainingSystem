@@ -49,7 +49,8 @@ describe('CertificateService userId compatibility', () => {
         })
 
         prisma.certificate.findMany.mockImplementation(async (args: any) => {
-            expect(args.where.userId.in).toEqual(['db-user-id', 'sb-user-id', 'alice@agora.io'])
+            expect(args.where.OR[0].userId.in).toEqual(['db-user-id', 'sb-user-id', 'alice@agora.io'])
+            expect(args.where.OR[1].attempt.is.userId).toEqual('db-user-id')
             return [
                 {
                     id: 'cert-1',
@@ -126,7 +127,8 @@ describe('CertificateService userId compatibility', () => {
         })
 
         prisma.certificate.findMany.mockImplementation(async (args: any) => {
-            expect(args.where.userId.in).toEqual(['db-user-id', 'alice@agora.io'])
+            expect(args.where.OR[0].userId.in).toEqual(['db-user-id', 'alice@agora.io'])
+            expect(args.where.OR[1].attempt.is.userId).toEqual('db-user-id')
             return [
                 {
                     id: 'cert-1',

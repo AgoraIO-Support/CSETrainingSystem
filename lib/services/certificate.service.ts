@@ -782,7 +782,13 @@ export class CertificateService {
     const userIds = [userId, user?.supabaseId, user?.email].filter((value): value is string => Boolean(value));
 
     const certificates = await prisma.certificate.findMany({
-      where: { userId: { in: userIds } },
+      where: {
+        OR: [
+          { userId: { in: userIds } },
+          // Backward/forward compatibility: if certificate.userId is inconsistent, fall back to attempt.userId.
+          { attempt: { is: { userId } } },
+        ],
+      },
       orderBy: { issueDate: 'desc' },
     });
 
