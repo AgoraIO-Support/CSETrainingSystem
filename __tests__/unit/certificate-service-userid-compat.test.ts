@@ -12,6 +12,7 @@ jest.mock('@/lib/prisma', () => ({
         certificate: {
             findMany: jest.fn(),
             findUnique: jest.fn(),
+            create: jest.fn(),
         },
         user: {
             findUnique: jest.fn(),
@@ -21,23 +22,29 @@ jest.mock('@/lib/prisma', () => ({
             findMany: jest.fn(),
             findUnique: jest.fn(),
         },
+        examAttempt: {
+            findMany: jest.fn(),
+        },
     },
 }))
 
 const prisma = (jest.requireMock('@/lib/prisma') as any).default as {
-    certificate: { findMany: jest.Mock; findUnique: jest.Mock }
+    certificate: { findMany: jest.Mock; findUnique: jest.Mock; create: jest.Mock }
     user: { findUnique: jest.Mock; findFirst: jest.Mock }
     exam: { findMany: jest.Mock; findUnique: jest.Mock }
+    examAttempt: { findMany: jest.Mock }
 }
 
 describe('CertificateService userId compatibility', () => {
     beforeEach(() => {
         prisma.certificate.findMany.mockReset()
         prisma.certificate.findUnique.mockReset()
+        prisma.certificate.create.mockReset()
         prisma.user.findUnique.mockReset()
         prisma.user.findFirst.mockReset()
         prisma.exam.findMany.mockReset()
         prisma.exam.findUnique.mockReset()
+        prisma.examAttempt.findMany.mockReset()
     })
 
     it('lists certificates when they are keyed by legacy supabase user id', async () => {
@@ -50,7 +57,7 @@ describe('CertificateService userId compatibility', () => {
 
         prisma.certificate.findMany.mockImplementation(async (args: any) => {
             expect(args.where.OR[0].userId.in).toEqual(['db-user-id', 'sb-user-id', 'alice@agora.io'])
-            expect(args.where.OR[1].attempt.is.userId).toEqual('db-user-id')
+            expect(args.where.OR[2].attempt.is.userId).toEqual('db-user-id')
             return [
                 {
                     id: 'cert-1',
@@ -128,7 +135,7 @@ describe('CertificateService userId compatibility', () => {
 
         prisma.certificate.findMany.mockImplementation(async (args: any) => {
             expect(args.where.OR[0].userId.in).toEqual(['db-user-id', 'alice@agora.io'])
-            expect(args.where.OR[1].attempt.is.userId).toEqual('db-user-id')
+            expect(args.where.OR[2].attempt.is.userId).toEqual('db-user-id')
             return [
                 {
                     id: 'cert-1',
@@ -159,5 +166,80 @@ describe('CertificateService userId compatibility', () => {
         const result = await CertificateService.getUserCertificates('db-user-id')
         expect(result).toHaveLength(1)
         expect(result[0]?.userId).toBe('alice@agora.io')
+    })
+
+    it('backfills record-only certificates when none exist but user has passed attempts with enabled template', async () => {
+        // The list query runs twice: initial empty, then after backfill.
+        prisma.user.findUnique.mockResolvedValue({
+            id: 'db-user-id',
+            name: 'Alice',
+            email: 'alice@agora.io',
+            supabaseId: null,
+        })
+
+        // certificate.findMany call order:
+        // 1) initial list -> []
+        // 2) existingByAttempt in backfill -> []
+        // 3) final list -> [cert]
+        prisma.certificate.findMany
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([
+                {
+                    id: 'cert-1',
+                    certificateNumber: 'CERT-001',
+                    userId: 'db-user-id',
+                    courseId: null,
+                    examId: 'exam-1',
+                    issueDate: new Date('2025-01-01T00:00:00Z'),
+                    pdfUrl: null,
+                    pdfS3Key: null,
+                    status: 'ISSUED',
+                    revokedAt: null,
+                    recipientName: 'Alice',
+                    examTitle: 'Exam 1',
+                    courseTitle: null,
+                    score: 80,
+                    certificateTitle: 'Completion',
+                    badgeMode: 'AUTO',
+                    badgeS3Key: null,
+                    badgeMimeType: null,
+                    badgeStyle: { theme: 'blue' },
+                },
+            ])
+
+        prisma.examAttempt.findMany.mockResolvedValue([
+            {
+                id: 'attempt-1',
+                userId: 'db-user-id',
+                examId: 'exam-1',
+                rawScore: 80,
+                status: 'GRADED',
+                passed: true,
+                user: { name: 'Alice', email: 'alice@agora.io' },
+                exam: {
+                    id: 'exam-1',
+                    title: 'Exam 1',
+                    courseId: null,
+                    course: null,
+                    totalScore: 100,
+                    certificateTemplate: {
+                        isEnabled: true,
+                        title: 'Completion',
+                        badgeMode: 'AUTO',
+                        badgeS3Key: null,
+                        badgeMimeType: null,
+                        badgeStyle: { theme: 'blue' },
+                    },
+                },
+                updatedAt: new Date(),
+            },
+        ])
+
+        prisma.exam.findMany.mockResolvedValue([{ id: 'exam-1', totalScore: 100 }])
+
+        const result = await CertificateService.getUserCertificates('db-user-id')
+        expect(result).toHaveLength(1)
+        expect(prisma.certificate.create).toHaveBeenCalledTimes(1)
     })
 })

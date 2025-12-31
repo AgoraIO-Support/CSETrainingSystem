@@ -101,6 +101,107 @@ async function getBadgeAccessUrl(key: string): Promise<string | null> {
 }
 
 export class CertificateService {
+  private static normalizeBadgeTemplate(template: { badgeMode: CertificateBadgeMode; badgeS3Key: string | null; badgeMimeType: string | null; badgeStyle: any | null }) {
+    const badgeMode = template.badgeMode;
+    if (badgeMode === CertificateBadgeMode.UPLOADED) {
+      if (template.badgeS3Key && template.badgeMimeType) {
+        return {
+          badgeMode,
+          badgeS3Key: template.badgeS3Key,
+          badgeMimeType: template.badgeMimeType,
+          badgeStyle: null,
+        };
+      }
+
+      // If template says uploaded but keys are missing, fall back to AUTO for resilience.
+      return {
+        badgeMode: CertificateBadgeMode.AUTO,
+        badgeS3Key: null,
+        badgeMimeType: null,
+        badgeStyle: template.badgeStyle ?? { theme: 'blue', variant: 'default' },
+      };
+    }
+
+    return {
+      badgeMode: CertificateBadgeMode.AUTO,
+      badgeS3Key: null,
+      badgeMimeType: null,
+      badgeStyle: template.badgeStyle ?? { theme: 'blue', variant: 'default' },
+    };
+  }
+
+  private static async backfillCertificatesForUser(userId: string) {
+    const eligibleAttempts = await prisma.examAttempt.findMany({
+      where: {
+        userId,
+        passed: true,
+        status: 'GRADED',
+        exam: {
+          certificateTemplate: {
+            isEnabled: true,
+          },
+        },
+      },
+      include: {
+        user: { select: { name: true, email: true } },
+        exam: {
+          select: {
+            id: true,
+            title: true,
+            courseId: true,
+            course: { select: { title: true } },
+            totalScore: true,
+            certificateTemplate: true,
+          },
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 50,
+    });
+
+    if (!eligibleAttempts.length) return;
+
+    const attemptIds = eligibleAttempts.map(a => a.id);
+    const existingByAttempt = await prisma.certificate.findMany({
+      where: { attemptId: { in: attemptIds } },
+      select: { attemptId: true },
+    });
+    const existingAttemptIds = new Set(existingByAttempt.map(row => row.attemptId).filter(Boolean) as string[]);
+
+    for (const attempt of eligibleAttempts) {
+      if (existingAttemptIds.has(attempt.id)) continue;
+
+      const template = attempt.exam.certificateTemplate;
+      if (!template || !template.isEnabled) continue;
+
+      const badge = this.normalizeBadgeTemplate(template as any);
+
+      // Best-effort "record-only" backfill: do not generate/upload PDF here.
+      await prisma.certificate.create({
+        data: {
+          userId: attempt.userId,
+          courseId: attempt.exam.courseId ?? null,
+          examId: attempt.examId,
+          attemptId: attempt.id,
+          certificateNumber: this.generateCertificateNumber(),
+          issueDate: new Date(),
+          status: CertificateStatus.ISSUED,
+          recipientName: attempt.user?.name || attempt.user?.email || null,
+          examTitle: attempt.exam.title,
+          courseTitle: attempt.exam.course?.title ?? null,
+          score: attempt.rawScore || 0,
+          certificateTitle: (template as any).title,
+          badgeMode: badge.badgeMode,
+          badgeS3Key: badge.badgeS3Key,
+          badgeMimeType: badge.badgeMimeType,
+          badgeStyle: badge.badgeStyle,
+          pdfUrl: null,
+          pdfS3Key: null,
+        },
+      });
+    }
+  }
+
   /**
    * Generate a certificate for a passed exam attempt
    */
@@ -781,16 +882,29 @@ export class CertificateService {
 
     const userIds = [userId, user?.supabaseId, user?.email].filter((value): value is string => Boolean(value));
 
-    const certificates = await prisma.certificate.findMany({
-      where: {
-        OR: [
-          { userId: { in: userIds } },
-          // Backward/forward compatibility: if certificate.userId is inconsistent, fall back to attempt.userId.
-          { attempt: { is: { userId } } },
-        ],
-      },
-      orderBy: { issueDate: 'desc' },
-    });
+    const loadCertificates = async () =>
+      prisma.certificate.findMany({
+        where: {
+          OR: [
+            { userId: { in: userIds } },
+            ...(user?.email
+              ? [{ userId: { equals: user.email, mode: 'insensitive' as const } }]
+              : []),
+            // Backward/forward compatibility: if certificate.userId is inconsistent, fall back to attempt.userId.
+            { attempt: { is: { userId } } },
+          ],
+        },
+        orderBy: { issueDate: 'desc' },
+      });
+
+    let certificates = await loadCertificates();
+
+    if (certificates.length === 0) {
+      // If auto-issuance failed historically (e.g. S3 perms), users see "No Certificates Yet"
+      // even after passing. Backfill record-only certificates for eligible passed attempts.
+      await this.backfillCertificatesForUser(userId);
+      certificates = await loadCertificates();
+    }
 
     // Get all exam IDs and fetch their total scores
     const examIds = certificates
