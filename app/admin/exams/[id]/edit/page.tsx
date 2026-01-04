@@ -21,6 +21,7 @@ const statusConfig: Record<ExamStatus, { label: string; variant: 'default' | 'se
     APPROVED: { label: 'Approved', variant: 'default' },
     PUBLISHED: { label: 'Published', variant: 'default' },
     CLOSED: { label: 'Closed', variant: 'destructive' },
+    ARCHIVED: { label: 'Archived', variant: 'secondary' },
 }
 
 type PageProps = {

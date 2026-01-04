@@ -17,7 +17,11 @@
         "prisma:studio": "prisma studio",
         "prisma:seed": "tsx prisma/seed.ts",
         "s3:gc": "tsx scripts/s3-gc.ts --dry-run",
-        "s3:gc:apply": "tsx scripts/s3-gc.ts --apply"
+        "s3:gc:apply": "tsx scripts/s3-gc.ts --apply",
+        "cleanup:test-data": "tsx scripts/cleanup-test-data.ts",
+        "cleanup:test-data:apply": "tsx scripts/cleanup-test-data.ts --scope=all --apply --confirm=WIPE_LOCAL_TEST_DATA",
+        "cleanup:test-data:podman": "bash scripts/podman/cleanup-test-data.sh",
+        "cleanup:test-data:podman:apply": "bash scripts/podman/cleanup-test-data.sh --scope=all --apply --confirm=WIPE_LOCAL_TEST_DATA"
     },
     "dependencies": {
         "@aws-sdk/client-s3": "^3.943.0",

@@ -34,6 +34,7 @@ const statusConfig: Record<ExamStatus, { label: string; variant: 'default' | 'se
     APPROVED: { label: 'Approved', variant: 'default' },
     PUBLISHED: { label: 'Published', variant: 'default' },
     CLOSED: { label: 'Closed', variant: 'destructive' },
+    ARCHIVED: { label: 'Archived', variant: 'secondary' },
 }
 
 interface StatCardProps {
@@ -98,31 +99,45 @@ export default function AdminExamsPage() {
 
     const filteredExams = useMemo(() => {
         const query = searchQuery.toLowerCase().trim()
-        return exams.filter(exam =>
-            !query ||
-            exam.title.toLowerCase().includes(query) ||
-            exam.description?.toLowerCase().includes(query) ||
-            exam.course?.title?.toLowerCase().includes(query)
-        )
-    }, [exams, searchQuery])
+        return exams.filter((exam) => {
+            if (statusFilter === 'ALL') {
+                if (exam.status === 'ARCHIVED') return false
+            } else if (exam.status !== statusFilter) {
+                return false
+            }
+
+            if (!query) return true
+
+            return (
+                exam.title.toLowerCase().includes(query) ||
+                exam.description?.toLowerCase().includes(query) ||
+                exam.course?.title?.toLowerCase().includes(query)
+            )
+        })
+    }, [exams, searchQuery, statusFilter])
 
     const stats = useMemo(() => {
-        const total = exams.length
-        const published = exams.filter(e => e.status === 'PUBLISHED').length
-        const draft = exams.filter(e => e.status === 'DRAFT').length
-        const totalAttempts = exams.reduce((sum, e) => sum + (e._count?.attempts ?? 0), 0)
+        const visible = exams.filter(e => e.status !== 'ARCHIVED')
+        const total = visible.length
+        const published = visible.filter(e => e.status === 'PUBLISHED').length
+        const draft = visible.filter(e => e.status === 'DRAFT').length
+        const totalAttempts = visible.reduce((sum, e) => sum + (e._count?.attempts ?? 0), 0)
         return { total, published, draft, totalAttempts }
     }, [exams])
 
     const handleDelete = async (examId: string) => {
-        const confirmed = window.confirm('Are you sure you want to delete this exam? This action cannot be undone.')
+        const confirmed = window.confirm(
+            'Are you sure you want to delete this exam?\n\nNote: If the exam already has attempts, it will be archived instead of permanently deleted.'
+        )
         if (!confirmed) return
 
         try {
             await ApiClient.deleteExam(examId)
             setExams(prev => prev.filter(exam => exam.id !== examId))
         } catch (err) {
-            alert(err instanceof Error ? err.message : 'Failed to delete exam')
+            const message = err instanceof Error ? err.message : 'Failed to delete exam'
+            setError(message)
+            alert(message)
         }
     }
 
@@ -183,6 +198,7 @@ export default function AdminExamsPage() {
                                 <option value="APPROVED">Approved</option>
                                 <option value="PUBLISHED">Published</option>
                                 <option value="CLOSED">Closed</option>
+                                <option value="ARCHIVED">Archived</option>
                             </select>
                         </div>
                     </CardContent>
@@ -214,8 +230,8 @@ export default function AdminExamsPage() {
                                         <div className="flex-1">
                                             <div className="flex items-center gap-3 mb-2">
                                                 <h4 className="font-semibold">{exam.title}</h4>
-                                                <Badge variant={statusConfig[exam.status].variant}>
-                                                    {statusConfig[exam.status].label}
+                                                <Badge variant={(statusConfig[exam.status] ?? { variant: 'outline', label: exam.status }).variant}>
+                                                    {(statusConfig[exam.status] ?? { variant: 'outline', label: exam.status }).label}
                                                 </Badge>
                                                 <Badge variant="outline">
                                                     {exam.examType === 'COURSE_BASED' ? 'Course-Based' : 'Standalone'}

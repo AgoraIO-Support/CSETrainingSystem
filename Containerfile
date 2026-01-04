@@ -30,7 +30,7 @@ COPY next-env.d.ts next.config.js tsconfig.json tailwind.config.ts postcss.confi
 # Next.js can be memory-hungry during `next build`, and Podman on macOS often runs
 # inside a VM with limited memory. Reduce worker parallelism to avoid SIGKILL/OOM.
 ENV NEXT_PRIVATE_MAX_WORKERS=1
-ENV NODE_OPTIONS=--max-old-space-size=8192
+ENV NODE_OPTIONS=--max-old-space-size=4096
 
 RUN npm run build
 
