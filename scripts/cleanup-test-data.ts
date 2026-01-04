@@ -8,8 +8,10 @@
  * - Requires `--apply` + `--confirm=<token>` for destructive actions.
  *
  * Typical usage (local dev):
- *   npx tsx scripts/cleanup-test-data.ts --scope=all
- *   npx tsx scripts/cleanup-test-data.ts --scope=all --apply --confirm=WIPE_LOCAL_TEST_DATA
+ *   npx tsx scripts/cleanup-test-data.ts --env-file=.env.local --scope=all
+ *   npx tsx scripts/cleanup-test-data.ts --env-file=.env.local --scope=all --apply --confirm=WIPE_LOCAL_TEST_DATA
+ *   # If your DATABASE_URL host is a Podman/Docker service name (e.g. cselearning-postgres):
+ *   npx tsx scripts/cleanup-test-data.ts --env-file=tmp/podman/local.env --allow-container-host --scope=all --apply --confirm=WIPE_LOCAL_TEST_DATA
  *
  * Scope options:
  *   --scope=all                      Delete all courses/exams/certificates and dependents (keeps users).
@@ -26,44 +28,8 @@
 
 import { PrismaClient } from '@prisma/client'
 import { S3Client, ListObjectsV2Command, DeleteObjectsCommand } from '@aws-sdk/client-s3'
-
-type Scope = 'all' | 'since' | 'prefix'
-
-type Args = {
-  scope: Scope
-  since?: Date
-  prefix?: string
-  apply: boolean
-  s3: boolean
-  allowRemote: boolean
-  confirm?: string
-  includeLegacy: boolean
-  region: string
-  mainBucket: string
-  assetBucket: string
-  assetPrefix: string
-  legacyPrefix: string
-  videoPrefix: string
-  subtitlePrefix: string
-}
-
-const prisma = new PrismaClient()
-
-const stripWrappingQuotes = (value: string): string => {
-  const trimmed = value.trim()
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
-    return trimmed.slice(1, -1)
-  }
-  return trimmed
-}
-
-const sanitizePath = (value?: string | null) => {
-  if (!value) return ''
-  return value.replace(/^\/+|\/+$/g, '')
-}
+import { parseCleanupArgs, type CleanupArgs } from './lib/cleanup-test-data/args'
+import { loadEnvFile } from './lib/cleanup-test-data/env-file'
 
 function isLocalDatabaseUrl(databaseUrl: string) {
   try {
@@ -73,6 +39,24 @@ function isLocalDatabaseUrl(databaseUrl: string) {
   } catch {
     return false
   }
+}
+
+function isPrivateIp(host: string) {
+  const parts = host.split('.').map(p => Number(p))
+  if (parts.length !== 4 || parts.some(n => Number.isNaN(n))) return false
+  const [a, b] = parts
+  if (a === 10) return true
+  if (a === 192 && b === 168) return true
+  if (a === 172 && b >= 16 && b <= 31) return true
+  return false
+}
+
+function isContainerNetworkHost(host: string) {
+  if (!host) return false
+  if (host === 'localhost' || host === '::1' || host.startsWith('127.')) return false
+  if (isPrivateIp(host)) return true
+  // Podman/Docker service names typically do not contain dots.
+  return !host.includes('.')
 }
 
 function redactDatabaseUrl(databaseUrl: string) {
@@ -86,72 +70,25 @@ function redactDatabaseUrl(databaseUrl: string) {
   }
 }
 
-function parseArgs(): Args {
-  const argv = process.argv.slice(2)
-  const get = (name: string) => {
-    const found = argv.find(a => a === `--${name}` || a.startsWith(`--${name}=`))
-    if (!found) return undefined
-    const eq = found.indexOf('=')
-    return eq === -1 ? 'true' : found.slice(eq + 1)
+function parseRequiredEnvFileArg(argv: string[]): { envFileArg: string; restArgv: string[] } {
+  const foundIdx = argv.findIndex(a => a === '--env-file' || a.startsWith('--env-file='))
+  if (foundIdx === -1) {
+    throw new Error('Missing required --env-file=<path> (do not rely on implicit .env loading)')
   }
 
-  const scope = ((get('scope') as Scope) || 'all') as Scope
-  const apply = get('apply') === 'true'
-  const allowRemote = get('allow-remote') === 'true'
-  const confirm = get('confirm')
-  const includeLegacy = get('include-legacy') ? get('include-legacy') === 'true' : true
-
-  const s3 = get('s3') ? get('s3') === 'true' : true
-
-  const sinceRaw = get('since')
-  const prefixRaw = get('prefix')
-
-  const since = sinceRaw ? new Date(sinceRaw) : undefined
-  const prefix = prefixRaw ? String(prefixRaw) : undefined
-
-  if (scope === 'since') {
-    if (!sinceRaw) throw new Error('Missing --since for --scope=since (expected ISO date)')
-    if (!since || Number.isNaN(since.getTime())) throw new Error(`Invalid --since value: ${sinceRaw}`)
+  const found = argv[foundIdx]!
+  let value: string | undefined
+  if (found === '--env-file') {
+    value = argv[foundIdx + 1]
+    if (!value || value.startsWith('--')) {
+      throw new Error('Missing value for --env-file (expected a file path)')
+    }
+  } else {
+    value = found.slice(found.indexOf('=') + 1)
   }
 
-  if (scope === 'prefix') {
-    if (!prefix) throw new Error('Missing --prefix for --scope=prefix')
-  }
-
-  const region =
-    stripWrappingQuotes(process.env.AWS_REGION || '') ||
-    stripWrappingQuotes(process.env.AWS_DEFAULT_REGION || '') ||
-    'us-east-1'
-
-  const mainBucket = stripWrappingQuotes(process.env.AWS_S3_BUCKET_NAME || process.env.S3_BUCKET || '')
-  const assetBucket = stripWrappingQuotes(process.env.AWS_S3_ASSET_BUCKET_NAME || '') || mainBucket
-  if (!mainBucket && apply && s3) {
-    throw new Error('Missing AWS_S3_BUCKET_NAME (required for --s3 deletions)')
-  }
-
-  const assetPrefix = sanitizePath(process.env.AWS_S3_ASSET_PREFIX || process.env.UPLOAD_PREFIX || 'course-assets')
-  const legacyPrefix = sanitizePath(process.env.LEGACY_LESSON_FOLDER || 'lesson-assets')
-
-  const videoPrefix = sanitizePath(get('video-prefix') || 'videos')
-  const subtitlePrefix = sanitizePath(get('subtitle-prefix') || 'subtitles')
-
-  return {
-    scope,
-    since,
-    prefix,
-    apply,
-    s3,
-    allowRemote,
-    confirm,
-    includeLegacy,
-    region,
-    mainBucket,
-    assetBucket,
-    assetPrefix,
-    legacyPrefix,
-    videoPrefix,
-    subtitlePrefix,
-  }
+  const restArgv = argv.filter((_, idx) => idx !== foundIdx && idx !== foundIdx + (found === '--env-file' ? 1 : 0))
+  return { envFileArg: value, restArgv }
 }
 
 async function listAllKeys(s3: S3Client, bucket: string, prefix: string): Promise<string[]> {
@@ -194,7 +131,7 @@ async function deleteKeysBatch(s3: S3Client, bucket: string, keys: string[]) {
   return deleted
 }
 
-function requireConfirm(args: Args) {
+function requireConfirm(args: CleanupArgs) {
   if (!args.apply) return
   const expected =
     args.scope === 'all'
@@ -211,27 +148,66 @@ function requireConfirm(args: Args) {
 }
 
 async function main() {
-  const args = parseArgs()
+  const { envFileArg, restArgv } = parseRequiredEnvFileArg(process.argv.slice(2))
+  const { envFilePath, env: fileEnv } = loadEnvFile(envFileArg)
 
-  const databaseUrl = (process.env.DATABASE_URL || '').trim()
+  // Config for this script must come from the explicit env file (NOT from implicit `.env` loading).
+  // For AWS credentials, the SDK default provider chain still uses process.env / profiles as usual.
+  const { args, sources } = parseCleanupArgs({ argv: restArgv, env: fileEnv })
+
+  const databaseUrl = (fileEnv.DATABASE_URL || '').trim()
   if (!databaseUrl) throw new Error('Missing DATABASE_URL')
   if (!args.allowRemote && !isLocalDatabaseUrl(databaseUrl)) {
-    throw new Error('Refusing to run against a non-local DATABASE_URL (use --allow-remote to override)')
+    const host = (() => {
+      try {
+        return new URL(databaseUrl).hostname
+      } catch {
+        return ''
+      }
+    })()
+    if (!args.allowContainerHost || !isContainerNetworkHost(host)) {
+      throw new Error(
+        'Refusing to run against a non-local DATABASE_URL (use --allow-container-host for Podman/Docker networks, or --allow-remote to override)'
+      )
+    }
   }
 
   requireConfirm(args)
 
-  console.log('[cleanup-test-data] DATABASE_URL=%s', redactDatabaseUrl(databaseUrl))
+  const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } })
 
-  const certificateColumnsRows = await prisma.$queryRaw<Array<{ column_name: string }>>`
-    select column_name
-    from information_schema.columns
-    where table_schema = 'public' and table_name = 'certificates'
-  `
-  const certificateColumns = new Set(certificateColumnsRows.map(r => r.column_name))
-  const hasCertificateTitle = certificateColumns.has('certificateTitle')
-  const hasCertificateBadgeS3Key = certificateColumns.has('badgeS3Key')
-  const hasCertificatePdfS3Key = certificateColumns.has('pdfS3Key')
+  try {
+    console.log('[cleanup-test-data] envFile=%s', envFilePath)
+    console.log('[cleanup-test-data] DATABASE_URL=%s', redactDatabaseUrl(databaseUrl))
+
+    const certificateColumnsRows = await prisma.$queryRaw<Array<{ column_name: string }>>`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public' and table_name = 'certificates'
+    `
+    const certificateColumns = new Set(certificateColumnsRows.map(r => r.column_name))
+    const hasCertificateTitle = certificateColumns.has('certificateTitle')
+    const hasCertificateBadgeS3Key = certificateColumns.has('badgeS3Key')
+    const hasCertificatePdfS3Key = certificateColumns.has('pdfS3Key')
+
+    console.log(
+      '[cleanup-test-data] S3 config: region=%s mainBucket=%s assetBucket=%s assetPrefix=%s legacyPrefix=%s includeLegacy=%s videoPrefix=%s subtitlePrefix=%s',
+      args.region,
+      args.mainBucket || '-',
+      args.assetBucket || '-',
+      args.assetPrefix || '-',
+      args.legacyPrefix,
+      String(args.includeLegacy),
+      args.videoPrefix,
+      args.subtitlePrefix
+    )
+    console.log(
+      '[cleanup-test-data] S3 config sources: region=%s mainBucket=%s assetBucket=%s assetPrefix=%s',
+      sources.region,
+      sources.mainBucket,
+      sources.assetBucket,
+      sources.assetPrefix
+    )
 
   const whereCourse =
     args.scope === 'all'
@@ -535,13 +511,13 @@ async function main() {
     const deletedAsset = args.assetBucket ? await deleteKeysBatch(s3, args.assetBucket, uniqueAsset) : 0
     console.log('[cleanup-test-data] deleted S3 objects: mainBucket=%d assetBucket=%d', deletedMain, deletedAsset)
   }
+  } finally {
+    await prisma.$disconnect()
+  }
 }
 
 main()
   .catch((e) => {
     console.error('[cleanup-test-data] Failed:', e instanceof Error ? e.message : e)
     process.exitCode = 1
-  })
-  .finally(async () => {
-    await prisma.$disconnect()
   })

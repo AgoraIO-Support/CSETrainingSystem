@@ -10,7 +10,7 @@
    Flags (optional):
      --bucket=<name>          (default: process.env.S3_BUCKET || AWS_S3_BUCKET_NAME)
      --region=<region>        (default: process.env.S3_REGION || AWS_REGION || 'us-east-1')
-     --prefix=<materials>     (default: process.env.UPLOAD_PREFIX || AWS_S3_ASSET_PREFIX || 'materials')
+     --prefix=<materials>     (default: process.env.AWS_S3_ASSET_PREFIX || 'materials')
      --legacy=<lesson-assets> (default: process.env.LEGACY_LESSON_FOLDER || 'lesson-assets')
      --include-legacy=false   (default: true)
 */
@@ -40,11 +40,14 @@ function parseArgs(): Args {
   const apply = getFlag('apply') === 'true'
   const bucket = (getFlag('bucket') as string) || process.env.S3_BUCKET || process.env.AWS_S3_BUCKET_NAME
   const region = (getFlag('region') as string) || process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1'
-  const prefix = (getFlag('prefix') as string) || process.env.UPLOAD_PREFIX || process.env.AWS_S3_ASSET_PREFIX || 'materials'
+  const prefix = (getFlag('prefix') as string) || process.env.AWS_S3_ASSET_PREFIX || 'materials'
   const legacy = (getFlag('legacy') as string) || process.env.LEGACY_LESSON_FOLDER || 'lesson-assets'
   const includeLegacy = getFlag('include-legacy') ? getFlag('include-legacy') === 'true' : true
 
   if (!bucket) throw new Error('Missing S3 bucket (set --bucket or S3_BUCKET/AWS_S3_BUCKET_NAME)')
+  if (apply && !getFlag('prefix') && !process.env.AWS_S3_ASSET_PREFIX) {
+    throw new Error('Missing AWS_S3_ASSET_PREFIX (or pass --prefix)')
+  }
 
   return { apply, bucket, region, prefix, legacy, includeLegacy }
 }
