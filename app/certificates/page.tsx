@@ -104,7 +104,7 @@ export default function CertificatesPage() {
                 <div>
                     <h1 className="text-3xl font-bold">My Certificates</h1>
                     <p className="text-muted-foreground mt-1">
-                        View and download your earned certificates
+                        View your earned certificates
                     </p>
                 </div>
 

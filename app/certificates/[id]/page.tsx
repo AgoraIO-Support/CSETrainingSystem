@@ -10,7 +10,6 @@ import {
     ArrowLeft,
     Loader2,
     Award,
-    Download,
     Share2,
     Calendar,
     Trophy,
@@ -79,18 +78,6 @@ export default function CertificateDetailPage({ params }: PageProps) {
             day: 'numeric',
             year: 'numeric',
         })
-    }
-
-    const handleDownload = () => {
-        if (!certificate) return
-        const downloadUrl = ApiClient.downloadCertificateUrl(certificate.id)
-        const link = document.createElement('a')
-        link.href = downloadUrl
-        link.download = `certificate-${certificate.certificateNumber}.pdf`
-        link.target = '_blank'
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
     }
 
     const copyVerificationLink = () => {
@@ -280,17 +267,10 @@ export default function CertificateDetailPage({ params }: PageProps) {
                 <Card>
                     <CardHeader>
                         <CardTitle>Actions</CardTitle>
-                        <CardDescription>Download or share your certificate</CardDescription>
+                        <CardDescription>Share and verify your certificate</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="flex flex-wrap gap-3">
-                            {certificate.pdfUrl && certificate.status !== 'REVOKED' && (
-                                <Button onClick={handleDownload}>
-                                    <Download className="h-4 w-4 mr-2" />
-                                    Download PDF
-                                </Button>
-                            )}
-
                             <Button variant="outline" onClick={copyCertificateNumber}>
                                 {copied ? (
                                     <Check className="h-4 w-4 mr-2" />

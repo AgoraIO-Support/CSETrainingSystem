@@ -9,6 +9,7 @@ import { Progress } from '@/components/ui/progress'
 import { ApiClient } from '@/lib/api-client'
 import type { UserProgressOverview } from '@/types'
 import { formatDate } from '@/lib/utils'
+import Link from 'next/link'
 import {
     Loader2,
     TrendingUp,
@@ -19,7 +20,6 @@ import {
     Play,
     CalendarDays,
     Award,
-    Download,
 } from 'lucide-react'
 import {
     ResponsiveContainer,
@@ -295,7 +295,7 @@ export default function ProgressPage() {
                             <Card>
                                 <CardHeader>
                                     <CardTitle>Certificates</CardTitle>
-                                    <CardDescription>Download proof of completion for finished courses</CardDescription>
+                                    <CardDescription>Certificates you have earned</CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     <div className="space-y-3 max-h-[280px] overflow-y-auto pr-2">
@@ -317,18 +317,11 @@ export default function ProgressPage() {
                                                     <p className="text-xs text-muted-foreground mt-1">
                                                         {cert.instructorName ? `Instructor: ${cert.instructorName}` : ''}
                                                     </p>
-                                                    {cert.pdfUrl ? (
-                                                        <Button asChild variant="ghost" size="sm" className="mt-2 px-0">
-                                                            <a href={cert.pdfUrl} target="_blank" rel="noreferrer">
-                                                                <Download className="h-4 w-4 mr-2" />
-                                                                Download PDF
-                                                            </a>
-                                                        </Button>
-                                                    ) : (
-                                                        <p className="text-xs text-muted-foreground mt-2">
-                                                            PDF not available for this certificate.
-                                                        </p>
-                                                    )}
+                                                    <Button asChild variant="ghost" size="sm" className="mt-2 px-0">
+                                                        <Link href={`/certificates/${cert.id}`}>
+                                                            View
+                                                        </Link>
+                                                    </Button>
                                                 </div>
                                             ))
                                         ) : (

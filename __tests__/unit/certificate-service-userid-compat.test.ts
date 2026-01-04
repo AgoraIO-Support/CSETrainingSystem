@@ -45,6 +45,7 @@ describe('CertificateService userId compatibility', () => {
         prisma.exam.findMany.mockReset()
         prisma.exam.findUnique.mockReset()
         prisma.examAttempt.findMany.mockReset()
+        prisma.examAttempt.findMany.mockResolvedValue([])
     })
 
     it('lists certificates when they are keyed by legacy supabase user id', async () => {

@@ -27,6 +27,11 @@ COPY public ./public
 COPY types ./types
 COPY next-env.d.ts next.config.js tsconfig.json tailwind.config.ts postcss.config.js eslint.config.mjs ./
 
+# Next.js can be memory-hungry during `next build`, and Podman on macOS often runs
+# inside a VM with limited memory. Reduce worker parallelism to avoid SIGKILL/OOM.
+ENV NEXT_PRIVATE_MAX_WORKERS=1
+ENV NODE_OPTIONS=--max-old-space-size=8192
+
 RUN npm run build
 
 # A tooling image to run Prisma commands (migrations) in the same network as the DB.

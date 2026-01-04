@@ -1210,7 +1210,7 @@ export class ApiClient {
                 pdfUrl: string | null
                 status: 'ISSUED' | 'REVOKED'
             }
-            pdfUrl: string
+            pdfUrl: string | null
             emailSent: boolean
         }
     }> {
@@ -1235,11 +1235,6 @@ export class ApiClient {
         }
     }> {
         return this.request(`/certificates/verify/${encodeURIComponent(certificateNumber)}`)
-    }
-
-    static downloadCertificateUrl(certificateId: string): string {
-        // Returns the redirect URL for the PDF
-        return `/api/certificates/${certificateId}/download`
     }
 
     static async adminRevokeCertificate(certificateId: string): Promise<{

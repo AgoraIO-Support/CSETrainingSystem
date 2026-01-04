@@ -5,11 +5,8 @@
 
 import prisma from '@/lib/prisma';
 import { EmailService } from './email.service';
-import s3Client, { ASSET_S3_BUCKET_NAME, S3_BUCKET_NAME, CLOUDFRONT_DOMAIN } from '@/lib/aws-s3';
-import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { v4 as uuidv4 } from 'uuid';
 import { CertificateBadgeMode, CertificateStatus } from '@prisma/client';
-import { Readable } from 'stream';
 import { FileService } from '@/lib/services/file.service';
 
 export interface CertificateData {
@@ -36,60 +33,8 @@ export interface CertificateData {
 
 export interface GenerateCertificateResult {
   certificate: CertificateData;
-  pdfUrl: string;
+  pdfUrl: string | null;
   emailSent: boolean;
-}
-
-/**
- * Upload buffer to S3
- */
-async function uploadBufferToS3(
-  buffer: Buffer,
-  key: string,
-  contentType: string
-): Promise<string> {
-  const command = new PutObjectCommand({
-    Bucket: S3_BUCKET_NAME,
-    Key: key,
-    Body: buffer,
-    ContentType: contentType,
-    ServerSideEncryption: 'AES256',
-  });
-
-  await s3Client.send(command);
-
-  // Return CloudFront URL if available, otherwise S3 URL
-  if (CLOUDFRONT_DOMAIN) {
-    return `${CLOUDFRONT_DOMAIN}/${key}`;
-  }
-  return `https://${S3_BUCKET_NAME}.s3.amazonaws.com/${key}`;
-}
-
-async function streamToBuffer(body: unknown): Promise<Buffer> {
-  if (!body) return Buffer.alloc(0);
-  if (Buffer.isBuffer(body)) return body;
-
-  // In Node.js, the AWS SDK returns a Readable stream for GetObject.Body.
-  if (body instanceof Readable) {
-    const chunks: Buffer[] = [];
-    for await (const chunk of body) {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    }
-    return Buffer.concat(chunks);
-  }
-
-  // Fallback for web/undici streams (best-effort)
-  if (typeof (body as any).transformToByteArray === 'function') {
-    const arr = await (body as any).transformToByteArray();
-    return Buffer.from(arr);
-  }
-
-  throw new Error('UNSUPPORTED_S3_BODY');
-}
-
-function getPublicUrlForKey(key: string): string {
-  if (CLOUDFRONT_DOMAIN) return `${CLOUDFRONT_DOMAIN}/${key}`;
-  return `https://${S3_BUCKET_NAME}.s3.amazonaws.com/${key}`;
 }
 
 async function getBadgeAccessUrl(key: string): Promise<string | null> {
@@ -160,7 +105,7 @@ export class CertificateService {
       take: 50,
     });
 
-    if (!eligibleAttempts.length) return;
+    if (!eligibleAttempts.length) return 0;
 
     // Backfill should create at most one certificate per (user, exam).
     const attemptByExamId = new Map<string, (typeof eligibleAttempts)[number]>();
@@ -172,11 +117,23 @@ export class CertificateService {
 
     const examIds = [...attemptByExamId.keys()];
 
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, supabaseId: true },
+    });
+
+    const userIds = [userId, user?.supabaseId, user?.email].filter(
+      (value): value is string => Boolean(value)
+    );
+
     const existingByExam = await prisma.certificate.findMany({
       where: {
         examId: { in: examIds },
         OR: [
-          { userId },
+          { userId: { in: userIds } },
+          ...(user?.email
+            ? [{ userId: { equals: user.email, mode: 'insensitive' as const } }]
+            : []),
           // If certificate.userId is inconsistent, fall back to the attempt relation.
           { attempt: { is: { userId } } },
         ],
@@ -186,6 +143,7 @@ export class CertificateService {
 
     const existingExamIds = new Set(existingByExam.map(row => row.examId).filter(Boolean) as string[]);
 
+    let createdCount = 0;
     for (const attempt of attemptByExamId.values()) {
       if (existingExamIds.has(attempt.examId)) continue;
 
@@ -217,7 +175,11 @@ export class CertificateService {
           pdfS3Key: null,
         },
       });
+
+      createdCount += 1;
     }
+
+    return createdCount;
   }
 
   /**
@@ -317,9 +279,12 @@ export class CertificateService {
         userId: attempt.userId,
         examId: attempt.examId,
       },
+      orderBy: { issueDate: 'desc' },
     });
 
-    if (existingCert?.status === CertificateStatus.ISSUED) {
+    // If a certificate already exists and is complete, return it.
+    // Record-only backfilled certificates may have status=ISSUED but no PDF yet; allow regeneration.
+    if (existingCert?.status === CertificateStatus.ISSUED && existingCert.pdfUrl) {
       const badgeUrl = existingCert.badgeS3Key ? await getBadgeAccessUrl(existingCert.badgeS3Key) : null;
       return {
         certificate: {
@@ -343,7 +308,7 @@ export class CertificateService {
           badgeUrl,
           badgeStyle: existingCert.badgeStyle as any,
         },
-        pdfUrl: existingCert.pdfUrl || '',
+        pdfUrl: existingCert.pdfUrl ?? null,
         emailSent: false,
       };
     }
@@ -359,48 +324,19 @@ export class CertificateService {
     let badgeS3Key: string | null = template.badgeS3Key ?? null;
     let badgeMimeType: string | null = template.badgeMimeType ?? null;
     let badgeStyle: any | null = template.badgeStyle ?? null;
-    let badgeImageDataUrl: string | null = null;
 
     if (badgeMode === CertificateBadgeMode.UPLOADED) {
       if (!badgeS3Key || !badgeMimeType) {
         throw new Error('BADGE_NOT_CONFIGURED');
       }
-      let buf: Buffer;
-      try {
-        const res = await s3Client.send(new GetObjectCommand({ Bucket: ASSET_S3_BUCKET_NAME, Key: badgeS3Key }));
-        buf = await streamToBuffer(res.Body);
-      } catch {
-        // Backward compatibility: older environments stored badges in the primary bucket.
-        const res = await s3Client.send(new GetObjectCommand({ Bucket: S3_BUCKET_NAME, Key: badgeS3Key }));
-        buf = await streamToBuffer(res.Body);
-      }
-      const base64 = buf.toString('base64');
-      badgeImageDataUrl = `data:${badgeMimeType};base64,${base64}`;
     } else {
       badgeS3Key = null;
       badgeMimeType = null;
       badgeStyle = badgeStyle ?? { theme: 'blue', variant: 'default' };
     }
 
-    const pdfBuffer = await this.generateCertificatePDF({
-      userName: attempt.user.name || attempt.user.email,
-      examTitle: attempt.exam.title,
-      certificateTitle: template.title,
-      score: attempt.rawScore || 0,
-      totalScore: attempt.exam.totalScore,
-      percentageScore: attempt.percentageScore || 0,
-      certificateNumber,
-      issueDate,
-      badge: {
-        mode: badgeMode,
-        style: badgeStyle,
-        imageDataUrl: badgeImageDataUrl,
-        mimeType: badgeMimeType,
-      },
-    });
-
-    const pdfS3Key = existingCert?.pdfS3Key || `certificates/${attempt.userId}/${certificateNumber}.pdf`;
-    const pdfUrl = await uploadBufferToS3(pdfBuffer, pdfS3Key, 'application/pdf');
+    const pdfUrl: string | null = null;
+    const pdfS3Key: string | null = null;
 
     const certificate = existingCert
       ? await prisma.certificate.update({
@@ -410,8 +346,8 @@ export class CertificateService {
             revokedAt: null,
             revokedById: null,
             issueDate,
-            pdfUrl,
-            pdfS3Key,
+            pdfUrl: null,
+            pdfS3Key: null,
             attemptId,
             recipientName: attempt.user.name || attempt.user.email,
             examTitle: attempt.exam.title,
@@ -429,8 +365,8 @@ export class CertificateService {
             examId: attempt.examId,
             attemptId,
             certificateNumber,
-            pdfUrl,
-            pdfS3Key,
+            pdfUrl: null,
+            pdfS3Key: null,
             issueDate,
             status: CertificateStatus.ISSUED,
             recipientName: attempt.user.name || attempt.user.email,
@@ -702,18 +638,9 @@ export class CertificateService {
       throw new Error('CERT_INVALID');
     }
 
-    const exam = existing.examId
-      ? await prisma.exam.findUnique({ where: { id: existing.examId }, select: { id: true, title: true, totalScore: true } })
-      : null;
-
     const template = existing.examId
       ? await prisma.examCertificateTemplate.findUnique({ where: { examId: existing.examId } })
       : null;
-
-    const examTitle = existing.examTitle || exam?.title || 'Exam';
-    const totalScore = exam?.totalScore ?? 100;
-    const score = existing.score || 0;
-    const percentageScore = totalScore > 0 ? (score / totalScore) * 100 : 0;
 
     const certificateTitle = template?.title || existing.certificateTitle || 'OF COMPLETION';
 
@@ -726,42 +653,7 @@ export class CertificateService {
     const badgeMimeType = template?.badgeMimeType ?? existing.badgeMimeType ?? null;
     const badgeStyle = template?.badgeStyle ?? (existing.badgeStyle as any) ?? { theme: 'blue', variant: 'default' };
 
-    let badgeImageDataUrl: string | null = null;
-    if (badgeMode === CertificateBadgeMode.UPLOADED) {
-      if (!badgeS3Key || !badgeMimeType) {
-        throw new Error('BADGE_NOT_CONFIGURED');
-      }
-      let buf: Buffer;
-      try {
-        const res = await s3Client.send(new GetObjectCommand({ Bucket: ASSET_S3_BUCKET_NAME, Key: badgeS3Key }));
-        buf = await streamToBuffer(res.Body);
-      } catch {
-        const res = await s3Client.send(new GetObjectCommand({ Bucket: S3_BUCKET_NAME, Key: badgeS3Key }));
-        buf = await streamToBuffer(res.Body);
-      }
-      badgeImageDataUrl = `data:${badgeMimeType};base64,${buf.toString('base64')}`;
-    }
-
     const issueDate = new Date();
-    const pdfBuffer = await this.generateCertificatePDF({
-      userName: existing.recipientName || 'Learner',
-      examTitle,
-      certificateTitle,
-      score,
-      totalScore,
-      percentageScore,
-      certificateNumber: existing.certificateNumber,
-      issueDate,
-      badge: {
-        mode: badgeMode,
-        style: badgeStyle,
-        imageDataUrl: badgeImageDataUrl,
-        mimeType: badgeMimeType,
-      },
-    });
-
-    const pdfS3Key = existing.pdfS3Key || `certificates/${existing.userId}/${existing.certificateNumber}.pdf`;
-    const pdfUrl = await uploadBufferToS3(pdfBuffer, pdfS3Key, 'application/pdf');
 
     const updated = await prisma.certificate.update({
       where: { id: certificateId },
@@ -770,8 +662,8 @@ export class CertificateService {
         revokedAt: null,
         revokedById: null,
         issueDate,
-        pdfUrl,
-        pdfS3Key,
+        pdfUrl: null,
+        pdfS3Key: null,
         certificateTitle,
         badgeMode,
         badgeS3Key: badgeMode === CertificateBadgeMode.UPLOADED ? badgeS3Key : null,
@@ -917,10 +809,11 @@ export class CertificateService {
 
     let certificates = await loadCertificates();
 
-    if (certificates.length === 0) {
-      // If auto-issuance failed historically (e.g. S3 perms), users see "No Certificates Yet"
-      // even after passing. Backfill record-only certificates for eligible passed attempts.
-      await this.backfillCertificatesForUser(userId);
+    // If auto-issuance failed historically (e.g. older deployments, or S3 perms), users see
+    // missing certificates even after passing. Backfill record-only certificates for eligible
+    // passed attempts (idempotent and creates at most one per exam).
+    const backfilled = await this.backfillCertificatesForUser(userId);
+    if (backfilled > 0) {
       certificates = await loadCertificates();
     }
 
