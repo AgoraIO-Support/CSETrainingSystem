@@ -13,7 +13,7 @@ set -euo pipefail
 #   ENV_FILE=/opt/cselearning/app/.env.prod ./scripts/podman/cleanup-test-data.sh --allow-remote=true --scope=all --apply --confirm=WIPE_LOCAL_TEST_DATA
 #
 # Environment overrides:
-#   CSE_PODMAN_NETWORK=cselearning
+#   CSE_PODMAN_NETWORK=cselearning   (optional; if missing on host, wrapper skips --network)
 #   ENV_FILE=/absolute/or/relative/path/to/.env
 #   CSE_ENV_FILE=tmp/podman/local.env     (legacy alias)
 #   CSE_TOOL_IMAGE=cselearning-migrator:latest
@@ -78,6 +78,17 @@ if [[ ! -f "${HOST_ENV_FILE}" ]]; then
   exit 1
 fi
 
+# Podman network is only needed for local container hostname resolution (e.g. cselearning-postgres).
+# In production, DATABASE_URL is typically a remote host, so we can safely omit --network if it doesn't exist.
+NETWORK_ARG=()
+if [[ -n "${NETWORK}" ]]; then
+  if podman network exists "${NETWORK}" >/dev/null 2>&1; then
+    NETWORK_ARG=(--network "${NETWORK}")
+  else
+    echo "Warning: podman network '${NETWORK}' not found; running without --network." >&2
+  fi
+fi
+
 # Strip any user-provided --env-file so we can mount it and pass a stable in-container path.
 STRIPPED_ARGS=()
 for ((i=0; i<${#ARGS[@]}; i++)); do
@@ -103,7 +114,7 @@ done
 
 PODMAN_CMD=(
   podman run --rm
-  --network "${NETWORK}"
+  "${NETWORK_ARG[@]}"
   --env-file "${HOST_ENV_FILE}"
   -v "${ROOT}/scripts:/workspace/scripts:ro"
   -v "${HOST_ENV_FILE}:/workspace/.cleanup.env:ro"
