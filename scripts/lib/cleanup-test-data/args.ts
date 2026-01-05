@@ -6,6 +6,7 @@ export type CleanupArgs = {
   prefix?: string
   apply: boolean
   s3: boolean
+  s3BestEffort: boolean
   allowRemote: boolean
   allowContainerHost: boolean
   confirm?: string
@@ -63,6 +64,7 @@ export function parseCleanupArgs(input: {
   const confirm = get('confirm')
   const includeLegacy = get('include-legacy') ? get('include-legacy') === 'true' : true
   const s3 = get('s3') ? get('s3') === 'true' : true
+  const s3BestEffort = get('s3-best-effort') ? get('s3-best-effort') === 'true' : false
 
   const sinceRaw = get('since')
   const prefixRaw = get('prefix')
@@ -140,6 +142,7 @@ export function parseCleanupArgs(input: {
       prefix,
       apply,
       s3,
+      s3BestEffort,
       allowRemote,
       allowContainerHost,
       confirm,

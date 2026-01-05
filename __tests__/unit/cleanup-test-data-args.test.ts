@@ -41,4 +41,13 @@ describe('cleanup-test-data args', () => {
 
     expect(args.allowContainerHost).toBe(true)
   })
+
+  test('parses s3-best-effort flag', () => {
+    const { args } = parseCleanupArgs({
+      argv: ['--scope=all', '--s3-best-effort=true'],
+      env: { AWS_S3_BUCKET_NAME: 'cse-training-bucket', AWS_S3_ASSET_PREFIX: 'CSETraining_Dev' },
+    })
+
+    expect(args.s3BestEffort).toBe(true)
+  })
 })

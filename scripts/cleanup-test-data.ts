@@ -20,14 +20,13 @@
  *
  * S3 cleanup:
  * - Enabled by default when `--apply` is set (can disable with `--s3=false`).
- * - For `scope=all`, deletes objects under:
- *   - main bucket: videos/, subtitles/
- *   - asset bucket: <AWS_S3_ASSET_PREFIX>/ and legacy lesson-assets/ (optional)
+ * - If you lack permissions for some prefixes, you can use `--s3-best-effort=true` to log+skip those errors.
+ * - For `scope=all`, deletes ONLY objects referenced by DB rows (safe; does not require ListBucket).
  * - For other scopes, deletes only keys referenced by the records being deleted.
  */
 
 import { PrismaClient } from '@prisma/client'
-import { S3Client, ListObjectsV2Command, DeleteObjectsCommand } from '@aws-sdk/client-s3'
+import { S3Client, DeleteObjectsCommand } from '@aws-sdk/client-s3'
 import { parseCleanupArgs, type CleanupArgs } from './lib/cleanup-test-data/args'
 import { loadEnvFile } from './lib/cleanup-test-data/env-file'
 
@@ -91,41 +90,36 @@ function parseRequiredEnvFileArg(argv: string[]): { envFileArg: string; restArgv
   return { envFileArg: value, restArgv }
 }
 
-async function listAllKeys(s3: S3Client, bucket: string, prefix: string): Promise<string[]> {
-  const keys: string[] = []
-  let token: string | undefined
-  do {
-    const res = await s3.send(
-      new ListObjectsV2Command({
-        Bucket: bucket,
-        Prefix: prefix,
-        ContinuationToken: token,
-      })
-    )
-    for (const obj of res.Contents || []) {
-      if (obj.Key) keys.push(obj.Key)
-    }
-    token = res.IsTruncated ? res.NextContinuationToken : undefined
-  } while (token)
-  return keys
-}
-
-async function deleteKeysBatch(s3: S3Client, bucket: string, keys: string[]) {
+async function deleteKeysBatch(
+  s3: S3Client,
+  bucket: string,
+  keys: string[],
+  options: { bestEffort: boolean }
+) {
   const normalized = [...new Set(keys.map(k => String(k).replace(/^\/+/, '')).filter(Boolean))]
   const batchSize = 1000
   let deleted = 0
   for (let i = 0; i < normalized.length; i += batchSize) {
     const chunk = normalized.slice(i, i + batchSize)
     if (chunk.length === 0) continue
-    await s3.send(
-      new DeleteObjectsCommand({
-        Bucket: bucket,
-        Delete: {
-          Objects: chunk.map(Key => ({ Key })),
-          Quiet: true,
-        },
-      })
-    )
+    try {
+      await s3.send(
+        new DeleteObjectsCommand({
+          Bucket: bucket,
+          Delete: {
+            Objects: chunk.map(Key => ({ Key })),
+            Quiet: true,
+          },
+        })
+      )
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      if (options.bestEffort) {
+        console.warn(`[cleanup-test-data] S3_DELETE_SKIPPED: bucket=${bucket} keysCount=${chunk.length} error=${msg}`)
+        continue
+      }
+      throw new Error(`S3_DELETE_FAILED: bucket=${bucket} keysCount=${chunk.length} error=${msg}`)
+    }
     deleted += chunk.length
   }
   return deleted
@@ -323,11 +317,54 @@ async function main() {
     )
   }
 
-  // Gather S3 keys to delete (non-all scopes delete only referenced keys; all-scope deletes by prefix).
+  // Gather S3 keys referenced by the rows we're deleting.
   const mainBucketKeys: string[] = []
   const assetBucketKeys: string[] = []
 
-  if (args.scope !== 'all') {
+  if (args.scope === 'all') {
+    const lessons = await prisma.lesson.findMany({
+      select: { videoKey: true, subtitleKey: true },
+    })
+    for (const row of lessons) {
+      if (row.videoKey) mainBucketKeys.push(row.videoKey)
+      if (row.subtitleKey) mainBucketKeys.push(row.subtitleKey)
+    }
+
+    const courseAssets = await prisma.courseAsset.findMany({ select: { s3Key: true } })
+    assetBucketKeys.push(...courseAssets.map(a => a.s3Key).filter(Boolean))
+
+    const transcripts = await prisma.transcriptAsset.findMany({ select: { s3Key: true } })
+    assetBucketKeys.push(...transcripts.map(t => t.s3Key).filter(Boolean))
+
+    const contexts = await prisma.knowledgeContext.findMany({ select: { s3Key: true } })
+    assetBucketKeys.push(...contexts.map(k => k.s3Key).filter(Boolean))
+
+    const materials = await prisma.examMaterial.findMany({ select: { s3Key: true } })
+    assetBucketKeys.push(...materials.map(m => m.s3Key).filter(Boolean))
+
+    const answers = await prisma.examAnswer.findMany({ select: { recordingS3Key: true } })
+    assetBucketKeys.push(...answers.map(a => a.recordingS3Key).filter((k): k is string => Boolean(k)))
+
+    const templates = await prisma.examCertificateTemplate.findMany({ select: { badgeS3Key: true } })
+    assetBucketKeys.push(...templates.map(t => t.badgeS3Key).filter((k): k is string => Boolean(k)))
+
+    const certificateKeysSelect: any = {}
+    if (hasCertificateBadgeS3Key) certificateKeysSelect.badgeS3Key = true
+    if (hasCertificatePdfS3Key) certificateKeysSelect.pdfS3Key = true
+    if (Object.keys(certificateKeysSelect).length > 0) {
+      const certificates = await prisma.certificate.findMany({
+        select: certificateKeysSelect,
+      }) as unknown as Array<{ badgeS3Key?: string | null; pdfS3Key?: string | null }>
+
+      for (const c of certificates) {
+        if (hasCertificateBadgeS3Key && c.badgeS3Key) assetBucketKeys.push(c.badgeS3Key)
+        if (hasCertificatePdfS3Key && c.pdfS3Key) {
+          // Historical PDF keys were stored in the primary bucket under `certificates/...`.
+          mainBucketKeys.push(c.pdfS3Key)
+        }
+      }
+    }
+  } else {
     if (courseIds.length) {
       const lessons = await prisma.lesson.findMany({
         where: { chapter: { courseId: { in: courseIds } } },
@@ -405,8 +442,8 @@ async function main() {
   const uniqueMain = [...new Set(mainBucketKeys.filter(Boolean))]
   const uniqueAsset = [...new Set(assetBucketKeys.filter(Boolean))]
 
-  console.log('[cleanup-test-data] S3 keys (non-all scope): mainBucket=%d assetBucket=%d', uniqueMain.length, uniqueAsset.length)
-  if (args.scope !== 'all' && (uniqueMain.length || uniqueAsset.length)) {
+  console.log('[cleanup-test-data] Referenced S3 keys: mainBucket=%d assetBucket=%d', uniqueMain.length, uniqueAsset.length)
+  if (uniqueMain.length || uniqueAsset.length) {
     console.log('[cleanup-test-data] sample S3 keys (first 20):')
     ;[...uniqueMain.slice(0, 10).map(k => `main:${k}`), ...uniqueAsset.slice(0, 10).map(k => `asset:${k}`)].forEach(s =>
       console.log('  -', s)
@@ -483,34 +520,15 @@ async function main() {
   }
 
   const s3 = new S3Client({ region: args.region })
+  const s3Options = { bestEffort: args.s3BestEffort }
 
-  if (args.scope === 'all') {
-    const prefixesMain = [`${args.videoPrefix}/`, `${args.subtitlePrefix}/`]
-    const prefixesAsset = [`${args.assetPrefix}/`, ...(args.includeLegacy ? [`${args.legacyPrefix}/`] : [])]
-
-    const allMainKeys: string[] = []
-    for (const p of prefixesMain) {
-      if (!args.mainBucket) continue
-      const keys = await listAllKeys(s3, args.mainBucket, p)
-      allMainKeys.push(...keys)
-    }
-
-    const allAssetKeys: string[] = []
-    for (const p of prefixesAsset) {
-      if (!args.assetBucket) continue
-      const keys = await listAllKeys(s3, args.assetBucket, p)
-      allAssetKeys.push(...keys)
-    }
-
-    const deletedMain = args.mainBucket ? await deleteKeysBatch(s3, args.mainBucket, allMainKeys) : 0
-    const deletedAsset = args.assetBucket ? await deleteKeysBatch(s3, args.assetBucket, allAssetKeys) : 0
-
-    console.log('[cleanup-test-data] deleted S3 objects: mainBucket=%d assetBucket=%d', deletedMain, deletedAsset)
-  } else {
-    const deletedMain = args.mainBucket ? await deleteKeysBatch(s3, args.mainBucket, uniqueMain) : 0
-    const deletedAsset = args.assetBucket ? await deleteKeysBatch(s3, args.assetBucket, uniqueAsset) : 0
-    console.log('[cleanup-test-data] deleted S3 objects: mainBucket=%d assetBucket=%d', deletedMain, deletedAsset)
-  }
+  const deletedMain = args.mainBucket
+    ? await deleteKeysBatch(s3, args.mainBucket, uniqueMain, s3Options)
+    : 0
+  const deletedAsset = args.assetBucket
+    ? await deleteKeysBatch(s3, args.assetBucket, uniqueAsset, s3Options)
+    : 0
+  console.log('[cleanup-test-data] deleted S3 objects: mainBucket=%d assetBucket=%d', deletedMain, deletedAsset)
   } finally {
     await prisma.$disconnect()
   }
