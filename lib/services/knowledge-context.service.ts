@@ -8,6 +8,7 @@ import prisma from '@/lib/prisma';
 import s3Client, { ASSET_S3_BUCKET_NAME, CLOUDFRONT_DOMAIN, S3_ASSET_BASE_PREFIX } from '@/lib/aws-s3';
 import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { VTTToXMLService, XMLGenerationResult, KnowledgeAnchorData, CourseContext } from './vtt-to-xml.service';
+import { VTTParserService } from './vtt-parser.service';
 import { KnowledgeContextStatus, KnowledgeAnchorType } from '@prisma/client';
 import { log } from '@/lib/logger';
 
@@ -36,6 +37,44 @@ export interface KnowledgeAnchorInfo {
   keyTerms: string[];
   anchorType: KnowledgeAnchorType;
   sequenceIndex: number;
+}
+
+export function normalizeKnowledgeAnchorTimestampSeconds(rawSeconds: number): {
+  seconds: number;
+  timestampStr: string;
+  normalizedFrom: 'seconds' | 'milliseconds';
+  clamped: boolean;
+} {
+  const max = 9_999_999.999;
+  const roundedMax = 9_999_999.999;
+
+  let seconds = rawSeconds;
+  let normalizedFrom: 'seconds' | 'milliseconds' = 'seconds';
+
+  // Heuristic: anything above ~11.5 days is almost certainly milliseconds for a video timestamp.
+  if (Number.isFinite(seconds) && seconds > 1_000_000) {
+    seconds = seconds / 1000;
+    normalizedFrom = 'milliseconds';
+  }
+
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    seconds = 0;
+  }
+
+  // Match DB scale=3 and prevent numeric overflow.
+  seconds = Math.round(seconds * 1000) / 1000;
+  let clamped = false;
+  if (seconds > max) {
+    seconds = roundedMax;
+    clamped = true;
+  }
+
+  return {
+    seconds,
+    timestampStr: VTTParserService.formatTimestamp(seconds, true),
+    normalizedFrom,
+    clamped,
+  };
 }
 
 export class KnowledgeContextService {
@@ -346,11 +385,26 @@ export class KnowledgeContextService {
 
     // Create new anchors
     if (anchors.length > 0) {
+      const normalized = anchors.map((anchor) => {
+        const normalizedTs = normalizeKnowledgeAnchorTimestampSeconds(anchor.timestamp);
+        if (normalizedTs.normalizedFrom === 'milliseconds' || normalizedTs.clamped) {
+          log('KnowledgeContext', 'warn', 'Normalized anchor timestamp before DB insert', {
+            lessonId,
+            rawTimestamp: anchor.timestamp,
+            normalizedSeconds: normalizedTs.seconds,
+            normalizedFrom: normalizedTs.normalizedFrom,
+            clamped: normalizedTs.clamped,
+            sequenceIndex: anchor.sequenceIndex,
+          });
+        }
+        return { anchor, normalizedTs };
+      });
+
       await prisma.knowledgeAnchor.createMany({
-        data: anchors.map((anchor) => ({
+        data: normalized.map(({ anchor, normalizedTs }) => ({
           lessonId,
-          timestamp: anchor.timestamp,
-          timestampStr: anchor.timestampStr,
+          timestamp: normalizedTs.seconds,
+          timestampStr: normalizedTs.timestampStr,
           title: anchor.title,
           summary: anchor.summary,
           keyTerms: anchor.keyTerms,

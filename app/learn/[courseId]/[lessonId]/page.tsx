@@ -27,6 +27,7 @@ import {
     PanelLeft,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { getAssetBasename, isVttUrl } from '@/lib/video/subtitles'
 
 type CourseDetail = Course & {
     isEnrolled: boolean
@@ -363,11 +364,13 @@ export default function LessonPage({
     const videoAsset = (lesson.assets || []).find(
         (a: any) => a.type === 'VIDEO' || (a.mimeType?.startsWith?.('video/') ?? false)
     )
-    const subtitleAsset = (lesson.assets || []).find(
-        (a: any) =>
-            (a.mimeType === 'text/vtt' || a.url?.toLowerCase?.().endsWith?.('.vtt')) &&
-            (videoAsset?.title ? a.title === videoAsset.title : true)
+    const subtitleCandidates = (lesson.assets || []).filter(
+        (a: any) => a?.url && (a.mimeType === 'text/vtt' || isVttUrl(a.url))
     )
+    const videoBasename = getAssetBasename(videoAsset as any)
+    const subtitleAsset =
+        subtitleCandidates.find((a: any) => (videoBasename ? getAssetBasename(a) === videoBasename : false)) ??
+        subtitleCandidates[0]
     const resolvedVideoUrl = videoAsset?.url || lesson.videoUrl || null
     const resolvedSubtitleUrl = subtitleAsset?.url || lesson.subtitleUrl
 

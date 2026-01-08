@@ -12,6 +12,8 @@ coverage/
 *.log
 logs/
 
+Docs/
+
 # Environment files (never commit secrets)
 .env
 .env.*

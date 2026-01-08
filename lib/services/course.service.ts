@@ -116,7 +116,6 @@ export class CourseService {
                                     orderBy: { createdAt: 'asc' },
                                 },
                                 transcripts: {
-                                    where: { status: 'READY' },
                                     select: { s3Key: true, url: true, language: true },
                                     orderBy: { createdAt: 'desc' },
                                     take: 1,

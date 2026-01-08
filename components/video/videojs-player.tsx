@@ -4,6 +4,7 @@ import { useRef, useEffect, useState, useCallback } from 'react'
 import videojs from 'video.js'
 import type Player from 'video.js/dist/types/player'
 import 'video.js/dist/video-js.css'
+import { Button } from '@/components/ui/button'
 
 interface VideoJSPlayerProps {
     videoUrl: string
@@ -29,6 +30,8 @@ export function VideoJSPlayer({
     const videoRef = useRef<HTMLDivElement>(null)
     const playerRef = useRef<Player | null>(null)
     const [isReady, setIsReady] = useState(false)
+    const [subtitlesEnabled, setSubtitlesEnabled] = useState(false)
+    const subtitleTrackRef = useRef<any>(null)
 
     // Store callbacks in refs to avoid re-initialization when they change
     const onTimeUpdateRef = useRef(onTimeUpdate)
@@ -79,6 +82,7 @@ export function VideoJSPlayer({
         const options: any = {
             autoplay,
             controls: true,
+            crossOrigin: 'anonymous',
             responsive: true,
             fluid: true,
             playbackRates: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
@@ -87,6 +91,13 @@ export function VideoJSPlayer({
                 src: videoUrl,
                 type: getSourceType(videoUrl)
             }],
+            tracks: subtitleUrl ? [{
+                kind: 'subtitles',
+                label: 'English',
+                srclang: 'en',
+                src: subtitleUrl,
+                default: false,
+            }] : [],
             html5: {
                 vhs: {
                     overrideNative: true
@@ -104,7 +115,7 @@ export function VideoJSPlayer({
                     'durationDisplay',
                     'progressControl',
                     'playbackRateMenuButton',
-                    'subtitlesButton',
+                    'subsCapsButton',
                     'fullscreenToggle'
                 ]
             }
@@ -112,6 +123,9 @@ export function VideoJSPlayer({
 
         const player = playerRef.current = videojs(videoElement, options, function onPlayerReady() {
             setIsReady(true)
+
+            // Keep subtitles off by default; user can enable via toggle.
+            subtitleTrackRef.current = null
 
             // Set initial time
             if (initialTime > 0) {
@@ -171,6 +185,8 @@ export function VideoJSPlayer({
         const player = playerRef.current
         if (!player || !isReady) return
 
+        subtitleTrackRef.current = null
+
         // Remove existing text tracks
         const existingTracks = player.remoteTextTracks() as any
         const trackLength = existingTracks?.length || 0
@@ -180,19 +196,49 @@ export function VideoJSPlayer({
 
         // Add subtitle track if provided
         if (subtitleUrl) {
-            player.addRemoteTextTrack({
+            const added: any = player.addRemoteTextTrack({
                 kind: 'subtitles',
                 label: 'English',
                 srclang: 'en',
                 src: subtitleUrl,
-                default: true
+                default: false
             }, false)
+
+            const track = added?.track ?? added
+            subtitleTrackRef.current = track
+            if (track && typeof track === 'object' && 'mode' in track) {
+                track.mode = subtitlesEnabled ? 'showing' : 'disabled'
+            }
         }
-    }, [subtitleUrl, isReady])
+    }, [subtitleUrl, isReady, subtitlesEnabled])
+
+    const toggleSubtitles = useCallback(() => {
+        setSubtitlesEnabled((prev) => {
+            const next = !prev
+            const track = subtitleTrackRef.current
+            if (track && typeof track === 'object' && 'mode' in track) {
+                track.mode = next ? 'showing' : 'disabled'
+            }
+            return next
+        })
+    }, [])
 
     return (
         <div className="relative rounded-lg overflow-hidden bg-black">
             <div data-vjs-player ref={videoRef} />
+            {subtitleUrl ? (
+                <div className="absolute right-3 top-3 z-50">
+                    <Button
+                        type="button"
+                        size="sm"
+                        variant={subtitlesEnabled ? 'default' : 'secondary'}
+                        aria-pressed={subtitlesEnabled}
+                        onClick={toggleSubtitles}
+                    >
+                        Subtitles
+                    </Button>
+                </div>
+            ) : null}
         </div>
     )
 }
