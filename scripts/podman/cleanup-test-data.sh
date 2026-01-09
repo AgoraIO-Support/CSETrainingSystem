@@ -19,7 +19,7 @@ set -euo pipefail
 #   CSE_TOOL_IMAGE=cselearning-migrator:latest
 
 NETWORK="${CSE_PODMAN_NETWORK:-cselearning}"
-DEFAULT_ENV_FILE="${ENV_FILE:-${CSE_ENV_FILE:-tmp/podman/local.env}}"
+DEFAULT_ENV_FILE="${ENV_FILE:-${CSE_ENV_FILE:-}}"
 IMAGE="${CSE_TOOL_IMAGE:-cselearning-migrator:latest}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -53,6 +53,12 @@ fi
 ARGS=("$@")
 if [[ "${HAS_ENV_FILE_ARG}" -ne 1 ]]; then
   SCRIPT_ENV_FILE="${DEFAULT_ENV_FILE}"
+  if [[ -z "${SCRIPT_ENV_FILE}" ]]; then
+    echo "Missing env file. Provide either:" >&2
+    echo "  - --env-file <path>" >&2
+    echo "  - ENV_FILE=<path> (or legacy CSE_ENV_FILE=<path>)" >&2
+    exit 1
+  fi
 else
   if [[ "${SCRIPT_ENV_FILE}" == "__NEXT__" ]]; then
     for ((i=0; i<${#ARGS[@]}; i++)); do
@@ -105,13 +111,6 @@ for ((i=0; i<${#ARGS[@]}; i++)); do
 done
 ARGS=(--env-file /workspace/.cleanup.env "${STRIPPED_ARGS[@]}")
 
-EXTRA_ENV=()
-for VAR in AWS_S3_ASSET_PREFIX AWS_S3_BUCKET_NAME AWS_S3_ASSET_BUCKET_NAME AWS_REGION AWS_DEFAULT_REGION; do
-  if [[ -n "${!VAR:-}" ]]; then
-    EXTRA_ENV+=(-e "${VAR}=${!VAR}")
-  fi
-done
-
 PODMAN_CMD=(
   podman run --rm
   "${NETWORK_ARG[@]}"
@@ -122,8 +121,12 @@ PODMAN_CMD=(
   -e NODE_PATH=/app/node_modules
 )
 
-if (( ${#EXTRA_ENV[@]} > 0 )); then
-  PODMAN_CMD+=("${EXTRA_ENV[@]}")
+if [[ "${CSE_MOUNT_AWS_CONFIG:-}" == "1" ]]; then
+  if [[ -d "${HOME}/.aws" ]]; then
+    PODMAN_CMD+=(-v "${HOME}/.aws:/root/.aws:ro")
+  else
+    echo "Warning: CSE_MOUNT_AWS_CONFIG=1 but ${HOME}/.aws not found; skipping mount." >&2
+  fi
 fi
 
 PODMAN_CMD+=(

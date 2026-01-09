@@ -2,7 +2,6 @@
 
 import React from 'react'
 import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { VideoJSPlayer } from '@/components/video/videojs-player'
 
 jest.mock('video.js', () => {
@@ -32,8 +31,8 @@ jest.mock('video.js', () => {
   return videojs
 })
 
-describe('Frontend E2E: Video subtitles toggle', () => {
-  it('should let user toggle subtitles on/off when a VTT is provided', async () => {
+describe('Frontend E2E: Video subtitles UI', () => {
+  it('does not render an extra Subtitles button overlay (uses Video.js controls)', async () => {
     render(
       <VideoJSPlayer
         videoUrl="https://example.com/video.mp4"
@@ -41,18 +40,6 @@ describe('Frontend E2E: Video subtitles toggle', () => {
       />
     )
 
-    const user = userEvent.setup()
-
-    const btn = await screen.findByRole('button', { name: 'Subtitles' })
-    expect(btn).toHaveAttribute('aria-pressed', 'false')
-
-    await user.click(btn)
-    expect(btn).toHaveAttribute('aria-pressed', 'true')
-    expect((globalThis as any).__videojs_textTrack.mode).toBe('showing')
-
-    await user.click(btn)
-    expect(btn).toHaveAttribute('aria-pressed', 'false')
-    expect((globalThis as any).__videojs_textTrack.mode).toBe('disabled')
+    expect(screen.queryByRole('button', { name: 'Subtitles' })).toBeNull()
   })
 })
-

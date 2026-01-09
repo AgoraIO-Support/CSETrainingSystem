@@ -21,14 +21,26 @@
  * S3 cleanup:
  * - Enabled by default when `--apply` is set (can disable with `--s3=false`).
  * - If you lack permissions for some prefixes, you can use `--s3-best-effort=true` to log+skip those errors.
- * - For `scope=all`, deletes ONLY objects referenced by DB rows (safe; does not require ListBucket).
- * - For other scopes, deletes only keys referenced by the records being deleted.
+ * - Always deletes keys referenced by DB rows being deleted (safe; does not require ListBucket).
+ * - For `scope=all`, also attempts to delete all objects under:
+ *     - <AWS_S3_ASSET_PREFIX>/   (asset bucket)
+ *     - <LEGACY_LESSON_FOLDER>/  (main bucket, only when includeLegacy=true)
+ *   This requires `s3:ListBucket` (and `s3:DeleteObject`) for the given prefixes. If ListBucket is denied,
+ *   the script logs a warning and proceeds with referenced-key deletions.
  */
 
 import { PrismaClient } from '@prisma/client'
-import { S3Client, DeleteObjectsCommand } from '@aws-sdk/client-s3'
+import { S3Client, DeleteObjectsCommand, ListObjectsV2Command } from '@aws-sdk/client-s3'
 import { parseCleanupArgs, type CleanupArgs } from './lib/cleanup-test-data/args'
 import { loadEnvFile } from './lib/cleanup-test-data/env-file'
+
+function getAwsCredentialsFromEnv(env: Record<string, string | undefined>) {
+  const accessKeyId = (env.AWS_ACCESS_KEY_ID || '').trim()
+  const secretAccessKey = (env.AWS_SECRET_ACCESS_KEY || '').trim()
+  const sessionToken = (env.AWS_SESSION_TOKEN || '').trim()
+  if (!accessKeyId || !secretAccessKey) return null
+  return sessionToken ? { accessKeyId, secretAccessKey, sessionToken } : { accessKeyId, secretAccessKey }
+}
 
 function isLocalDatabaseUrl(databaseUrl: string) {
   try {
@@ -123,6 +135,56 @@ async function deleteKeysBatch(
     deleted += chunk.length
   }
   return deleted
+}
+
+async function listAllKeys(s3: S3Client, bucket: string, prefix: string): Promise<string[]> {
+  const keys: string[] = []
+  let token: string | undefined
+  do {
+    const res = await s3.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken: token }))
+    for (const obj of res.Contents || []) {
+      if (obj.Key) keys.push(obj.Key)
+    }
+    token = res.IsTruncated ? res.NextContinuationToken : undefined
+  } while (token)
+  return keys
+}
+
+async function listPrefixKeysBestEffort(
+  s3: S3Client,
+  bucket: string,
+  prefix: string,
+  options: { bestEffort: boolean }
+): Promise<string[]> {
+  try {
+    return await listAllKeys(s3, bucket, prefix)
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    if (
+      msg.includes('Could not load credentials from any providers') ||
+      msg.includes('CredentialsProviderError')
+    ) {
+      throw new Error(
+        [
+          `S3_CREDENTIALS_MISSING: Unable to access S3 (bucket=${bucket} prefix=${prefix}).`,
+          'The cleanup script is running in a Podman container, and the AWS SDK could not find any credentials.',
+          '',
+          'Fix options:',
+          '  1) Put credentials into the env file you pass via ENV_FILE/--env-file:',
+          '     AWS_ACCESS_KEY_ID=...',
+          '     AWS_SECRET_ACCESS_KEY=...',
+          '     (optional) AWS_SESSION_TOKEN=...',
+          '  2) Or, use an AWS profile by mounting ~/.aws into the tool container:',
+          '     CSE_MOUNT_AWS_CONFIG=1 AWS_PROFILE=<profile> ENV_FILE=tmp/podman/local.env npm run cleanup:test-data:apply',
+        ].join('\n')
+      )
+    }
+    if (options.bestEffort || msg.toLowerCase().includes('accessdenied')) {
+      console.warn(`[cleanup-test-data] S3_LIST_SKIPPED: bucket=${bucket} prefix=${prefix} error=${msg}`)
+      return []
+    }
+    throw new Error(`S3_LIST_FAILED: bucket=${bucket} prefix=${prefix} error=${msg}`)
+  }
 }
 
 function requireConfirm(args: CleanupArgs) {
@@ -519,8 +581,35 @@ async function main() {
     return
   }
 
-  const s3 = new S3Client({ region: args.region })
+  const explicitCreds = getAwsCredentialsFromEnv(fileEnv)
+  const s3 = new S3Client({ region: args.region, ...(explicitCreds ? { credentials: explicitCreds } : {}) })
   const s3Options = { bestEffort: args.s3BestEffort }
+
+  // For a full wipe, also remove any remaining objects under the configured prefixes. This is what
+  // you want when DB has already been cleaned but the bucket still contains orphaned test objects.
+  if (args.scope === 'all') {
+    if (args.assetBucket && args.assetPrefix) {
+      const prefix = `${args.assetPrefix}/`
+      const keys = await listPrefixKeysBestEffort(s3, args.assetBucket, prefix, s3Options)
+      if (keys.length === 0) {
+        console.log('[cleanup-test-data] S3 prefix empty (or not accessible): assetBucket=%s prefix=%s', args.assetBucket, prefix)
+      } else {
+        const deleted = await deleteKeysBatch(s3, args.assetBucket, keys, s3Options)
+        console.log('[cleanup-test-data] deleted S3 prefix objects: assetBucket=%d (%s)', deleted, prefix)
+      }
+    }
+
+    if (args.includeLegacy && args.mainBucket && args.legacyPrefix) {
+      const legacyPrefix = `${args.legacyPrefix}/`
+      const keys = await listPrefixKeysBestEffort(s3, args.mainBucket, legacyPrefix, s3Options)
+      if (keys.length === 0) {
+        console.log('[cleanup-test-data] S3 legacy prefix empty (or not accessible): mainBucket=%s prefix=%s', args.mainBucket, legacyPrefix)
+      } else {
+        const deleted = await deleteKeysBatch(s3, args.mainBucket, keys, s3Options)
+        console.log('[cleanup-test-data] deleted S3 legacy prefix objects: mainBucket=%d (%s)', deleted, legacyPrefix)
+      }
+    }
+  }
 
   const deletedMain = args.mainBucket
     ? await deleteKeysBatch(s3, args.mainBucket, uniqueMain, s3Options)
