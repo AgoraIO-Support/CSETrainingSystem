@@ -152,4 +152,84 @@ describe('AI assistant knowledge_context-only behavior', () => {
 
         resolveSpy.mockRestore()
     })
+
+    it('extracts content from tool_calls.arguments when message.content is null', async () => {
+        prismaMock.aIConversation.findUnique.mockResolvedValue({
+            id: 'c-1',
+            courseId: 'course-1',
+            lessonId: 'lesson-1',
+            user: { name: 'User' },
+            messages: [],
+        })
+        prismaMock.courseAIConfig.findUnique.mockResolvedValue(null) // enabled by default
+        prismaMock.knowledgeContext.findUnique.mockResolvedValue({ status: 'READY' })
+        prismaMock.lesson.findUnique.mockResolvedValue({
+            title: 'Lesson 1',
+            chapter: { title: 'Chapter 1', course: { title: 'Course 1' } },
+        })
+
+        jest.spyOn(AIPromptResolverService, 'resolve').mockResolvedValue({
+            useCase: AIPromptUseCase.AI_ASSISTANT_KNOWLEDGE_CONTEXT_SYSTEM,
+            source: 'default',
+            templateId: 'tpl-1',
+            templateName: 'assistant_default',
+            systemPrompt: '<system_instructions>Course={{courseTitle}}</system_instructions>',
+            userPrompt: null,
+            model: 'gpt-5.2',
+            temperature: 0.2,
+            maxTokens: 200,
+            responseFormat: AIResponseFormat.TEXT,
+        } as any)
+
+        let counter = 0
+        prismaMock.aIMessage.create.mockImplementation(async ({ data }: any) => ({
+            id: `m-${++counter}`,
+            ...data,
+            createdAt: new Date(),
+        }))
+
+        ;(global as any).fetch.mockImplementation(async (_url: string, init: any) => {
+            const body = JSON.parse(init.body)
+            // GPT-5 family uses max_completion_tokens and is clamped to avoid "reasoning-only" completions.
+            expect(body.max_completion_tokens).toBeGreaterThanOrEqual(1024)
+            expect(body.max_tokens).toBeUndefined()
+
+            return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+                model: 'gpt-5.2-2025-12-11',
+                choices: [
+                    {
+                        message: {
+                            role: 'assistant',
+                            content: null,
+                            tool_calls: [
+                                {
+                                    id: 'tc-1',
+                                    type: 'function',
+                                    function: {
+                                        name: 'respond',
+                                        arguments: JSON.stringify({ answer: 'hello', suggestions: [] }),
+                                    },
+                                },
+                            ],
+                        },
+                        finish_reason: 'tool_calls',
+                    },
+                ],
+                usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
+            }),
+            text: async () => '',
+            }
+        })
+
+        const result = await AIService.sendMessage({
+            conversationId: 'c-1',
+            message: 'hi',
+            videoTimestamp: 0,
+        })
+
+        expect(result.assistantMessage.content).toContain('hello')
+    })
 })

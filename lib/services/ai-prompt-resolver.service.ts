@@ -39,6 +39,18 @@ function getFallbackPrompt(useCase: AIPromptUseCase): Omit<ResolvedAIPrompt, 'us
                 maxTokens: 2000,
                 responseFormat: AIResponseFormat.TEXT,
             }
+        case AIPromptUseCase.KNOWLEDGE_ANCHORS_GENERATION:
+            return {
+                source: 'fallback',
+                systemPrompt:
+                    'You are an educational content analyzer. Select the most important "Key Moments" (anchors) from a lesson transcript outline. Respond ONLY with valid JSON.',
+                userPrompt:
+                    'Course: {{courseTitle}}\nChapter: {{chapterTitle}}\nLesson: {{lessonTitle}}\n\nSelect up to {{maxAnchors}} key moments from the section list below.\n\nRules:\n- Return a JSON array of objects.\n- Each object MUST include: sectionIndex, anchorType, title, summary.\n- anchorType MUST be one of: CONCEPT, EXAMPLE, DEMO, KEY_TAKEAWAY.\n- title MUST be concise and <= 30 characters (no "Section N:" prefix).\n- summary should be 1 sentence.\n- sectionIndex must refer to one of the sections below.\n- Prefer diverse, high-signal moments (avoid near-duplicates).\n\nSections:\n{{sectionsJson}}\n\nRespond with JSON array:\n[\n  {\n    "sectionIndex": 0,\n    "anchorType": "CONCEPT|EXAMPLE|DEMO|KEY_TAKEAWAY",\n    "title": "...",\n    "summary": "...",\n    "keyTerms": ["term1", "term2"]\n  }\n]',
+                model: 'gpt-4o-mini',
+                temperature: 0.2,
+                maxTokens: 1200,
+                responseFormat: AIResponseFormat.TEXT,
+            }
         case AIPromptUseCase.EXAM_GENERATION:
             return {
                 source: 'fallback',

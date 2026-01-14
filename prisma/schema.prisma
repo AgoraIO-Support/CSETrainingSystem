@@ -609,6 +609,8 @@ enum AIPromptUseCase {
 
   // VTT -> Knowledge Context XML enrichment
   VTT_TO_XML_ENRICHMENT
+  // Knowledge anchors ("Key Moments") selection
+  KNOWLEDGE_ANCHORS_GENERATION
 
   // Exam generation and grading
   EXAM_GENERATION

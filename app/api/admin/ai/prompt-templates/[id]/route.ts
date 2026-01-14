@@ -3,6 +3,7 @@ import { withAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
 import { AIResponseFormat, AIPromptUseCase } from '@prisma/client'
 import { z } from 'zod'
+import { SUPPORTED_OPENAI_MODELS } from '@/lib/services/openai-models'
 
 const updateTemplateSchema = z.object({
     name: z.string().min(1).optional(),
@@ -11,7 +12,7 @@ const updateTemplateSchema = z.object({
     systemPrompt: z.string().min(1).optional(),
     userPrompt: z.string().optional().nullable(),
     variables: z.array(z.string()).optional(),
-    model: z.string().min(1).optional(),
+    model: z.enum(SUPPORTED_OPENAI_MODELS).optional(),
     temperature: z.number().min(0).max(2).optional(),
     maxTokens: z.number().int().min(1).max(32768).optional(),
     responseFormat: z.nativeEnum(AIResponseFormat).optional(),

@@ -216,7 +216,8 @@ podman rm -f cselearning-backend || true
 
 podman exec -it cselearning-postgres psql -U postgres -d cselearning-database //效果和下面那条命令一样
 
-podman run --rm --network cselearning --env-file tmp/podman/local.env cselearning-migrator:latest //一次性执行
+//一次性执行
+podman run --rm --network cselearning --env-file tmp/podman/local.env cselearning-migrator:latest 
 
     podman run -d --name cselearning-postgres --network cselearning \
       -e POSTGRES_DB='cselearning-database' \
@@ -233,6 +234,7 @@ podman run --rm --network cselearning --env-file tmp/podman/local.env cselearnin
     -e AWS_PROFILE=default \
     -e AWS_SDK_LOAD_CONFIG=1 \
     localhost/cselearning-web:latest
+
 
     podman run -d --name cselearning-backend --network cselearning -p 8080:8080 \
         --env-file tmp/podman/local.env \
@@ -260,3 +262,7 @@ podman run --rm --network cselearning --env-file tmp/podman/local.env cselearnin
 
 
     podman exec -it cselearning-web sh -lc 'cd /app && npx prisma migrate deploy'
+
+
+podman logs -f cselearning-web | rg '"category":"KnowledgeContext"|\"category\":\"S3\"|\"category\":\"DB\"|\"category\":\"API\"|\"category\":\"OpenAI\"'
+podman logs -f cselearning-worker | rg '"category":"KnowledgeContext"|\"category\":\"OpenAI\"'

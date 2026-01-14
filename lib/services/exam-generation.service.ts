@@ -19,6 +19,7 @@ import { GetObjectCommand } from '@aws-sdk/client-s3';
 import s3Client, { ASSET_S3_BUCKET_NAME } from '@/lib/aws-s3';
 import { createHash } from 'crypto';
 import { AIPromptResolverService, type ResolvedAIPrompt } from '@/lib/services/ai-prompt-resolver.service';
+import { getChatCompletionsTokenBudget } from '@/lib/services/openai-models';
 
 export interface GenerationConfig {
   questionCounts: {
@@ -424,6 +425,7 @@ export class ExamGenerationService {
       { role: 'system' as const, content: effectivePromptConfig.systemPrompt },
       { role: 'user' as const, content: prompt },
     ];
+    const budget = getChatCompletionsTokenBudget(effectivePromptConfig.model, effectivePromptConfig.maxTokens);
     const request = {
       model: effectivePromptConfig.model,
       messages,
@@ -431,12 +433,16 @@ export class ExamGenerationService {
         ? { response_format: { type: 'json_object' as const } }
         : {}),
       temperature: effectivePromptConfig.temperature,
-      max_tokens: effectivePromptConfig.maxTokens,
+      ...budget.param,
     };
 
     const logOpenAiContent = process.env.CSE_OPENAI_LOG_CONTENT === '1';
     log('OpenAI', 'info', 'exam-generation chat.completions request', {
       model: request.model,
+      tokenParam: budget.tokenParam,
+      requestedMaxTokens: budget.requestedMaxTokens,
+      effectiveMaxTokens: budget.effectiveMaxTokens,
+      clamped: budget.clamped,
       messagesCount: messages.length,
       promptChars: prompt.length,
     });

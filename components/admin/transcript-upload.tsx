@@ -20,36 +20,42 @@ export function TranscriptUpload({ lessonId, videoAssetId, onUploadComplete }: T
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [promptTemplates, setPromptTemplates] = useState<Array<{ id: string; name: string; isActive: boolean }> | null>(null);
-  const [promptTemplateId, setPromptTemplateId] = useState<string>('auto');
+  const [knowledgeTemplates, setKnowledgeTemplates] = useState<Array<{ id: string; name: string; isActive: boolean }> | null>(null);
+  const [anchorsTemplates, setAnchorsTemplates] = useState<Array<{ id: string; name: string; isActive: boolean }> | null>(null);
+  const [knowledgePromptTemplateId, setKnowledgePromptTemplateId] = useState<string>('auto');
+  const [anchorsPromptTemplateId, setAnchorsPromptTemplateId] = useState<string>('auto');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const fetchPromptTemplates = async () => {
+  const fetchPromptTemplates = async (useCase: string) => {
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
       const headers: Record<string, string> = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch('/api/admin/ai/prompt-templates?useCase=VTT_TO_XML_ENRICHMENT', { headers });
+      const res = await fetch(`/api/admin/ai/prompt-templates?useCase=${encodeURIComponent(useCase)}`, { headers });
       if (!res.ok) {
-        setPromptTemplates([]);
-        return;
+        return [];
       }
       const json = await res.json();
       const templates = Array.isArray(json?.data) ? json.data : [];
-      setPromptTemplates(
-        templates
-          .filter((t: any) => t && typeof t.id === 'string' && typeof t.name === 'string')
-          .map((t: any) => ({ id: t.id, name: t.name, isActive: Boolean(t.isActive) }))
-      );
+      return templates
+        .filter((t: any) => t && typeof t.id === 'string' && typeof t.name === 'string')
+        .map((t: any) => ({ id: t.id, name: t.name, isActive: Boolean(t.isActive) }));
     } catch {
-      setPromptTemplates([]);
+      return [];
     }
   };
 
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    fetchPromptTemplates();
+    (async () => {
+      const [knowledge, anchors] = await Promise.all([
+        fetchPromptTemplates('VTT_TO_XML_ENRICHMENT'),
+        fetchPromptTemplates('KNOWLEDGE_ANCHORS_GENERATION'),
+      ]);
+      setKnowledgeTemplates(knowledge);
+      setAnchorsTemplates(anchors);
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -140,7 +146,8 @@ export function TranscriptUpload({ lessonId, videoAssetId, onUploadComplete }: T
         method: 'POST',
         headers,  // Reuse the same auth headers
         body: JSON.stringify({
-          promptTemplateId: promptTemplateId !== 'auto' ? promptTemplateId : null,
+          knowledgePromptTemplateId: knowledgePromptTemplateId !== 'auto' ? knowledgePromptTemplateId : null,
+          anchorsPromptTemplateId: anchorsPromptTemplateId !== 'auto' ? anchorsPromptTemplateId : null,
         }),
       });
 
@@ -192,16 +199,16 @@ export function TranscriptUpload({ lessonId, videoAssetId, onUploadComplete }: T
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Prompt Template */}
+        {/* Prompt Templates */}
         <div className="space-y-2">
-          <p className="text-sm font-medium">Prompt Template</p>
-          <Select value={promptTemplateId} onValueChange={setPromptTemplateId} disabled={uploading}>
+          <p className="text-sm font-medium">Knowledge Context Template</p>
+          <Select value={knowledgePromptTemplateId} onValueChange={setKnowledgePromptTemplateId} disabled={uploading}>
             <SelectTrigger>
               <SelectValue placeholder="Auto (course/default)" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="auto">Auto (course/default)</SelectItem>
-              {(promptTemplates || [])
+              {(knowledgeTemplates || [])
                 .filter(t => t.isActive)
                 .map(t => (
                   <SelectItem key={t.id} value={t.id}>
@@ -212,6 +219,28 @@ export function TranscriptUpload({ lessonId, videoAssetId, onUploadComplete }: T
           </Select>
           <p className="text-xs text-muted-foreground">
             Auto uses the Course prompt assignment first, then falls back to the global default.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Key Moments (Anchors) Template</p>
+          <Select value={anchorsPromptTemplateId} onValueChange={setAnchorsPromptTemplateId} disabled={uploading}>
+            <SelectTrigger>
+              <SelectValue placeholder="Auto (course/default)" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="auto">Auto (course/default)</SelectItem>
+              {(anchorsTemplates || [])
+                .filter(t => t.isActive)
+                .map(t => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            This template controls how Key Moments are selected and summarized for learners.
           </p>
         </div>
 

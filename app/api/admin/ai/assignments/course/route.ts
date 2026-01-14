@@ -3,13 +3,14 @@ import { withAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
 import { AIPromptUseCase } from '@prisma/client'
 import { z } from 'zod'
+import { SUPPORTED_OPENAI_MODELS } from '@/lib/services/openai-models'
 
 const upsertAssignmentSchema = z.object({
     courseId: z.string().uuid(),
     useCase: z.nativeEnum(AIPromptUseCase),
     templateId: z.string().uuid(),
     isEnabled: z.boolean().optional().default(true),
-    modelOverride: z.string().min(1).optional().nullable(),
+    modelOverride: z.enum(SUPPORTED_OPENAI_MODELS).optional().nullable(),
     temperatureOverride: z.number().min(0).max(2).optional().nullable(),
     maxTokensOverride: z.number().int().min(1).max(32768).optional().nullable(),
 })

@@ -26,7 +26,7 @@ describe('VTTToXMLService OpenAI logging', () => {
       timeAsync: (...args: any[]) => mockTimeAsync(...args),
     }))
 
-    global.fetch = jest.fn().mockResolvedValue({
+    const fetchMock = jest.fn().mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({
@@ -35,11 +35,16 @@ describe('VTTToXMLService OpenAI logging', () => {
         usage: { total_tokens: 10, prompt_tokens: 7, completion_tokens: 3 },
       }),
     } as any)
+    global.fetch = fetchMock as any
 
     const { VTTToXMLService } = await import('@/lib/services/vtt-to-xml.service')
     const service = new VTTToXMLService('test-key')
 
     await service.processVTTToKnowledgeBase(VTT_MINIMAL, TEST_COURSE_CONTEXT)
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(body.max_tokens).toBeDefined()
+    expect(body.max_completion_tokens).toBeUndefined()
 
     expect(mockLog).toHaveBeenCalled()
     const openAiInfoCalls = mockLog.mock.calls.filter((c: any[]) => c[0] === 'OpenAI' && c[1] === 'info')
@@ -47,4 +52,3 @@ describe('VTTToXMLService OpenAI logging', () => {
     expect(openAiInfoCalls.some((c: any[]) => String(c[2]).includes('vtt-to-xml chat.completions request'))).toBe(true)
   })
 })
-

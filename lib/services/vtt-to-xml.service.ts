@@ -9,6 +9,7 @@ import { createHash } from 'crypto';
 import { AIPromptUseCase, KnowledgeAnchorType } from '@prisma/client';
 import { log, timeAsync } from '@/lib/logger';
 import { AIPromptResolverService } from './ai-prompt-resolver.service';
+import { extractChatCompletionsText, getChatCompletionsTokenBudget } from '@/lib/services/openai-models';
 
 // Filler word patterns for moderate denoising
 const FILLER_PATTERNS = [
@@ -364,6 +365,7 @@ export class VTTToXMLService {
       const timeoutMs = parseInt(process.env.VTT_TO_XML_ENRICH_TIMEOUT_MS || '20000', 10);
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
+      const budget = getChatCompletionsTokenBudget(promptConfig.model, promptConfig.maxTokens);
       const requestBody = {
         model: promptConfig.model,
         messages: [
@@ -371,7 +373,7 @@ export class VTTToXMLService {
           { role: 'user', content: userPrompt },
         ],
         temperature: promptConfig.temperature,
-        max_tokens: promptConfig.maxTokens,
+        ...budget.param,
       };
 
       log('OpenAI', 'info', 'vtt-to-xml chat.completions request', {
@@ -380,7 +382,10 @@ export class VTTToXMLService {
         templateName: promptConfig.templateName,
         model: promptConfig.model,
         temperature: promptConfig.temperature,
-        maxTokens: promptConfig.maxTokens,
+        tokenParam: budget.tokenParam,
+        requestedMaxTokens: budget.requestedMaxTokens,
+        effectiveMaxTokens: budget.effectiveMaxTokens,
+        clamped: budget.clamped,
         batchStartIndex: startIndex,
         batchSize: paragraphs.length,
         systemPromptChars: systemPrompt.length,
@@ -431,9 +436,10 @@ export class VTTToXMLService {
         batchStartIndex: startIndex,
       });
 
-      const content = data.choices?.[0]?.message?.content || '';
+      const extracted = extractChatCompletionsText(data);
+      const content = extracted.text || '';
       if (logOpenAiContent) {
-        log('OpenAI', 'debug', 'vtt-to-xml chat.completions message.content', { content });
+        log('OpenAI', 'debug', 'vtt-to-xml chat.completions message.content', { content, source: extracted.source });
       }
 
       // Parse JSON response
@@ -584,10 +590,20 @@ Respond with JSON array:
     // Limit to max anchors
     const finalAnchors = anchorSections.slice(0, maxAnchors);
 
+    const normalizeAnchorTitle = (value: string, maxChars: number) => {
+      const raw = (value || '').trim();
+      const withoutPrefix = raw.replace(/^Section\s+\d+\s*:\s*/i, '');
+      const withoutTrailingEllipsis = withoutPrefix.replace(/\s*(…|\.\.\.)\s*$/g, '').trim();
+      const chars = Array.from(withoutTrailingEllipsis);
+      return chars.slice(0, maxChars).join('');
+    };
+
+    const MAX_ANCHOR_TITLE_CHARS = 30;
+
     return finalAnchors.map((section, idx) => ({
       timestamp: section.timestampSeconds,
       timestampStr: section.timestamp,
-      title: section.title,
+      title: normalizeAnchorTitle(section.title, MAX_ANCHOR_TITLE_CHARS),
       summary: section.anchorSummary || section.content.substring(0, 200) + '...',
       keyTerms: section.keyConcepts,
       anchorType: section.anchorType || 'CONCEPT',

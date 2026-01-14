@@ -13,9 +13,11 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Loader2, Plus, Save, Trash2, Pencil } from 'lucide-react'
+import { SUPPORTED_OPENAI_MODELS, isSupportedOpenAIModel } from '@/lib/services/openai-models'
 
 type AIPromptUseCase =
     | 'VTT_TO_XML_ENRICHMENT'
+    | 'KNOWLEDGE_ANCHORS_GENERATION'
     | 'EXAM_GENERATION'
     | 'EXAM_GRADING_ESSAY'
     | 'AI_ASSISTANT_RAG_SYSTEM'
@@ -78,6 +80,7 @@ type ExamAssignment = {
 
 const USE_CASES: { value: Exclude<AIPromptUseCase, 'MISC'>; label: string; scope: 'course' | 'exam' | 'global' }[] = [
     { value: 'VTT_TO_XML_ENRICHMENT', label: 'VTT → XML enrichment', scope: 'course' },
+    { value: 'KNOWLEDGE_ANCHORS_GENERATION', label: 'Key Moments (anchors)', scope: 'course' },
     { value: 'EXAM_GENERATION', label: 'Exam generation', scope: 'exam' },
     { value: 'EXAM_GRADING_ESSAY', label: 'Exam essay grading', scope: 'exam' },
     { value: 'AI_ASSISTANT_KNOWLEDGE_CONTEXT_SYSTEM', label: 'AI assistant (Knowledge Context)', scope: 'global' },
@@ -179,6 +182,11 @@ export default function AdminAIConfigPage() {
         responseFormat: AIResponseFormat
         isActive: boolean
     } | null>(null)
+
+    const editModelUnsupported = useMemo(() => {
+        if (!editForm) return false
+        return !isSupportedOpenAIModel(editForm.model)
+    }, [editForm])
 
     const filteredTemplates = useMemo(() => {
         const q = templateSearch.trim().toLowerCase()
@@ -592,7 +600,18 @@ export default function AdminAIConfigPage() {
                                         </div>
                                         <div className="space-y-2">
                                             <Label>Model</Label>
-                                            <Input value={createForm.model} onChange={(e) => setCreateForm((p) => ({ ...p, model: e.target.value }))} />
+                                            <Select value={createForm.model} onValueChange={(v) => setCreateForm((p) => ({ ...p, model: v }))}>
+                                                <SelectTrigger>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {SUPPORTED_OPENAI_MODELS.map((m) => (
+                                                        <SelectItem key={m} value={m}>
+                                                            {m}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
                                         </div>
                                         <div className="space-y-2">
                                             <Label>Response format</Label>
@@ -746,7 +765,31 @@ export default function AdminAIConfigPage() {
                                         </div>
                                         <div className="space-y-2">
                                             <Label>Model</Label>
-                                            <Input value={editForm.model} onChange={(e) => setEditForm((p) => (p ? { ...p, model: e.target.value } : p))} />
+                                            <Select value={editForm.model} onValueChange={(v) => setEditForm((p) => (p ? { ...p, model: v } : p))}>
+                                                <SelectTrigger>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {editModelUnsupported && (
+                                                        <SelectItem value={editForm.model} disabled>
+                                                            (unsupported) {editForm.model}
+                                                        </SelectItem>
+                                                    )}
+                                                    {SUPPORTED_OPENAI_MODELS.map((m) => (
+                                                        <SelectItem key={m} value={m}>
+                                                            {m}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            {editModelUnsupported && (
+                                                <Alert variant="destructive">
+                                                    <AlertTitle>Unsupported model</AlertTitle>
+                                                    <AlertDescription>
+                                                        This template uses an unsupported model: <span className="font-mono">{editForm.model}</span>. Please select a supported model to continue.
+                                                    </AlertDescription>
+                                                </Alert>
+                                            )}
                                         </div>
                                         <div className="space-y-2">
                                             <Label>Response format</Label>
@@ -780,7 +823,7 @@ export default function AdminAIConfigPage() {
                                     </div>
                                 )}
                                 <DialogFooter>
-                                    <Button onClick={handleUpdateTemplate} disabled={editing || !editForm?.name || !editForm?.systemPrompt}>
+                                    <Button onClick={handleUpdateTemplate} disabled={editing || !editForm?.name || !editForm?.systemPrompt || editModelUnsupported}>
                                         {editing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
                                         Save
                                     </Button>
@@ -1006,6 +1049,7 @@ function AssignmentRow(props: {
     const [modelOverride, setModelOverride] = useState(props.initial.modelOverride)
     const [temperatureOverride, setTemperatureOverride] = useState(props.initial.temperatureOverride)
     const [maxTokensOverride, setMaxTokensOverride] = useState(props.initial.maxTokensOverride)
+    const modelOverrideUnsupported = modelOverride ? !isSupportedOpenAIModel(modelOverride) : false
 
     useEffect(() => {
         setTemplateId(props.initial.templateId)
@@ -1039,7 +1083,7 @@ function AssignmentRow(props: {
                                 maxTokensOverride,
                             })
                         }
-                        disabled={props.saving || templateId === 'none'}
+                        disabled={props.saving || templateId === 'none' || modelOverrideUnsupported}
                     >
                         {props.saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
                         Save
@@ -1072,7 +1116,32 @@ function AssignmentRow(props: {
                 <div className="grid gap-3 md:grid-cols-3">
                     <div className="space-y-2">
                         <Label>Model override</Label>
-                        <Input placeholder="(optional)" value={modelOverride} onChange={(e) => setModelOverride(e.target.value)} />
+                        <Select
+                            value={modelOverride ? modelOverride : 'none'}
+                            onValueChange={(v) => setModelOverride(v === 'none' ? '' : v)}
+                        >
+                            <SelectTrigger>
+                                <SelectValue placeholder="(optional)" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="none">(none)</SelectItem>
+                                {modelOverrideUnsupported && (
+                                    <SelectItem value={modelOverride} disabled>
+                                        (unsupported) {modelOverride}
+                                    </SelectItem>
+                                )}
+                                {SUPPORTED_OPENAI_MODELS.map((m) => (
+                                    <SelectItem key={m} value={m}>
+                                        {m}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        {modelOverrideUnsupported && (
+                            <div className="text-xs text-destructive">
+                                Unsupported model override. Please pick a supported model or clear it.
+                            </div>
+                        )}
                     </div>
                     <div className="space-y-2">
                         <Label>Temp override</Label>

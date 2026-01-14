@@ -5,6 +5,7 @@ import { log, timeAsync } from '@/lib/logger'
 import { ChunkingService } from './_legacy_chunking.service'
 import { AIPromptResolverService } from '@/lib/services/ai-prompt-resolver.service'
 import { AIPromptUseCase } from '@prisma/client'
+import { extractChatCompletionsText, getChatCompletionsTokenBudget } from '@/lib/services/openai-models'
 
 interface AIMessage {
     role: 'user' | 'assistant'
@@ -689,42 +690,53 @@ The "quiz" field is optional - only include when testing understanding would be 
                     { role: 'user', content: params.userMessage },
                 ]
 
-                const requestBody = {
-                    model: config.model,
-                    messages,
-                    temperature: config.temperature,
-                    max_tokens: config.maxTokens,
+                const doRequest = async (maxTokens: number, attempt: 1 | 2) => {
+                    const budget = getChatCompletionsTokenBudget(config.model, maxTokens)
+                    const requestBody = {
+                        model: config.model,
+                        messages,
+                        temperature: config.temperature,
+                        ...budget.param,
+                    }
+
+                    log('OpenAI', 'info', 'chat.completions request', {
+                        attempt,
+                        model: config.model,
+                        temperature: config.temperature,
+                        tokenParam: budget.tokenParam,
+                        requestedMaxTokens: budget.requestedMaxTokens,
+                        effectiveMaxTokens: budget.effectiveMaxTokens,
+                        clamped: budget.clamped,
+                        messagesCount: messages.length,
+                        userMessageChars: params.userMessage.length,
+                        historyCount: params.history.length,
+                        contextChars: (params.context || '').length,
+                        contextMode,
+                    })
+
+                    if (logOpenAiContent) {
+                        log('OpenAI', 'debug', 'chat.completions request body', { body: requestBody })
+                    }
+
+                    const response = await timeAsync(
+                        'OpenAI',
+                        'chat.completions response',
+                        { url: 'https://api.openai.com/v1/chat/completions', model: config.model, attempt },
+                        () =>
+                            fetch('https://api.openai.com/v1/chat/completions', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    Authorization: `Bearer ${apiKey}`,
+                                },
+                                body: JSON.stringify(requestBody),
+                            })
+                    )
+
+                    return { response, budget, requestBody }
                 }
 
-                log('OpenAI', 'info', 'chat.completions request', {
-                    model: config.model,
-                    temperature: config.temperature,
-                    maxTokens: config.maxTokens,
-                    messagesCount: messages.length,
-                    userMessageChars: params.userMessage.length,
-                    historyCount: params.history.length,
-                    contextChars: (params.context || '').length,
-                    contextMode,
-                })
-
-                if (logOpenAiContent) {
-                    log('OpenAI', 'debug', 'chat.completions request body', { body: requestBody })
-                }
-
-                const response = await timeAsync(
-                    'OpenAI',
-                    'chat.completions response',
-                    { url: 'https://api.openai.com/v1/chat/completions', model: config.model },
-                    () =>
-                        fetch('https://api.openai.com/v1/chat/completions', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                Authorization: `Bearer ${apiKey}`,
-                            },
-                            body: JSON.stringify(requestBody),
-                        })
-                )
+                const { response, budget } = await doRequest(config.maxTokens, 1)
 
                 if (!response.ok) {
                     const errorText = await response.text()
@@ -738,7 +750,7 @@ The "quiz" field is optional - only include when testing understanding would be 
                     throw new Error(`OpenAI error: ${response.status}`)
                 }
 
-                const data = await response.json()
+                let data = await response.json()
                 if (logOpenAiContent) {
                     log('OpenAI', 'debug', 'chat.completions raw response', { response: data })
                 }
@@ -748,11 +760,58 @@ The "quiz" field is optional - only include when testing understanding would be 
                     promptTokens: data.usage?.prompt_tokens,
                     completionTokens: data.usage?.completion_tokens,
                 })
-                const rawContent: string =
-                    data.choices?.[0]?.message?.content?.trim() ||
-                    'Unable to generate a response right now.'
+
+                let extracted = extractChatCompletionsText(data)
+                const finishReason = data.choices?.[0]?.finish_reason
+
+                // GPT-5 family can spend the entire completion budget on reasoning, producing empty message.content.
+                // If that happens, retry once with a larger max_completion_tokens budget.
+                if (!extracted.text && budget.tokenParam === 'max_completion_tokens' && finishReason === 'length') {
+                    const retryMaxTokens = Math.min(8192, Math.max(4096, budget.effectiveMaxTokens * 2))
+                    if (retryMaxTokens > budget.effectiveMaxTokens) {
+                        log('OpenAI', 'warn', 'chat.completions retrying due to empty content', {
+                            model: data.model || config.model,
+                            finishReason,
+                            previousMaxCompletionTokens: budget.effectiveMaxTokens,
+                            retryMaxCompletionTokens: retryMaxTokens,
+                        })
+
+                        const retry = await doRequest(retryMaxTokens, 2)
+                        if (!retry.response.ok) {
+                            const errorText = await retry.response.text()
+                            log('OpenAI', 'error', 'chat.completions retry error', {
+                                status: retry.response.status,
+                                bodyPreview: errorText.slice(0, 500),
+                            })
+                            throw new Error(`OpenAI retry error: ${retry.response.status}`)
+                        }
+
+                        data = await retry.response.json()
+                        if (logOpenAiContent) {
+                            log('OpenAI', 'debug', 'chat.completions retry raw response', { response: data })
+                        }
+                        log('OpenAI', 'info', 'chat.completions retry usage', {
+                            model: data.model || config.model,
+                            totalTokens: data.usage?.total_tokens,
+                            promptTokens: data.usage?.prompt_tokens,
+                            completionTokens: data.usage?.completion_tokens,
+                        })
+
+                        extracted = extractChatCompletionsText(data)
+                    }
+                }
+
+                if (!extracted.text) {
+                    log('OpenAI', 'error', 'chat.completions missing message content', {
+                        model: data.model || config.model,
+                        finishReason: data.choices?.[0]?.finish_reason,
+                        extractedSource: extracted.source,
+                    })
+                }
+
+                const rawContent: string = extracted.text || 'Unable to generate a response right now.'
                 if (logOpenAiContent) {
-                    log('OpenAI', 'debug', 'chat.completions message.content', { content: rawContent })
+                    log('OpenAI', 'debug', 'chat.completions message.content', { content: rawContent, source: extracted.source })
                 }
 
                 let parsed: {
@@ -827,16 +886,13 @@ The "quiz" field is optional - only include when testing understanding would be 
             }
         }
 
-        // Fallback mock response when no API key or call fails
+        // Fallback response when no API key or call fails.
+        // IMPORTANT: do not hallucinate answers from context.
         return {
-            content: `I understand you're asking about: "${params.userMessage}". Here's a helpful explanation based on the lesson context.`,
-            tokens: 50,
+            content: 'Unable to generate a response right now.',
+            tokens: undefined,
             model: apiKey ? `${config.model}-fallback` : 'mock-model',
-            suggestions: [
-                'Can you explain this concept further?',
-                'What are some practical examples?',
-                'How does this relate to the previous lesson?',
-            ],
+            suggestions: [],
         }
     }
 

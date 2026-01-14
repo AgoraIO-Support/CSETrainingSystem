@@ -133,10 +133,12 @@ export function KnowledgeAnchors({
         onSeekToTimestamp?.(anchor.timestampStr)
     }
 
-    const truncateTitle = (value: string, maxChars: number) => {
-        if (!value) return ''
-        if (value.length <= maxChars) return value
-        return `${value.slice(0, maxChars)}…`
+    const normalizeTitleForDisplay = (value: string, maxChars: number) => {
+        const raw = (value || '').trim()
+        const withoutPrefix = raw.replace(/^Section\\s+\\d+\\s*:\\s*/i, '')
+        const withoutTrailingEllipsis = withoutPrefix.replace(/\\s*(…|\\.\\.\\.)\\s*$/g, '').trim()
+        const chars = Array.from(withoutTrailingEllipsis)
+        return chars.slice(0, maxChars).join('')
     }
 
     return (
@@ -193,7 +195,7 @@ export function KnowledgeAnchors({
                                 const config = anchorTypeConfig[anchor.anchorType]
                                 const Icon = config.icon
                                 const isCurrent = index === currentAnchorIndex
-                                const safeTitle = truncateTitle(anchor.title, 30)
+                                const safeTitle = normalizeTitleForDisplay(anchor.title, 30)
                                 const tooltip = [
                                     anchor.title,
                                     anchor.keyTerms?.length ? `Key terms: ${anchor.keyTerms.join(', ')}` : null,
@@ -230,7 +232,7 @@ export function KnowledgeAnchors({
                                                 </span>
                                             </span>
 
-                                            <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                                            <span className="min-w-0 flex-1 whitespace-nowrap text-sm font-medium">
                                                 {safeTitle}
                                             </span>
 

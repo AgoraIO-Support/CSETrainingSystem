@@ -15,6 +15,7 @@ import OpenAI from 'openai';
 import { log, timeAsync } from '@/lib/logger';
 import { CertificateService } from '@/lib/services/certificate.service';
 import { AIPromptResolverService } from '@/lib/services/ai-prompt-resolver.service';
+import { getChatCompletionsTokenBudget } from '@/lib/services/openai-models';
 
 export interface GradingResult {
   attemptId: string;
@@ -319,6 +320,7 @@ export class ExamGradingService {
       { role: 'system' as const, content: promptConfig.systemPrompt },
       { role: 'user' as const, content: prompt },
     ];
+    const budget = getChatCompletionsTokenBudget(promptConfig.model, promptConfig.maxTokens);
     const request = {
       model: promptConfig.model,
       messages,
@@ -326,12 +328,16 @@ export class ExamGradingService {
         ? { response_format: { type: 'json_object' as const } }
         : {}),
       temperature: promptConfig.temperature,
-      max_tokens: promptConfig.maxTokens,
+      ...budget.param,
     };
 
     const logOpenAiContent = process.env.CSE_OPENAI_LOG_CONTENT === '1';
     log('OpenAI', 'info', 'exam-grading chat.completions request', {
       model: request.model,
+      tokenParam: budget.tokenParam,
+      requestedMaxTokens: budget.requestedMaxTokens,
+      effectiveMaxTokens: budget.effectiveMaxTokens,
+      clamped: budget.clamped,
       promptChars: prompt.length,
     });
     if (logOpenAiContent) {

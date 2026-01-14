@@ -3,6 +3,7 @@ import { withAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
 import { AIResponseFormat, AIPromptUseCase } from '@prisma/client'
 import { z } from 'zod'
+import { SUPPORTED_OPENAI_MODELS } from '@/lib/services/openai-models'
 
 const createTemplateSchema = z.object({
     name: z.string().min(1),
@@ -11,7 +12,7 @@ const createTemplateSchema = z.object({
     systemPrompt: z.string().min(1),
     userPrompt: z.string().optional().nullable(),
     variables: z.array(z.string()).optional().default([]),
-    model: z.string().min(1).optional().default('gpt-4o-mini'),
+    model: z.enum(SUPPORTED_OPENAI_MODELS).optional().default('gpt-4o-mini'),
     temperature: z.number().min(0).max(2).optional().default(0.2),
     maxTokens: z.number().int().min(1).max(32768).optional().default(1024),
     responseFormat: z.nativeEnum(AIResponseFormat).optional().default(AIResponseFormat.TEXT),
