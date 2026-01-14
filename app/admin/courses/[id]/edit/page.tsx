@@ -17,8 +17,9 @@ import type { Course, CourseLevel } from '@/types'
 import Link from 'next/link'
 import { Loader2, Video, FileText, AlertTriangle } from 'lucide-react'
 import { CourseAIConfig } from '@/components/admin/course-ai-config'
+import { CourseAIAssistantTemplate } from '@/components/admin/course-ai-assistant-template'
 import { TranscriptUpload } from '@/components/admin/transcript-upload'
-import { KnowledgeBaseStatus } from '@/components/admin/knowledge-base-status'
+import { KnowledgeContextStatusCard } from '@/components/admin/knowledge-context-status'
 import { ChunkPreview } from '@/components/admin/chunk-preview'
 const backendBaseUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || '').replace(/\/$/, '')
 
@@ -1304,7 +1305,10 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                 )}
 
                 {course && (
-                    <CourseAIConfig courseId={id} />
+                    <div className="space-y-6">
+                        <CourseAIConfig courseId={id} />
+                        <CourseAIAssistantTemplate courseId={id} />
+                    </div>
                 )}
 
                 <Dialog open={lessonModalOpen} onOpenChange={setLessonModalOpen}>
@@ -1548,13 +1552,9 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                                                         setTranscriptRefreshKey(prev => prev + 1)
                                                     }}
                                                 />
-                                                <KnowledgeBaseStatus
+                                                <KnowledgeContextStatusCard
                                                     key={`status-${transcriptRefreshKey}`}
                                                     lessonId={selectedLessonId}
-                                                    onViewChunks={() => setChunkPreviewOpen(true)}
-                                                    onDelete={() => {
-                                                        setTranscriptRefreshKey(prev => prev + 1)
-                                                    }}
                                                 />
                                             </div>
                                         </div>

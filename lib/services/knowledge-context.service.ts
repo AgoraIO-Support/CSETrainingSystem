@@ -9,7 +9,7 @@ import s3Client, { ASSET_S3_BUCKET_NAME, CLOUDFRONT_DOMAIN, S3_ASSET_BASE_PREFIX
 import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { VTTToXMLService, XMLGenerationResult, KnowledgeAnchorData, CourseContext } from './vtt-to-xml.service';
 import { VTTParserService } from './vtt-parser.service';
-import { KnowledgeContextStatus, KnowledgeAnchorType } from '@prisma/client';
+import { KnowledgeContextJobStage, KnowledgeContextStatus, KnowledgeAnchorType } from '@prisma/client';
 import { log } from '@/lib/logger';
 
 // In-memory cache for XML contexts (reduces S3 reads)
@@ -91,7 +91,10 @@ export class KnowledgeContextService {
   async generateAndStoreContext(
     lessonId: string,
     vttContent: string,
-    context: CourseContext
+    context: CourseContext,
+    options?: {
+      onJobStage?: (data: { stage: KnowledgeContextJobStage; progress?: number; currentStep?: string }) => Promise<void> | void;
+    }
   ): Promise<KnowledgeContextInfo> {
     const startTime = Date.now();
 
@@ -100,6 +103,7 @@ export class KnowledgeContextService {
       await this.updateStatus(lessonId, 'PROCESSING');
 
       // Generate XML from VTT
+      await options?.onJobStage?.({ stage: 'GENERATING_XML', progress: 10, currentStep: 'Generating XML' });
       log('KnowledgeContext', 'info', 'Starting XML generation', {
         lessonId,
         vttLength: vttContent.length,
@@ -119,12 +123,15 @@ export class KnowledgeContextService {
       });
 
       // Store XML to S3
+      await options?.onJobStage?.({ stage: 'STORING_XML', progress: 60, currentStep: 'Storing XML to S3' });
       const s3Key = await this.storeXMLToS3(context.courseId, lessonId, result.xml);
 
       // Store anchors in database
+      await options?.onJobStage?.({ stage: 'STORING_ANCHORS', progress: 75, currentStep: 'Storing anchors' });
       await this.storeAnchors(lessonId, result.anchors);
 
       // Create or update context record
+      await options?.onJobStage?.({ stage: 'UPDATING_CONTEXT', progress: 90, currentStep: 'Updating context record' });
       const contextRecord = await this.upsertContextRecord(lessonId, {
         s3Key,
         contentHash: result.contentHash,
@@ -145,6 +152,7 @@ export class KnowledgeContextService {
         totalTimeMs: Date.now() - startTime,
       });
 
+      await options?.onJobStage?.({ stage: 'COMPLETED', progress: 95, currentStep: 'Completed' });
       return {
         id: contextRecord.id,
         lessonId: contextRecord.lessonId,

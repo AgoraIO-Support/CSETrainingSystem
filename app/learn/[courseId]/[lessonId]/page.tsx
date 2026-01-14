@@ -164,6 +164,12 @@ export default function LessonPage({
     }, [courseId, lessonId])
 
     useEffect(() => {
+        if (course?.aiAssistantEnabled === false) {
+            setShowAIChat(false)
+        }
+    }, [course?.aiAssistantEnabled])
+
+    useEffect(() => {
         if (!course || !lesson) return
 
         let cancelled = false
@@ -478,14 +484,16 @@ export default function LessonPage({
                         )}
 
                         {/* AI Chat toggle */}
-                        <Button
-                            variant={showAIChat ? "default" : "outline"}
-                            size="sm"
-                            onClick={() => setShowAIChat(!showAIChat)}
-                        >
-                            <MessageSquare className="h-4 w-4" />
-                            <span className="hidden sm:inline ml-1">AI Assistant</span>
-                        </Button>
+                        {course?.aiAssistantEnabled !== false && (
+                            <Button
+                                variant={showAIChat ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => setShowAIChat(!showAIChat)}
+                            >
+                                <MessageSquare className="h-4 w-4" />
+                                <span className="hidden sm:inline ml-1">AI Assistant</span>
+                            </Button>
+                        )}
                     </div>
                 </div>
             </div>
@@ -580,55 +588,57 @@ export default function LessonPage({
                 </div>
 
                 {/* AI Chat Panel - Slide-in */}
-                <div
-                    className={cn(
-                        "relative flex-shrink-0 border-l bg-card overflow-hidden transition-[transform,width] duration-300",
-                        isResizingAiPanel ? "transition-none" : null,
-                        showAIChat ? "translate-x-0" : "translate-x-full border-0"
-                    )}
-                    style={{ width: showAIChat ? aiPanelWidth : 0 }}
-                >
-                    {showAIChat && (
-                        <div
-                            role="separator"
-                            aria-label="Resize AI panel"
-                            aria-orientation="vertical"
-                            tabIndex={0}
-                            className="absolute left-0 top-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-border/60 focus:outline-none focus:ring-2 focus:ring-ring"
-                            onPointerDown={(e) => {
-                                if (e.button !== 0) return
-                                aiPanelResizeStateRef.current = { startX: e.clientX, startWidth: aiPanelWidth }
-                                setIsResizingAiPanel(true)
-                            }}
-                            onKeyDown={(e) => {
-                                const delta = e.key === 'ArrowLeft' ? 20 : e.key === 'ArrowRight' ? -20 : 0
-                                if (!delta) return
-                                e.preventDefault()
-                                const minWidth = 320
-                                const maxWidth = Math.max(360, Math.min(800, window.innerWidth - 360))
-                                const next = Math.max(minWidth, Math.min(maxWidth, aiPanelWidth + delta))
-                                setAiPanelWidth(next)
-                            }}
-                        />
-                    )}
-                    <div className="h-full min-h-0 flex flex-col">
-                        <div className="p-3 border-b flex items-center justify-between">
-                            <h3 className="font-semibold text-sm">AI Learning Assistant</h3>
-                            <Button variant="ghost" size="icon" onClick={() => setShowAIChat(false)}>
-                                <X className="h-4 w-4" />
-                            </Button>
-                        </div>
-                        <div className="flex-1 min-h-0 overflow-hidden">
-                            <AIChatPanel
-                                courseId={courseId}
-                                lessonId={lesson.id}
-                                lessonTitle={lesson.title}
-                                currentTime={currentTime}
-                                onSeekToTimestamp={handleSeekToTimestamp}
+                {course?.aiAssistantEnabled !== false && (
+                    <div
+                        className={cn(
+                            "relative flex-shrink-0 border-l bg-card overflow-hidden transition-[transform,width] duration-300",
+                            isResizingAiPanel ? "transition-none" : null,
+                            showAIChat ? "translate-x-0" : "translate-x-full border-0"
+                        )}
+                        style={{ width: showAIChat ? aiPanelWidth : 0 }}
+                    >
+                        {showAIChat && (
+                            <div
+                                role="separator"
+                                aria-label="Resize AI panel"
+                                aria-orientation="vertical"
+                                tabIndex={0}
+                                className="absolute left-0 top-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-border/60 focus:outline-none focus:ring-2 focus:ring-ring"
+                                onPointerDown={(e) => {
+                                    if (e.button !== 0) return
+                                    aiPanelResizeStateRef.current = { startX: e.clientX, startWidth: aiPanelWidth }
+                                    setIsResizingAiPanel(true)
+                                }}
+                                onKeyDown={(e) => {
+                                    const delta = e.key === 'ArrowLeft' ? 20 : e.key === 'ArrowRight' ? -20 : 0
+                                    if (!delta) return
+                                    e.preventDefault()
+                                    const minWidth = 320
+                                    const maxWidth = Math.max(360, Math.min(800, window.innerWidth - 360))
+                                    const next = Math.max(minWidth, Math.min(maxWidth, aiPanelWidth + delta))
+                                    setAiPanelWidth(next)
+                                }}
                             />
+                        )}
+                        <div className="h-full min-h-0 flex flex-col">
+                            <div className="p-3 border-b flex items-center justify-between">
+                                <h3 className="font-semibold text-sm">AI Learning Assistant</h3>
+                                <Button variant="ghost" size="icon" onClick={() => setShowAIChat(false)}>
+                                    <X className="h-4 w-4" />
+                                </Button>
+                            </div>
+                            <div className="flex-1 min-h-0 overflow-hidden">
+                                <AIChatPanel
+                                    courseId={courseId}
+                                    lessonId={lesson.id}
+                                    lessonTitle={lesson.title}
+                                    currentTime={currentTime}
+                                    onSeekToTimestamp={handleSeekToTimestamp}
+                                />
+                            </div>
                         </div>
                     </div>
-                </div>
+                )}
             </div>
         </div>
     )

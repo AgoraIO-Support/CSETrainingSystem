@@ -6,7 +6,9 @@
 
 import { VTTParserService, VTTCue } from './vtt-parser.service';
 import { createHash } from 'crypto';
-import { KnowledgeAnchorType } from '@prisma/client';
+import { AIPromptUseCase, KnowledgeAnchorType } from '@prisma/client';
+import { log, timeAsync } from '@/lib/logger';
+import { AIPromptResolverService } from './ai-prompt-resolver.service';
 
 // Filler word patterns for moderate denoising
 const FILLER_PATTERNS = [
@@ -82,6 +84,11 @@ export interface CourseContext {
   lessonTitle: string;
   chapterTitle: string;
   lessonDescription?: string;
+  /**
+   * Per-run prompt override (UI-selected template) for VTT→XML enrichment.
+   * If omitted, the resolver applies Course → Exam → Default fallback rules.
+   */
+  promptTemplateIdOverride?: string;
 }
 
 export class VTTToXMLService {
@@ -103,26 +110,81 @@ export class VTTToXMLService {
     const cfg = { ...DEFAULT_CONFIG, ...config };
 
     // Step 1: Parse VTT
+    const step1Start = Date.now();
     const { cues } = VTTParserService.parse(vttContent);
 
     if (cues.length === 0) {
       throw new Error('No cues found in VTT content');
     }
 
+    log('KnowledgeContext', 'info', 'VTTToXML Step 1: parsed VTT cues', {
+      courseId: context.courseId,
+      lessonId: context.lessonId,
+      cuesCount: cues.length,
+      firstStartSec: cues[0]?.startTime,
+      lastEndSec: cues[cues.length - 1]?.endTime,
+      vttChars: vttContent.length,
+      durationMs: Date.now() - step1Start,
+    });
+
     // Step 2: Denoise and aggregate into paragraphs
+    const step2Start = Date.now();
     const paragraphs = this.denoiseAndAggregate(cues, cfg);
     if (paragraphs.length === 0) {
       // No meaningful content after denoising (e.g., whitespace-only cues).
       throw new Error('No usable transcript content found');
     }
 
+    const paragraphTokenTotal = paragraphs.reduce((sum, p) => sum + (p.tokenCount || 0), 0);
+    log('KnowledgeContext', 'info', 'VTTToXML Step 2: aggregated paragraphs', {
+      courseId: context.courseId,
+      lessonId: context.lessonId,
+      paragraphsCount: paragraphs.length,
+      tokenTotalApprox: paragraphTokenTotal,
+      minParagraphDurationSec: cfg.minParagraphDuration,
+      maxParagraphDurationSec: cfg.maxParagraphDuration,
+      targetParagraphTokens: cfg.targetParagraphTokens,
+      firstParagraphStartSec: paragraphs[0]?.startTime,
+      firstParagraphEndSec: paragraphs[0]?.endTime,
+      durationMs: Date.now() - step2Start,
+    });
+
     // Step 3: Enrich with AI-generated titles and concepts
+    const step3Start = Date.now();
     const sections = await this.enrichWithAI(paragraphs, context);
 
+    const anchorsMarked = sections.filter((s) => s.isAnchor).length;
+    const conceptsTotal = sections.reduce((sum, s) => sum + (s.keyConcepts?.length || 0), 0);
+    log('KnowledgeContext', 'info', 'VTTToXML Step 3: enriched sections', {
+      courseId: context.courseId,
+      lessonId: context.lessonId,
+      openaiEnabled: Boolean(this.openaiApiKey),
+      sectionsCount: sections.length,
+      anchorsMarkedByAI: anchorsMarked,
+      conceptsTotal,
+      durationMs: Date.now() - step3Start,
+    });
+
     // Step 4: Extract knowledge anchors
+    const step4Start = Date.now();
     const anchors = this.extractAnchors(sections, cfg.maxAnchorsPerLesson);
 
+    log('KnowledgeContext', 'info', 'VTTToXML Step 4: extracted anchors', {
+      courseId: context.courseId,
+      lessonId: context.lessonId,
+      maxAnchorsPerLesson: cfg.maxAnchorsPerLesson,
+      anchorsCount: anchors.length,
+      anchorsPreview: anchors.slice(0, 10).map((a) => ({
+        t: a.timestampStr,
+        type: a.anchorType,
+        title: a.title,
+        keyTermsCount: a.keyTerms?.length || 0,
+      })),
+      durationMs: Date.now() - step4Start,
+    });
+
     // Step 5: Generate deterministic XML
+    const step5Start = Date.now();
     const xml = this.generateXML(sections, context);
 
     // Calculate hash for idempotency
@@ -130,6 +192,24 @@ export class VTTToXMLService {
 
     // Estimate token count (~4 chars per token)
     const tokenCount = Math.ceil(xml.length / 4);
+
+    log('KnowledgeContext', 'info', 'VTTToXML Step 5: generated XML knowledge base', {
+      courseId: context.courseId,
+      lessonId: context.lessonId,
+      xmlChars: xml.length,
+      contentHash,
+      tokenCountApprox: tokenCount,
+      durationMs: Date.now() - step5Start,
+    });
+
+    log('KnowledgeContext', 'info', 'VTTToXML complete', {
+      courseId: context.courseId,
+      lessonId: context.lessonId,
+      totalDurationMs: Date.now() - startTime,
+      sectionsCount: sections.length,
+      anchorsCount: anchors.length,
+      tokenCountApprox: tokenCount,
+    });
 
     return {
       xml,
@@ -233,13 +313,19 @@ export class VTTToXMLService {
       return this.enrichWithoutAI(paragraphs);
     }
 
+    const promptConfig = await AIPromptResolverService.resolve({
+      useCase: AIPromptUseCase.VTT_TO_XML_ENRICHMENT,
+      courseId: context.courseId,
+      templateId: context.promptTemplateIdOverride ?? null,
+    });
+
     // Batch paragraphs into groups of 10 for efficient API calls
     const batchSize = 10;
     const enrichedSections: EnrichedSection[] = [];
 
     for (let i = 0; i < paragraphs.length; i += batchSize) {
       const batch = paragraphs.slice(i, i + batchSize);
-      const batchResults = await this.enrichBatchWithAI(batch, context, i);
+      const batchResults = await this.enrichBatchWithAI(batch, context, i, promptConfig);
       enrichedSections.push(...batchResults);
     }
 
@@ -252,43 +338,103 @@ export class VTTToXMLService {
   private async enrichBatchWithAI(
     paragraphs: AggregatedParagraph[],
     context: CourseContext,
-    startIndex: number
+    startIndex: number,
+    promptConfig: Awaited<ReturnType<typeof AIPromptResolverService.resolve>>
   ): Promise<EnrichedSection[]> {
-    const prompt = this.buildEnrichmentPrompt(paragraphs, context);
+    const sections = paragraphs.map((p, i) => ({
+      index: i,
+      timestamp: VTTParserService.formatTimestamp(p.startTime, true),
+      text: p.text.substring(0, 500), // Limit text length for prompt
+    }));
+
+    const vars = {
+      courseTitle: context.courseTitle,
+      chapterTitle: context.chapterTitle,
+      lessonTitle: context.lessonTitle,
+      sectionsJson: JSON.stringify(sections, null, 2),
+    };
+
+    const systemPrompt = AIPromptResolverService.render(promptConfig.systemPrompt, vars);
+    const userPromptTemplate = promptConfig.userPrompt ?? this.buildEnrichmentPrompt(paragraphs, context);
+    const userPrompt = AIPromptResolverService.render(userPromptTemplate, vars);
 
     try {
+      const logOpenAiContent = process.env.CSE_OPENAI_LOG_CONTENT === '1';
       const controller = new AbortController();
       const timeoutMs = parseInt(process.env.VTT_TO_XML_ENRICH_TIMEOUT_MS || '20000', 10);
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.openaiApiKey}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content: `You are an educational content analyzer. Generate concise section titles and extract key concepts from transcript segments. Respond ONLY with valid JSON.`,
+      const requestBody = {
+        model: promptConfig.model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: promptConfig.temperature,
+        max_tokens: promptConfig.maxTokens,
+      };
+
+      log('OpenAI', 'info', 'vtt-to-xml chat.completions request', {
+        templateSource: promptConfig.source,
+        templateId: promptConfig.templateId,
+        templateName: promptConfig.templateName,
+        model: promptConfig.model,
+        temperature: promptConfig.temperature,
+        maxTokens: promptConfig.maxTokens,
+        batchStartIndex: startIndex,
+        batchSize: paragraphs.length,
+        systemPromptChars: systemPrompt.length,
+        userPromptChars: userPrompt.length,
+      });
+      if (logOpenAiContent) {
+        log('OpenAI', 'debug', 'vtt-to-xml chat.completions request body', { body: requestBody });
+      }
+
+      const response = await timeAsync(
+        'OpenAI',
+        'vtt-to-xml chat.completions response',
+        { url: 'https://api.openai.com/v1/chat/completions', model: promptConfig.model, batchStartIndex: startIndex },
+        () =>
+          fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${this.openaiApiKey}`,
             },
-            { role: 'user', content: prompt },
-          ],
-          temperature: 0.1,
-          max_tokens: 2000,
-        }),
-        signal: controller.signal,
-      }).finally(() => clearTimeout(timeout));
+            body: JSON.stringify(requestBody),
+            signal: controller.signal,
+          })
+      ).finally(() => clearTimeout(timeout));
 
       if (!response.ok) {
-        console.error('[VTTToXML] OpenAI API error:', response.status);
+        const errorText = await response.text().catch(() => '');
+        log('OpenAI', 'error', 'vtt-to-xml chat.completions error', {
+          status: response.status,
+          bodyPreview: errorText.slice(0, 500),
+          batchStartIndex: startIndex,
+        });
+        if (logOpenAiContent) {
+          log('OpenAI', 'error', 'vtt-to-xml chat.completions error body', { status: response.status, body: errorText });
+        }
         return this.enrichWithoutAI(paragraphs);
       }
 
       const data = await response.json();
+      if (logOpenAiContent) {
+        log('OpenAI', 'debug', 'vtt-to-xml chat.completions raw response', { response: data });
+      }
+      log('OpenAI', 'info', 'vtt-to-xml chat.completions usage', {
+        model: data.model || promptConfig.model,
+        totalTokens: data.usage?.total_tokens,
+        promptTokens: data.usage?.prompt_tokens,
+        completionTokens: data.usage?.completion_tokens,
+        batchStartIndex: startIndex,
+      });
+
       const content = data.choices?.[0]?.message?.content || '';
+      if (logOpenAiContent) {
+        log('OpenAI', 'debug', 'vtt-to-xml chat.completions message.content', { content });
+      }
 
       // Parse JSON response
       const parsed = this.parseAIResponse(content);
@@ -314,7 +460,10 @@ export class VTTToXMLService {
         };
       });
     } catch (error) {
-      console.error('[VTTToXML] AI enrichment error:', error);
+      log('OpenAI', 'error', 'vtt-to-xml chat.completions exception', {
+        batchStartIndex: startIndex,
+        error: error instanceof Error ? error.message : String(error),
+      });
       return this.enrichWithoutAI(paragraphs);
     }
   }

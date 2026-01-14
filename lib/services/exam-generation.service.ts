@@ -8,6 +8,8 @@ import {
   ExamQuestionType,
   DifficultyLevel,
   ExamType,
+  AIPromptUseCase,
+  AIResponseFormat,
 } from '@prisma/client';
 import OpenAI from 'openai';
 import { log, timeAsync } from '@/lib/logger';
@@ -16,6 +18,7 @@ import { KnowledgeContextService } from '@/lib/services/knowledge-context.servic
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import s3Client, { ASSET_S3_BUCKET_NAME } from '@/lib/aws-s3';
 import { createHash } from 'crypto';
+import { AIPromptResolverService, type ResolvedAIPrompt } from '@/lib/services/ai-prompt-resolver.service';
 
 export interface GenerationConfig {
   questionCounts: {
@@ -113,6 +116,12 @@ export class ExamGenerationService {
       throw new Error('OPENAI_API_KEY_MISSING');
     }
 
+    const promptConfig = await AIPromptResolverService.resolve({
+      useCase: AIPromptUseCase.EXAM_GENERATION,
+      courseId: exam.courseId ?? null,
+      examId: exam.id,
+    });
+
     const questions: GeneratedQuestion[] = [];
     const createdQuestions: any[] = [];
     const warnings: string[] = [];
@@ -146,7 +155,8 @@ export class ExamGenerationService {
             difficulty,
             knowledgePrefix,
             config.topics,
-            config.focusAreas
+            config.focusAreas,
+            promptConfig
           );
 
           questions.push(result.question);
@@ -392,23 +402,36 @@ export class ExamGenerationService {
     difficulty: DifficultyLevel,
     knowledgePrefix: string,
     topics?: string[],
-    focusAreas?: string[]
+    focusAreas?: string[],
+    promptConfig?: ResolvedAIPrompt
   ): Promise<{ question: GeneratedQuestion; tokensUsed: number; generationPrompt: string }> {
     const knowledgePrefixHash = createHash('sha256').update(knowledgePrefix).digest('hex');
     const taskPrompt = this.buildGenerationTaskPrompt(type, difficulty, topics, focusAreas, knowledgePrefixHash);
-    const prompt = `${knowledgePrefix}\n\n${taskPrompt}`;
+    const effectivePromptConfig =
+      promptConfig ??
+      (await AIPromptResolverService.resolve({
+        useCase: AIPromptUseCase.EXAM_GENERATION,
+      }));
+
+    const userTemplate = effectivePromptConfig.userPrompt ?? '{{knowledgeXml}}\n\n{{taskPrompt}}';
+    const prompt = AIPromptResolverService.render(userTemplate, {
+      knowledgeXml: knowledgePrefix,
+      taskPrompt,
+    });
 
     // Call OpenAI API
     const messages = [
-      { role: 'system' as const, content: this.getSystemPrompt() },
+      { role: 'system' as const, content: effectivePromptConfig.systemPrompt },
       { role: 'user' as const, content: prompt },
     ];
     const request = {
-      model: 'gpt-4o-mini',
+      model: effectivePromptConfig.model,
       messages,
-      response_format: { type: 'json_object' as const },
-      temperature: 0.7,
-      max_tokens: 1500,
+      ...(effectivePromptConfig.responseFormat === AIResponseFormat.JSON_OBJECT
+        ? { response_format: { type: 'json_object' as const } }
+        : {}),
+      temperature: effectivePromptConfig.temperature,
+      max_tokens: effectivePromptConfig.maxTokens,
     };
 
     const logOpenAiContent = process.env.CSE_OPENAI_LOG_CONTENT === '1';

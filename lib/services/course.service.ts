@@ -129,6 +129,9 @@ export class CourseService {
                 assets: {
                     orderBy: { createdAt: 'desc' },
                 },
+                aiConfig: {
+                    select: { isEnabled: true },
+                },
             },
         })
 
@@ -212,11 +215,15 @@ export class CourseService {
             })
         )
 
+        const { aiConfig, ...courseRest } = course as any
+        const aiAssistantEnabled: boolean = aiConfig?.isEnabled ?? true
+
         return {
-            ...course,
+            ...courseRest,
             chapters,
             isEnrolled,
             progress,
+            aiAssistantEnabled,
         }
     }
 

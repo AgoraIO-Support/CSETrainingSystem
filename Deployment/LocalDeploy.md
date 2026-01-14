@@ -79,6 +79,21 @@
       -e CSE_SEED_DEFAULT_USERS=1 \
       cselearning-migrator:latest npx prisma db seed
 
+    1. podman run --rm --network cselearning --env-file tmp/podman/local.env cselearning-migrator:latest
+
+        - 运行的是 migrator 镜像（一次性容器）
+        - 目的：对 DATABASE_URL 指向的数据库执行 Prisma migrations（migrate deploy）
+        - --rm：跑完就自动删容器
+        - 不会启动数据库，只是“改数据库结构/表/enum/字段”
+
+    2. podman run -d --name cselearning-postgres ... docker.io/pgvector/pgvector:pg16
+
+        - 运行的是 Postgres 数据库容器
+        - 目的：启动/提供数据库服务（监听 5432），并用 volume 持久化数据
+        - 不会跑 migrations，只负责“数据库进程在跑”
+        典型流程是：先启动 Postgres（第2条）→ 再跑 migrator（第1条）把 schema 更新到最新。
+
+
   6) 启动 Web 容器
 
     #Delete existing container if any
@@ -166,4 +181,82 @@
 
     SELECT * FROM courses;
 
+    10)vtt转换成knowledge context是在worker里执行的
+    podman build --target worker -t cselearning-worker:latest -f Containerfile .
+    podman rm -f cselearning-worker 2>/dev/null || true
 
+    podman run -d --name cselearning-worker --network cselearning \
+    --env-file tmp/podman/local.env \
+    -v "$PWD:/workspace:ro" \
+    -v cselearning-workspace-node_modules:/workspace/node_modules \
+    -w /workspace \
+    -e NODE_PATH=/app/node_modules \
+    -e PATH="/app/node_modules/.bin:$PATH" \
+    -v "$HOME/.aws:/root/.aws:ro" \
+    -e AWS_PROFILE=default -e AWS_SDK_LOAD_CONFIG=1 \
+    -e CSE_LOG=api,db,s3,knowledgecontext,openai \
+    -e CSE_OPENAI_LOG_CONTENT=1 \
+    localhost/cselearning-migrator:latest tsx scripts/transcript-worker.ts
+
+
+
+
+简单总结：
+
+podman build -t cselearning-web:latest -f Containerfile .
+podman build -t cselearning-backend:latest -f backend/Containerfile .
+podman build --target migrator -t cselearning-migrator:latest -f Containerfile .   
+podman build --target worker -t cselearning-worker:latest -f Containerfile .
+
+
+podman rm -f cselearning-worker
+podman rm -f cselearning-postgres || true
+podman rm -f cselearning-web || true
+podman rm -f cselearning-backend || true
+
+podman exec -it cselearning-postgres psql -U postgres -d cselearning-database //效果和下面那条命令一样
+
+podman run --rm --network cselearning --env-file tmp/podman/local.env cselearning-migrator:latest //一次性执行
+
+    podman run -d --name cselearning-postgres --network cselearning \
+      -e POSTGRES_DB='cselearning-database' \
+      -e POSTGRES_USER='postgres' \
+      -e POSTGRES_PASSWORD='postgres' \
+      -v cselearning-pgdata:/var/lib/postgresql/data \
+      docker.io/pgvector/pgvector:pg16
+
+    podman run -d --name cselearning-web --network cselearning -p 3000:3000 \
+    --env-file tmp/podman/local.env \
+    -v "$HOME/.aws:/root/.aws:ro" \
+    -e CSE_LOG=api,db,s3,knowledgecontext,openai \
+    -e CSE_OPENAI_LOG_CONTENT=1 \
+    -e AWS_PROFILE=default \
+    -e AWS_SDK_LOAD_CONFIG=1 \
+    localhost/cselearning-web:latest
+
+    podman run -d --name cselearning-backend --network cselearning -p 8080:8080 \
+        --env-file tmp/podman/local.env \
+        -v "$HOME/.aws:/root/.aws:ro" \
+        --memory=768m \
+        --memory-reservation=512m \
+        -e CSE_LOG=api,db,s3,knowledgecontext,openai \
+        -e CSE_OPENAI_LOG_CONTENT=1 \
+        -e AWS_PROFILE=default \
+        -e AWS_SDK_LOAD_CONFIG=1 \
+        localhost/cselearning-backend:latest
+
+    podman run -d --name cselearning-worker --network cselearning \
+    --env-file tmp/podman/local.env \
+    -v "$PWD:/workspace:ro" \
+    -v cselearning-workspace-node_modules:/workspace/node_modules \
+    -w /workspace \
+    -e NODE_PATH=/app/node_modules \
+    -e PATH="/app/node_modules/.bin:$PATH" \
+    -v "$HOME/.aws:/root/.aws:ro" \
+    -e AWS_PROFILE=default -e AWS_SDK_LOAD_CONFIG=1 \
+    -e CSE_LOG=api,db,s3,knowledgecontext,openai \
+    -e CSE_OPENAI_LOG_CONTENT=1 \
+    localhost/cselearning-migrator:latest tsx scripts/transcript-worker.ts
+
+
+    podman exec -it cselearning-web sh -lc 'cd /app && npx prisma migrate deploy'

@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAdminAuth } from '@/lib/auth-middleware';
 import { KnowledgeContextService } from '@/lib/services/knowledge-context.service';
+import prisma from '@/lib/prisma';
 
 /**
  * GET /api/admin/lessons/[lessonId]/knowledge
@@ -20,6 +21,11 @@ export const GET = withAdminAuth(async (
     const params = await context.params;
     const { lessonId } = params;
 
+    const latestJob = await prisma.knowledgeContextJob.findFirst({
+      where: { lessonId },
+      orderBy: { createdAt: 'desc' },
+    });
+
     const knowledgeService = new KnowledgeContextService();
     const contextInfo = await knowledgeService.getContextInfo(lessonId);
 
@@ -30,6 +36,22 @@ export const GET = withAdminAuth(async (
           exists: false,
           status: null,
           message: 'No knowledge context generated yet',
+          job: latestJob
+            ? {
+                id: latestJob.id,
+                state: latestJob.state,
+                stage: latestJob.stage,
+                attempt: latestJob.attempt,
+                maxAttempts: latestJob.maxAttempts,
+                progress: latestJob.progress,
+                scheduledAt: latestJob.scheduledAt.toISOString(),
+                startedAt: latestJob.startedAt?.toISOString() || null,
+                finishedAt: latestJob.finishedAt?.toISOString() || null,
+                lastHeartbeatAt: latestJob.lastHeartbeatAt?.toISOString() || null,
+                workerId: latestJob.workerId || null,
+                errorMessage: latestJob.errorMessage || null,
+              }
+            : null,
         },
       });
     }
@@ -47,6 +69,22 @@ export const GET = withAdminAuth(async (
         contentHash: contextInfo.contentHash,
         processedAt: contextInfo.processedAt?.toISOString() || null,
         errorMessage: contextInfo.errorMessage,
+        job: latestJob
+          ? {
+              id: latestJob.id,
+              state: latestJob.state,
+              stage: latestJob.stage,
+              attempt: latestJob.attempt,
+              maxAttempts: latestJob.maxAttempts,
+              progress: latestJob.progress,
+              scheduledAt: latestJob.scheduledAt.toISOString(),
+              startedAt: latestJob.startedAt?.toISOString() || null,
+              finishedAt: latestJob.finishedAt?.toISOString() || null,
+              lastHeartbeatAt: latestJob.lastHeartbeatAt?.toISOString() || null,
+              workerId: latestJob.workerId || null,
+              errorMessage: latestJob.errorMessage || null,
+            }
+          : null,
         anchors: anchors.map(a => ({
           id: a.id,
           timestamp: a.timestamp,

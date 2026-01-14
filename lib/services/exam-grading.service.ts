@@ -8,10 +8,13 @@ import {
   ExamQuestionType,
   GradingStatus,
   ExamAttemptStatus,
+  AIPromptUseCase,
+  AIResponseFormat,
 } from '@prisma/client';
 import OpenAI from 'openai';
 import { log, timeAsync } from '@/lib/logger';
 import { CertificateService } from '@/lib/services/certificate.service';
+import { AIPromptResolverService } from '@/lib/services/ai-prompt-resolver.service';
 
 export interface GradingResult {
   attemptId: string;
@@ -280,25 +283,50 @@ export class ExamGradingService {
     const question = answer.question;
     const userEssay = answer.answer || '';
 
-    // Build the grading prompt
-    const prompt = this.buildEssayGradingPrompt(
-      question.question,
-      question.rubric || '',
-      question.sampleAnswer || '',
-      userEssay,
-      question.points
-    );
+    const promptConfig = await AIPromptResolverService.resolve({
+      useCase: AIPromptUseCase.EXAM_GRADING_ESSAY,
+      courseId: answer.attempt.exam.courseId ?? null,
+      examId: answer.attempt.examId,
+    });
+
+    const rubricOrDefault =
+      question.rubric || 'No specific rubric provided. Grade based on content accuracy, depth, clarity, and organization.';
+    const sampleAnswerOrDefault = question.sampleAnswer || 'No sample answer provided.';
+    const userEssayOrDefault = userEssay || '[No response provided]';
+
+    const userPromptTemplate =
+      promptConfig.userPrompt ??
+      this.buildEssayGradingPrompt(
+        question.question,
+        question.rubric || '',
+        question.sampleAnswer || '',
+        userEssay,
+        question.points
+      );
+
+    const prompt =
+      promptConfig.userPrompt != null
+        ? AIPromptResolverService.render(userPromptTemplate, {
+            question: question.question,
+            rubricOrDefault,
+            sampleAnswerOrDefault,
+            userEssayOrDefault,
+            maxPoints: question.points,
+          })
+        : userPromptTemplate;
 
     const messages = [
-      { role: 'system' as const, content: this.getEssayGradingSystemPrompt() },
+      { role: 'system' as const, content: promptConfig.systemPrompt },
       { role: 'user' as const, content: prompt },
     ];
     const request = {
-      model: 'gpt-4o-mini',
+      model: promptConfig.model,
       messages,
-      response_format: { type: 'json_object' as const },
-      temperature: 0.3,
-      max_tokens: 1500,
+      ...(promptConfig.responseFormat === AIResponseFormat.JSON_OBJECT
+        ? { response_format: { type: 'json_object' as const } }
+        : {}),
+      temperature: promptConfig.temperature,
+      max_tokens: promptConfig.maxTokens,
     };
 
     const logOpenAiContent = process.env.CSE_OPENAI_LOG_CONTENT === '1';

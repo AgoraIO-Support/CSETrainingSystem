@@ -194,6 +194,7 @@ export interface Course {
     requirements?: string[]
     chapters?: Chapter[]
     assets?: CourseAsset[]
+    aiAssistantEnabled?: boolean
 }
 
 // Curriculum (new)

@@ -11,6 +11,13 @@ const courseAIConfigSchema = z.object({
     isEnabled: z.boolean().optional(),
 })
 
+const courseAIEnableSchema = z.object({
+    isEnabled: z.boolean(),
+})
+
+const UNUSED_COURSE_AI_SYSTEM_PROMPT =
+    'AI assistant prompt/model settings are managed in Admin > AI Configuration.'
+
 // GET - Fetch course AI configuration
 export const GET = withAdminAuth(async (
     req: NextRequest,
@@ -57,6 +64,58 @@ export const GET = withAdminAuth(async (
                     message: 'Failed to fetch AI configuration'
                 }
             },
+            { status: 500 }
+        )
+    }
+}) 
+
+// PATCH - Enable/disable course AI assistant
+export const PATCH = withAdminAuth(async (
+    req: NextRequest,
+    user: AuthUser,
+    context: { params: Promise<{ id: string }> }
+) => {
+    try {
+        const { id: courseId } = await context.params
+        const body = await req.json()
+        const payload = courseAIEnableSchema.parse(body)
+
+        const course = await prisma.course.findUnique({
+            where: { id: courseId },
+            select: { id: true },
+        })
+
+        if (!course) {
+            return NextResponse.json(
+                { success: false, error: { code: 'COURSE_NOT_FOUND', message: 'Course not found' } },
+                { status: 404 }
+            )
+        }
+
+        const config = await prisma.courseAIConfig.upsert({
+            where: { courseId },
+            update: { isEnabled: payload.isEnabled },
+            create: {
+                courseId,
+                systemPrompt: UNUSED_COURSE_AI_SYSTEM_PROMPT,
+                modelOverride: null,
+                temperature: 0.2,
+                maxTokens: 1024,
+                isEnabled: payload.isEnabled,
+            },
+        })
+
+        return NextResponse.json({ success: true, data: config })
+    } catch (error) {
+        console.error('Failed to update course AI assistant toggle:', error)
+        if (error instanceof z.ZodError) {
+            return NextResponse.json(
+                { success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input', details: error.errors } },
+                { status: 400 }
+            )
+        }
+        return NextResponse.json(
+            { success: false, error: { code: 'SYSTEM_001', message: 'Failed to update AI assistant setting' } },
             { status: 500 }
         )
     }

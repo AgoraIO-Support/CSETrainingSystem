@@ -7,6 +7,11 @@ import '@testing-library/jest-dom'
 if (!process.env.DATABASE_URL) {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   require('dotenv').config({ path: '.env' })
+
+  // Local dev fallback (repo typically runs Postgres via podman with this mapping).
+  if (!process.env.DATABASE_URL) {
+    process.env.DATABASE_URL = 'postgresql://postgres:postgres@localhost:5432/cselearning-database?schema=public'
+  }
 }
 
 // Never hit real OpenAI in tests (existing tests mock `global.fetch`).
@@ -36,4 +41,3 @@ if (typeof window !== 'undefined') {
       }) as any
   }
 }
-

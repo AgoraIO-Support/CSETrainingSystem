@@ -263,7 +263,7 @@ export class ApiClient {
         return this.request(`/admin/courses/${courseId}/analytics`)
     }
 
-    static async getCourse(id: string): Promise<{ success: boolean; data: Course & { isEnrolled: boolean; progress: number } }> {
+    static async getCourse(id: string): Promise<{ success: boolean; data: Course & { isEnrolled: boolean; progress: number; aiAssistantEnabled?: boolean } }> {
         return this.request(`/courses/${id}`)
     }
 

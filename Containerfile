@@ -16,7 +16,15 @@ COPY prisma ./prisma
 # Ensure the path exists so `npm ci` (and Prisma generate) does not fail.
 RUN mkdir -p backend/node_modules/.prisma/client
 
-RUN npm ci
+# Make `npm ci` more resilient in Podman/VM networking environments (macOS Podman machine can be flaky).
+ENV NPM_CONFIG_FETCH_RETRIES=5 \
+  NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=20000 \
+  NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=120000 \
+  NPM_CONFIG_AUDIT=false \
+  NPM_CONFIG_FUND=false \
+  NPM_CONFIG_UPDATE_NOTIFIER=false
+
+RUN npm ci --no-audit --no-fund
 
 # Build Next.js (production build enables standalone output via `next.config.js`).
 FROM deps AS build

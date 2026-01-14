@@ -1,8 +1,10 @@
 import prisma from '@/lib/prisma'
 import { RAGService } from './_legacy_rag.service'
-import { KnowledgeContextService } from './knowledge-context.service'
+import { KnowledgeContextService } from '@/lib/services/knowledge-context.service'
 import { log, timeAsync } from '@/lib/logger'
 import { ChunkingService } from './_legacy_chunking.service'
+import { AIPromptResolverService } from '@/lib/services/ai-prompt-resolver.service'
+import { AIPromptUseCase } from '@prisma/client'
 
 interface AIMessage {
     role: 'user' | 'assistant'
@@ -164,6 +166,15 @@ export class AIService {
 
         // Return default config
         return DEFAULT_AI_CONFIG
+    }
+
+    private static async isAIAssistantEnabled(courseId?: string | null): Promise<boolean> {
+        if (!courseId) return true
+        const row = await prisma.courseAIConfig.findUnique({
+            where: { courseId },
+            select: { isEnabled: true },
+        })
+        return row?.isEnabled ?? true
     }
 
     /**
@@ -492,128 +503,6 @@ The "quiz" field is optional - only include when testing understanding would be 
             throw new Error('CONVERSATION_NOT_FOUND')
         }
 
-        // Get effective AI configuration
-        const aiConfig = await this.getEffectiveAIConfig(
-            conversation.lessonId,
-            conversation.courseId
-        )
-
-        // Get lesson context - Priority: Full XML Context > RAG > Legacy Transcript
-        let lessonContext = ''
-        let ragContext: RAGContext | null = null
-        let fullContext: FullContextResult | null = null
-        let contextMode: 'full' | 'rag' | 'legacy' = 'legacy'
-
-        if (conversation.lessonId) {
-            // First, try full context injection (new XML-based system)
-            fullContext = await this.getFullContext(conversation.lessonId)
-
-            if (fullContext.enabled && aiConfig.includeTranscript) {
-                // Use full context injection (preferred)
-                contextMode = 'full'
-                lessonContext = this.buildFullContextPrompt({
-                    xml: fullContext.xml,
-                    courseInfo: fullContext.courseInfo,
-                    videoTimestamp: params.videoTimestamp,
-                })
-
-                log('AIService', 'info', 'Using full context injection', {
-                    lessonId: conversation.lessonId,
-                    contextLength: lessonContext.length,
-                })
-            } else {
-                // Fall back to RAG or legacy
-                const lesson = await prisma.lesson.findUnique({
-                    where: { id: conversation.lessonId },
-                    select: {
-                        title: true,
-                        transcript: true,
-                        description: true,
-                        learningObjectives: true,
-                        chapter: {
-                            select: {
-                                title: true,
-                                course: {
-                                    select: {
-                                        title: true,
-                                    },
-                                },
-                            },
-                        },
-                    },
-                })
-
-                if (lesson) {
-                    // Check if RAG is available
-                    const ragAvailable = await this.checkRAGAvailability(conversation.lessonId)
-
-                    if (ragAvailable && aiConfig.includeTranscript) {
-                        // Use RAG-based retrieval (legacy fallback)
-                        const candidate = await this.getRAGContext(
-                            conversation.lessonId,
-                            params.message,
-                            {
-                                courseName: lesson.chapter.course.title,
-                                chapterTitle: lesson.chapter.title,
-                                lessonTitle: lesson.title,
-                            }
-                        )
-
-                        if (candidate.enabled && candidate.context) {
-                            contextMode = 'rag'
-                            ragContext = candidate
-                            lessonContext = candidate.context
-                        } else {
-                            contextMode = 'legacy'
-                            lessonContext = this.buildLegacyLessonContext({
-                                courseTitle: lesson.chapter.course.title,
-                                chapterTitle: lesson.chapter.title,
-                                lessonTitle: lesson.title,
-                                lessonDescription: lesson.description,
-                                learningObjectives: lesson.learningObjectives,
-                                transcript: lesson.transcript,
-                                includeTranscript: aiConfig.includeTranscript,
-                                videoTimestamp: params.videoTimestamp,
-                                customContext: aiConfig.customContext,
-                            })
-                        }
-                    } else {
-                        // Fall back to legacy transcript
-                        contextMode = 'legacy'
-                        lessonContext = this.buildLegacyLessonContext({
-                            courseTitle: lesson.chapter.course.title,
-                            chapterTitle: lesson.chapter.title,
-                            lessonTitle: lesson.title,
-                            lessonDescription: lesson.description,
-                            learningObjectives: lesson.learningObjectives,
-                            transcript: lesson.transcript,
-                            includeTranscript: aiConfig.includeTranscript,
-                            videoTimestamp: params.videoTimestamp,
-                            customContext: aiConfig.customContext,
-                        })
-                    }
-                }
-            }
-        }
-
-        // Build conversation history
-        const messageHistory: AIMessage[] = conversation.messages
-            .reverse()
-            .map(m => ({
-                role: m.role as 'user' | 'assistant',
-                content: m.content,
-            }))
-
-        // Call AI model with configured settings
-        const aiResponse = await this.callAIModel({
-            userMessage: params.message,
-            history: messageHistory,
-            context: lessonContext,
-            config: aiConfig,
-            contextMode, // Pass context mode for prompt customization
-        })
-
-        // Save user message
         const userMessage = await prisma.aIMessage.create({
             data: {
                 conversationId: params.conversationId,
@@ -624,20 +513,110 @@ The "quiz" field is optional - only include when testing understanding would be 
             },
         })
 
+        const aiEnabled = await this.isAIAssistantEnabled(conversation.courseId ?? null)
+        if (!aiEnabled) {
+            const assistantMessage = await prisma.aIMessage.create({
+                data: {
+                    conversationId: params.conversationId,
+                    role: 'assistant',
+                    content: 'AI assistant is disabled for this course.',
+                    tokens: null,
+                    model: null,
+                    context: { contextMode: 'unavailable', reason: 'DISABLED_BY_ADMIN' },
+                },
+            })
+            return { userMessage, assistantMessage, suggestions: [], quiz: undefined, sources: [], contextMode: 'unavailable' as const }
+        }
+
+        if (!conversation.lessonId) {
+            const assistantMessage = await prisma.aIMessage.create({
+                data: {
+                    conversationId: params.conversationId,
+                    role: 'assistant',
+                    content: 'No lesson was provided for this conversation, so knowledge context is unavailable.',
+                    tokens: null,
+                    model: null,
+                    context: { contextMode: 'unavailable', reason: 'NO_LESSON' },
+                },
+            })
+            return { userMessage, assistantMessage, suggestions: [], quiz: undefined, sources: [], contextMode: 'unavailable' as const }
+        }
+
+        const fullContext = await this.getFullContext(conversation.lessonId)
+        if (!fullContext.enabled) {
+            const assistantMessage = await prisma.aIMessage.create({
+                data: {
+                    conversationId: params.conversationId,
+                    role: 'assistant',
+                    content:
+                        'This lesson does not have Knowledge Context yet. Please ask an admin to run "Upload and Process" for the transcript before using the AI assistant.',
+                    tokens: null,
+                    model: null,
+                    context: { contextMode: 'unavailable', reason: 'KNOWLEDGE_CONTEXT_NOT_READY' },
+                },
+            })
+            return { userMessage, assistantMessage, suggestions: [], quiz: undefined, sources: [], contextMode: 'unavailable' as const }
+        }
+
+        const promptConfig = await AIPromptResolverService.resolve({
+            useCase: AIPromptUseCase.AI_ASSISTANT_KNOWLEDGE_CONTEXT_SYSTEM,
+            courseId: conversation.courseId ?? null,
+        })
+
+        const videoTimestampLine =
+            params.videoTimestamp !== undefined ? `\nCurrent video position: ${Math.floor(params.videoTimestamp)}s` : ''
+
+        const renderedInstructions = AIPromptResolverService.render(promptConfig.systemPrompt, {
+            courseTitle: fullContext.courseInfo.courseName,
+            chapterTitle: fullContext.courseInfo.chapterTitle,
+            lessonTitle: fullContext.courseInfo.lessonTitle,
+            videoTimestampLine,
+        })
+
+        const lessonContext = `${fullContext.xml}\n\n${renderedInstructions}`
+        const contextMode = 'full' as const
+
+        log('AIService', 'info', 'Using knowledge context assistant', {
+            lessonId: conversation.lessonId,
+            templateId: promptConfig.templateId ?? null,
+            templateName: promptConfig.templateName ?? null,
+            source: promptConfig.source,
+            contextLength: lessonContext.length,
+        })
+
+        // Build conversation history
+        const messageHistory: AIMessage[] = conversation.messages
+            .reverse()
+            .map(m => ({
+                role: m.role as 'user' | 'assistant',
+                content: m.content,
+            }))
+
+        // Call AI model with configured settings
+        const aiConfig: AIConfig = {
+            systemPrompt: '',
+            model: promptConfig.model,
+            temperature: promptConfig.temperature,
+            maxTokens: promptConfig.maxTokens,
+            includeTranscript: true,
+        }
+
+        const aiResponse = await this.callAIModel({
+            userMessage: params.message,
+            history: messageHistory,
+            context: lessonContext,
+            config: aiConfig,
+            contextMode,
+        })
+
         // Build response context based on mode
         let responseContext: any = undefined
-        if (contextMode === 'full') {
-            responseContext = {
-                contextMode: 'full',
-                fullContextEnabled: true,
-            }
-        } else if (ragContext?.enabled) {
-            responseContext = {
-                contextMode: 'rag',
-                ragEnabled: true,
-                confidence: ragContext.confidence,
-                sources: ragContext.sources,
-            }
+        responseContext = {
+            contextMode: 'full',
+            fullContextEnabled: true,
+            templateId: promptConfig.templateId ?? null,
+            templateName: promptConfig.templateName ?? null,
+            templateSource: promptConfig.source,
         }
 
         // Save AI response
@@ -657,7 +636,7 @@ The "quiz" field is optional - only include when testing understanding would be 
             assistantMessage,
             suggestions: aiResponse.suggestions,
             quiz: aiResponse.quiz, // Include quiz if present
-            sources: ragContext?.sources || [],
+            sources: [],
             contextMode, // Let frontend know which mode was used
         }
     }
@@ -680,7 +659,7 @@ The "quiz" field is optional - only include when testing understanding would be 
         history: AIMessage[]
         context: string
         config: AIConfig
-        contextMode?: 'full' | 'rag' | 'legacy'
+        contextMode?: 'full'
     }): Promise<{
         content: string
         tokens?: number
@@ -693,65 +672,13 @@ The "quiz" field is optional - only include when testing understanding would be 
         }
     }> {
         const apiKey = process.env.OPENAI_API_KEY
-        const { config, contextMode = 'legacy' } = params
+        const { config, contextMode = 'full' } = params
         const logOpenAiContent = process.env.CSE_OPENAI_LOG_CONTENT === '1'
 
         if (apiKey) {
             try {
-                // Build system prompt based on context mode
-                let systemPromptWithContext: string
-
-                if (contextMode === 'full') {
-                    // Full context injection - context IS the system prompt
-                    // (already includes XML + instructions from buildFullContextPrompt)
-                    systemPromptWithContext = params.context
-                } else if (contextMode === 'rag') {
-                    // RAG-specific system prompt with strict grounding rules
-                    systemPromptWithContext = `# CSE Training AI Assistant - System Prompt
-
-You are the AI Teaching Assistant for the CSE Training System. Your role is to help students understand course content by answering questions based EXCLUSIVELY on the provided course materials.
-
-## CRITICAL RULES - YOU MUST FOLLOW THESE WITHOUT EXCEPTION
-
-### Rule 1: ONLY Use Retrieved Content
-- You may ONLY use information from the <retrieved_context> section below
-- NEVER use your general knowledge to answer questions
-- NEVER make up information, examples, or details not in the sources
-- If asked about something not in the context, say you don't have that information
-
-### Rule 2: ALWAYS Cite Sources
-- Every factual claim MUST include a citation
-- Citation format: [Chapter > Lesson, timestamp]
-- Multiple claims from different sources need multiple citations
-
-### Rule 3: Handle Uncertainty Honestly
-- If retrieved content is INSUFFICIENT: Say "I don't have sufficient information"
-- If making a LOGICAL INFERENCE: Explicitly label it as inference
-- NEVER pretend to know something you don't
-
-<retrieved_context>
-${params.context || 'No relevant content found.'}
-</retrieved_context>
-
-Respond strictly in JSON with the shape:
-{
-  "answer": "clear explanation with [citations]",
-  "suggestions": ["follow up question 1", "follow up question 2", "follow up question 3"]
-}
-If you cannot comply, still return valid JSON with an explanatory "answer" and an empty suggestions array.`
-                } else {
-                    // Legacy system prompt
-                    systemPromptWithContext = `${config.systemPrompt}
-
-${params.context ? `Lesson Context:\n${params.context}` : 'No additional context provided.'}
-
-Respond strictly in JSON with the shape:
-{
-  "answer": "clear explanation here",
-  "suggestions": ["follow up question 1", "follow up question 2", "follow up question 3"]
-}
-If you cannot comply, still return valid JSON with an explanatory "answer" and an empty suggestions array.`
-                }
+                // Knowledge Context injection: context IS the system prompt and must include the XML prefix.
+                const systemPromptWithContext = params.context
 
                 const messages = [
                     {

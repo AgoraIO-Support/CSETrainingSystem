@@ -144,6 +144,7 @@ model Course {
   reviews     CourseReview[]
   assets      CourseAsset[]   @relation("CourseAssets")
   aiConfig    CourseAIConfig?
+  aiPromptAssignments CourseAIPromptAssignment[]
 
   // Exam relations
   exams         Exam[]
@@ -212,10 +213,12 @@ model Lesson {
   assets      LessonAsset[]
   aiConfig    LessonAIConfig?
   transcripts TranscriptAsset[]
+  transcriptProcessingJobs TranscriptProcessingJob[]
 
   // Knowledge base (XML context system)
   knowledgeContext KnowledgeContext?
   knowledgeAnchors KnowledgeAnchor[]
+  knowledgeContextJobs KnowledgeContextJob[]
 
   @@index([chapterId])
   @@index([order])
@@ -569,8 +572,21 @@ model AIPromptTemplate {
   id          String   @id @default(uuid())
   name        String   @unique
   description String?  @db.Text
+  useCase     AIPromptUseCase @default(MISC)
+
+  // Prompt content
+  // - `template` is the legacy single-string field (kept for backward compatibility / seeds).
+  // - `systemPrompt` / `userPrompt` are used by the newer, DB-driven prompt resolver.
   template    String   @db.Text
+  systemPrompt String? @db.Text
+  userPrompt   String? @db.Text
   variables   String[] // List of variable names used in template
+
+  // Model defaults for this template (can be overridden by course/exam assignments)
+  model       String @default("gpt-4o-mini")
+  temperature Float  @default(0.2)
+  maxTokens   Int    @default(1024)
+  responseFormat AIResponseFormat @default(TEXT)
 
   isActive Boolean @default(true)
 
@@ -578,7 +594,92 @@ model AIPromptTemplate {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Relations
+  defaults         AIPromptDefault[]
+  courseAssignments CourseAIPromptAssignment[]
+  examAssignments   ExamAIPromptAssignment[]
+
+  @@index([useCase])
   @@map("ai_prompt_templates")
+}
+
+enum AIPromptUseCase {
+  // Legacy / miscellaneous templates (not necessarily used by runtime)
+  MISC
+
+  // VTT -> Knowledge Context XML enrichment
+  VTT_TO_XML_ENRICHMENT
+
+  // Exam generation and grading
+  EXAM_GENERATION
+  EXAM_GRADING_ESSAY
+
+  // AI Assistant panel wrappers
+  AI_ASSISTANT_RAG_SYSTEM
+  AI_ASSISTANT_KNOWLEDGE_CONTEXT_SYSTEM
+}
+
+enum AIResponseFormat {
+  TEXT
+  JSON_OBJECT
+}
+
+model AIPromptDefault {
+  id         String @id @default(uuid())
+  useCase    AIPromptUseCase @unique
+  templateId String
+  template   AIPromptTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ai_prompt_defaults")
+}
+
+model CourseAIPromptAssignment {
+  id       String @id @default(uuid())
+  courseId String
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  useCase    AIPromptUseCase
+  templateId String
+  template   AIPromptTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+
+  modelOverride       String?
+  temperatureOverride Float?
+  maxTokensOverride   Int?
+
+  isEnabled Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([courseId, useCase])
+  @@index([useCase])
+  @@map("course_ai_prompt_assignments")
+}
+
+model ExamAIPromptAssignment {
+  id     String @id @default(uuid())
+  examId String
+  exam   Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  useCase    AIPromptUseCase
+  templateId String
+  template   AIPromptTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+
+  modelOverride       String?
+  temperatureOverride Float?
+  maxTokensOverride   Int?
+
+  isEnabled Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([examId, useCase])
+  @@index([useCase])
+  @@map("exam_ai_prompt_assignments")
 }
 
 // Course-level AI configuration (default for all lessons in course)
@@ -775,6 +876,27 @@ enum TranscriptJobState {
   STALE
 }
 
+enum KnowledgeContextJobState {
+  QUEUED
+  RUNNING
+  RETRY_WAIT
+  SUCCEEDED
+  FAILED
+  CANCELED
+  STALE
+}
+
+enum KnowledgeContextJobStage {
+  PENDING
+  DOWNLOADING_VTT
+  GENERATING_XML
+  STORING_XML
+  STORING_ANCHORS
+  UPDATING_CONTEXT
+  COMPLETED
+  FAILED
+}
+
 // Transcript assets linked to video lessons
 model TranscriptAsset {
   id           String      @id @default(uuid())
@@ -797,6 +919,7 @@ model TranscriptAsset {
 
   chunks         TranscriptChunk[]
   processingJobs TranscriptProcessingJob[]
+  knowledgeContextJobs KnowledgeContextJob[]
 
   @@unique([lessonId, videoAssetId])
   @@index([lessonId])
@@ -812,6 +935,7 @@ model TranscriptProcessingJob {
 
   // denormalized for easier querying/filtering
   lessonId String
+  lesson   Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
 
   state TranscriptJobState @default(QUEUED)
   stage TranscriptStatus   @default(PENDING)
@@ -868,6 +992,66 @@ model TranscriptProcessingJobEvent {
   @@map("transcript_processing_job_events")
 }
 
+model KnowledgeContextJob {
+  id String @id @default(uuid())
+
+  lessonId String
+  lesson   Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  transcriptId String?
+  transcript   TranscriptAsset? @relation(fields: [transcriptId], references: [id], onDelete: SetNull)
+
+  state KnowledgeContextJobState @default(QUEUED)
+  stage KnowledgeContextJobStage @default(PENDING)
+
+  progress    Int     @default(0)
+  currentStep String?
+
+  attempt     Int @default(0)
+  maxAttempts Int @default(5)
+
+  scheduledAt DateTime  @default(now())
+  startedAt   DateTime?
+  finishedAt  DateTime?
+
+  lastHeartbeatAt DateTime?
+  leaseExpiresAt  DateTime?
+  workerId        String?
+
+  errorCode    String?
+  errorMessage String? @db.Text
+
+  metrics Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events KnowledgeContextJobEvent[]
+
+  @@index([lessonId])
+  @@index([transcriptId])
+  @@index([state, scheduledAt])
+  @@index([leaseExpiresAt])
+  @@map("knowledge_context_jobs")
+}
+
+model KnowledgeContextJobEvent {
+  id String @id @default(uuid())
+
+  jobId String
+  job   KnowledgeContextJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  level   String
+  stage   KnowledgeContextJobStage?
+  message String
+  data    Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([jobId, createdAt])
+  @@map("knowledge_context_job_events")
+}
+
 // Parsed and embedded transcript chunks for RAG
 model TranscriptChunk {
   id           String          @id @default(uuid())
@@ -880,8 +1064,9 @@ model TranscriptChunk {
   text          String  @db.Text
   tokenCount    Int
 
-  // Vector embedding stored as JSON (compatible with pgvector)
-  embedding Json // Stores array of numbers as JSON
+  // Vector embedding stored as JSON (compatible with pgvector).
+  // Optional to allow chunk rows to exist before embeddings are generated.
+  embedding Json? // Stores array of numbers as JSON
 
   metadata Json // Stores ChunkMetadata (course/chapter/lesson info, timestamps, etc.)
 
@@ -1092,6 +1277,7 @@ model Exam {
   analytics    ExamAnalytics?
   certificates Certificate[]
   certificateTemplate ExamCertificateTemplate?
+  aiPromptAssignments ExamAIPromptAssignment[]
 
   @@index([status])
   @@index([courseId])

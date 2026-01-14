@@ -318,7 +318,7 @@ export function AIChatPanel({ courseId, lessonId, lessonTitle, currentTime = 0, 
                     {!loading && !knowledgeLoading && !knowledgeReady && (
                         <Alert>
                             <AlertDescription>
-                                {knowledgeError ?? 'Lesson knowledge preparing… Please try again shortly.'}
+                                {knowledgeError ?? 'Knowledge Context is not ready for this lesson. Ask an admin to run "Upload and Process" before using the AI assistant.'}
                             </AlertDescription>
                         </Alert>
                     )}

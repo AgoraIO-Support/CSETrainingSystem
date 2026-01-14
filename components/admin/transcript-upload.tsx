@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Upload, AlertCircle, CheckCircle2, FileText, X } from 'lucide-react';
 
 interface TranscriptUploadProps {
@@ -19,7 +20,38 @@ export function TranscriptUpload({ lessonId, videoAssetId, onUploadComplete }: T
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [promptTemplates, setPromptTemplates] = useState<Array<{ id: string; name: string; isActive: boolean }> | null>(null);
+  const [promptTemplateId, setPromptTemplateId] = useState<string>('auto');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const fetchPromptTemplates = async () => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/admin/ai/prompt-templates?useCase=VTT_TO_XML_ENRICHMENT', { headers });
+      if (!res.ok) {
+        setPromptTemplates([]);
+        return;
+      }
+      const json = await res.json();
+      const templates = Array.isArray(json?.data) ? json.data : [];
+      setPromptTemplates(
+        templates
+          .filter((t: any) => t && typeof t.id === 'string' && typeof t.name === 'string')
+          .map((t: any) => ({ id: t.id, name: t.name, isActive: Boolean(t.isActive) }))
+      );
+    } catch {
+      setPromptTemplates([]);
+    }
+  };
+
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
+    fetchPromptTemplates();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -104,9 +136,12 @@ export function TranscriptUpload({ lessonId, videoAssetId, onUploadComplete }: T
       setUploadProgress(70);
 
       // Step 3: Trigger processing
-      const processResponse = await fetch(`/api/admin/lessons/${lessonId}/transcript/process`, {
+      const processResponse = await fetch(`/api/admin/lessons/${lessonId}/knowledge/process`, {
         method: 'POST',
         headers,  // Reuse the same auth headers
+        body: JSON.stringify({
+          promptTemplateId: promptTemplateId !== 'auto' ? promptTemplateId : null,
+        }),
       });
 
       if (!processResponse.ok) {
@@ -157,6 +192,29 @@ export function TranscriptUpload({ lessonId, videoAssetId, onUploadComplete }: T
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Prompt Template */}
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Prompt Template</p>
+          <Select value={promptTemplateId} onValueChange={setPromptTemplateId} disabled={uploading}>
+            <SelectTrigger>
+              <SelectValue placeholder="Auto (course/default)" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="auto">Auto (course/default)</SelectItem>
+              {(promptTemplates || [])
+                .filter(t => t.isActive)
+                .map(t => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Auto uses the Course prompt assignment first, then falls back to the global default.
+          </p>
+        </div>
+
         {/* File Input */}
         <div>
           <input
@@ -220,7 +278,7 @@ export function TranscriptUpload({ lessonId, videoAssetId, onUploadComplete }: T
             <p className="text-sm text-muted-foreground text-center">
               {uploadProgress < 30 && 'Preparing upload...'}
               {uploadProgress >= 30 && uploadProgress < 70 && 'Uploading to S3...'}
-              {uploadProgress >= 70 && 'Starting processing...'}
+              {uploadProgress >= 70 && 'Starting knowledge context processing...'}
             </p>
           </div>
         )}
@@ -238,7 +296,7 @@ export function TranscriptUpload({ lessonId, videoAssetId, onUploadComplete }: T
           <Alert className="border-green-500 bg-green-50">
             <CheckCircle2 className="h-4 w-4 text-green-600" />
             <AlertDescription className="text-green-800">
-              Transcript uploaded successfully! Processing has started.
+              Transcript uploaded successfully! Knowledge context processing has started.
             </AlertDescription>
           </Alert>
         )}
