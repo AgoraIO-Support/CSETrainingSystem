@@ -7,6 +7,9 @@
         "build": "next build",
         "start": "next start",
         "test": "jest",
+        "e2e": "playwright test -c e2e/playwright.config.ts",
+        "e2e:ui": "playwright test -c e2e/playwright.config.ts --ui",
+        "e2e:install": "playwright install chromium",
         "e2e:exercise": "tsx scripts/e2e/exam-exercise-recording-upload.ts",
         "transcript:worker": "tsx scripts/transcript-worker.ts",
         "lint": "next lint",
@@ -48,8 +51,8 @@
         "@react-pdf/renderer": "^4.3.1",
         "@supabase/supabase-js": "^2.86.0",
         "@types/video.js": "^7.3.58",
-        "bcryptjs": "^2.4.3",
         "aws-cloudfront-sign": "^2.2.1",
+        "bcryptjs": "^2.4.3",
         "class-variance-authority": "^0.7.0",
         "clsx": "^2.1.0",
         "date-fns": "^3.0.6",
@@ -73,6 +76,7 @@
         "zod": "^3.25.76"
     },
     "devDependencies": {
+        "@playwright/test": "^1.57.0",
         "@testing-library/jest-dom": "^6.9.1",
         "@testing-library/react": "^16.3.1",
         "@testing-library/user-event": "^14.6.1",
