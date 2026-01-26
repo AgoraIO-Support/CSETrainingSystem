@@ -22,6 +22,21 @@ const extensionForContentType = (contentType: string): string => {
 }
 
 export class CourseStructureService {
+    /**
+     * Recalculate and persist total course duration (seconds) from all lessons under the course.
+     */
+    private static async recalcCourseDuration(courseId: string) {
+        const { _sum } = await prisma.lesson.aggregate({
+            where: { chapter: { courseId } },
+            _sum: { duration: true },
+        })
+
+        await prisma.course.update({
+            where: { id: courseId },
+            data: { duration: _sum.duration ?? 0 },
+        })
+    }
+
     static async assertChapterAncestry(courseId: string, chapterId: string) {
         const chapter = await prisma.chapter.findUnique({ where: { id: chapterId }, select: { id: true, courseId: true } })
         if (!chapter) throw new Error('CHAPTER_NOT_FOUND')
@@ -72,7 +87,16 @@ export class CourseStructureService {
     }
 
     static async deleteChapter(chapterId: string) {
-        return prisma.chapter.delete({ where: { id: chapterId } })
+        const chapter = await prisma.chapter.findUnique({
+            where: { id: chapterId },
+            select: { courseId: true },
+        })
+        if (!chapter) throw new Error('CHAPTER_NOT_FOUND')
+
+        const deleted = await prisma.chapter.delete({ where: { id: chapterId } })
+        await this.recalcCourseDuration(chapter.courseId)
+
+        return deleted
     }
 
     static async reorderChapters(courseId: string, chapterOrder: string[]) {
@@ -95,6 +119,12 @@ export class CourseStructureService {
         order?: number
         courseAssetIds?: string[]
     }) {
+        const chapter = await prisma.chapter.findUnique({
+            where: { id: chapterId },
+            select: { courseId: true },
+        })
+        if (!chapter) throw new Error('CHAPTER_NOT_FOUND')
+
         const maxOrder = await prisma.lesson.aggregate({
             where: { chapterId },
             _max: { order: true },
@@ -105,8 +135,6 @@ export class CourseStructureService {
         // Validate assets belong to course
         let courseId: string | null = null
         if (data.courseAssetIds && data.courseAssetIds.length > 0) {
-            const chapter = await prisma.chapter.findUnique({ where: { id: chapterId }, select: { courseId: true } })
-            if (!chapter) throw new Error('CHAPTER_NOT_FOUND')
             courseId = chapter.courseId
             const count = await prisma.courseAsset.count({
                 where: { id: { in: data.courseAssetIds }, courseId: chapter.courseId },
@@ -142,6 +170,8 @@ export class CourseStructureService {
 
             return created
         })
+
+        await this.recalcCourseDuration(chapter.courseId)
 
         return lesson
     }
@@ -207,11 +237,22 @@ export class CourseStructureService {
             },
         })
 
+        await this.recalcCourseDuration(lesson.chapter.courseId)
+
         return lessonWithAssets ?? updated
     }
 
     static async deleteLesson(lessonId: string) {
-        return prisma.lesson.delete({ where: { id: lessonId } })
+        const lesson = await prisma.lesson.findUnique({
+            where: { id: lessonId },
+            include: { chapter: { select: { courseId: true } } },
+        })
+        if (!lesson) throw new Error('LESSON_NOT_FOUND')
+
+        const deleted = await prisma.lesson.delete({ where: { id: lessonId } })
+        await this.recalcCourseDuration(lesson.chapter.courseId)
+
+        return deleted
     }
 
     static async reorderLessons(chapterId: string, lessonOrder: string[]) {

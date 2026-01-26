@@ -177,9 +177,12 @@ export interface CourseAsset {
     createdAt?: string | Date
 }
 
+export type CourseStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
+
 export interface Course {
     id: string
     title: string
+    slug?: string
     description: string
     instructor: Instructor
     thumbnail?: string
@@ -195,6 +198,7 @@ export interface Course {
     chapters?: Chapter[]
     assets?: CourseAsset[]
     aiAssistantEnabled?: boolean
+    status?: CourseStatus
 }
 
 // Curriculum (new)

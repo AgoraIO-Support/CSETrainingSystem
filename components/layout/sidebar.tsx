@@ -72,7 +72,9 @@ export function Sidebar({ user }: SidebarProps) {
                         <div className="mt-2 space-y-1">
                             {navItems.map((item) => {
                                 const Icon = item.icon
-                                const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+                                const isActive =
+                                    pathname === item.href ||
+                                    (pathname.startsWith(item.href + '/') && item.href !== '/')
                                 return (
                                     <Link
                                         key={item.href}
@@ -100,7 +102,9 @@ export function Sidebar({ user }: SidebarProps) {
                             <div className="mt-2 space-y-1">
                                 {adminNavItems.map((item) => {
                                     const Icon = item.icon
-                                    const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+                                    const isActive =
+                                        pathname === item.href ||
+                                        (pathname.startsWith(item.href + '/') && item.href !== '/admin')
                                     return (
                                         <Link
                                             key={item.href}

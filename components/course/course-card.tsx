@@ -112,7 +112,7 @@ export function CourseCard({ course, progress, showProgress = false, actions }: 
 
                     {/* Action Button */}
                     <div className="space-y-2">
-                        <Link href={`/courses/${course.id}`} className="block">
+                        <Link href={`/courses/${course.slug || course.id}`} className="block">
                             <Button className="w-full" variant={showProgress ? "default" : "outline"}>
                                 {showProgress ? 'Continue Learning' : 'View Course'}
                             </Button>

@@ -3,6 +3,17 @@ import { deletePrefix, deleteKeys } from '../lib/s3-utils.js'
 import { appConfig } from '../config/env.js'
 
 export class CascadeService {
+  private async recalcCourseDuration(courseId: string) {
+    const { _sum } = await prisma.lesson.aggregate({
+      where: { chapter: { courseId } },
+      _sum: { duration: true },
+    })
+    await prisma.course.update({
+      where: { id: courseId },
+      data: { duration: _sum.duration ?? 0 },
+    })
+  }
+
   /**
    * 删除单个 Lesson 及其资产（DB 内），提交后清理该 lesson 前缀
    */
@@ -55,6 +66,8 @@ export class CascadeService {
       // 删除 lesson 本身
       await tx.lesson.delete({ where: { id: lessonId } })
     })
+
+    await this.recalcCourseDuration(courseId)
 
     // 事务提交后：先精准删除，再兜底前缀清理
     // 注意：DB 已提交，S3 清理如果失败需要明确报错（避免 UI 误以为已删除）。
@@ -139,6 +152,8 @@ export class CascadeService {
       // 删除 chapter
       await tx.chapter.delete({ where: { id: chapterId } })
     })
+
+    await this.recalcCourseDuration(chapter.courseId)
 
     const cleanupErrors: string[] = []
     try {

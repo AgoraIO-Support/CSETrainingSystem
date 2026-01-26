@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useEffect, useState } from 'react'
+import { use, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,10 +12,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Progress } from '@/components/ui/progress'
 import { ApiClient } from '@/lib/api-client'
 import type { Course, CourseLevel } from '@/types'
 import Link from 'next/link'
-import { Loader2, Video, FileText, AlertTriangle } from 'lucide-react'
+import { Loader2, Video, FileText, AlertTriangle, Check, Info } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { CourseAIConfig } from '@/components/admin/course-ai-config'
 import { CourseAIAssistantTemplate } from '@/components/admin/course-ai-assistant-template'
 import { TranscriptUpload } from '@/components/admin/transcript-upload'
@@ -74,6 +76,36 @@ type AdminCourse = Course & {
     chapters?: AdminChapter[]
 }
 
+const steps = [
+    {
+        id: 1,
+        title: 'Course information',
+        description: 'Basics, learning outcomes, publish rules',
+    },
+    {
+        id: 2,
+        title: 'Media & ownership',
+        description: 'Thumbnail, category, level, tags',
+    },
+    {
+        id: 3,
+        title: 'Design the course & AI',
+        description: 'Structure, assets, AI settings',
+    },
+]
+
+const InfoHint = ({ text }: { text: string }) => (
+    <span className="group relative inline-flex items-center">
+        <Info className="h-4 w-4 text-muted-foreground" aria-hidden />
+        <span
+            role="tooltip"
+            className="pointer-events-none absolute z-10 -top-1 left-1/2 -translate-x-1/2 -translate-y-full whitespace-pre rounded-md bg-popover px-2 py-1 text-xs text-foreground opacity-0 shadow-md ring-1 ring-border transition duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+        >
+            {text}
+        </span>
+    </span>
+)
+
 export default function EditCoursePage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params)
     const router = useRouter()
@@ -98,8 +130,15 @@ const getAuthHeaders = (): Record<string, string> => {
         learningOutcomes: '',
         requirements: '',
         completionExamId: '',
-        autoCertificate: false,
-    })
+    autoCertificate: false,
+})
+const [activeStep, setActiveStep] = useState(1)
+const [formDirty, setFormDirty] = useState(false)
+    const titleRef = useRef<HTMLInputElement | null>(null)
+    const slugRef = useRef<HTMLInputElement | null>(null)
+    const descriptionRef = useRef<HTMLTextAreaElement | null>(null)
+    const categoryRef = useRef<HTMLInputElement | null>(null)
+    const levelRef = useRef<HTMLButtonElement | null>(null)
     const [loading, setLoading] = useState(true)
     const [submitting, setSubmitting] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -161,6 +200,7 @@ const getAuthHeaders = (): Record<string, string> => {
                     completionExamId: '',
                     autoCertificate: false,
                 })
+                setFormDirty(false)
 
                 setInstructors(instructorsRes.data.map(instr => ({ id: instr.id, name: instr.name })))
             } catch (err) {
@@ -179,6 +219,137 @@ const getAuthHeaders = (): Record<string, string> => {
 
     const handleChange = (field: string, value: any) => {
         setForm(prev => ({ ...prev, [field]: value as any }))
+        setFormDirty(true)
+    }
+
+    const validateForm = (scope: number | 'all' = activeStep) => {
+        const checks: Array<{
+            keys: Array<keyof typeof form>
+            message: string
+            ref?: React.RefObject<HTMLElement>
+            step: number
+        }> = [
+            { keys: ['title'], message: 'Title is required', ref: titleRef, step: 1 },
+            { keys: ['slug'], message: 'Slug is required', ref: slugRef, step: 1 },
+            { keys: ['description'], message: 'Description is required', ref: descriptionRef, step: 1 },
+            { keys: ['category'], message: 'Category is required', ref: categoryRef, step: 2 },
+            { keys: ['level'], message: 'Level is required', ref: levelRef, step: 2 },
+        ]
+
+        const stepsToCheck = scope === 'all' ? [1, 2] : [scope]
+
+        for (const step of stepsToCheck) {
+            for (const check of checks.filter(c => c.step === step)) {
+                const isEmpty = check.keys.some(key => {
+                    const value = (form as any)[key]
+                    return !value || (typeof value === 'string' && value.trim().length === 0)
+                })
+                if (isEmpty) {
+                    setError(check.message)
+                    check.ref?.current?.focus()
+                    setActiveStep(check.step)
+                    return false
+                }
+            }
+        }
+        return true
+    }
+
+    const ensurePublishable = async () => {
+        const validate = () => {
+            const chapters = course?.chapters ?? []
+            const lessonCount =
+                course?.chapters?.reduce((sum, chapter) => sum + chapter.lessons.length, 0) ?? 0
+            return chapters.length > 0 && lessonCount > 0
+        }
+
+        if (validate()) return true
+
+        // Attempt to refresh latest structure before blocking publish
+        await reloadCourse()
+        if (validate()) return true
+
+        setError('Add at least one chapter and one lesson before publishing.')
+        setActiveStep(3)
+        return false
+    }
+
+    const buildCoursePayload = () => ({
+        title: form.title,
+        slug: form.slug,
+        description: form.description,
+        thumbnail: form.thumbnail || undefined,
+        level: form.level as CourseLevel,
+        category: form.category,
+        tags: form.tags.split(',').map(tag => tag.trim()).filter(Boolean),
+        status: form.status as 'DRAFT' | 'PUBLISHED' | 'ARCHIVED',
+        learningOutcomes: form.learningOutcomes
+            .split('\n')
+            .map(item => item.trim())
+            .filter(Boolean),
+        requirements: form.requirements
+            .split('\n')
+            .map(item => item.trim())
+            .filter(Boolean),
+        instructorId: form.instructorId,
+    })
+
+    const saveCourseInfo = async (options?: { silent?: boolean; redirect?: boolean; validateStep?: number | 'all' }) => {
+        const { silent, redirect, validateStep } = options || {}
+        if (submitting) return false
+        if (!validateForm(validateStep ?? activeStep)) return false
+
+        const payload = buildCoursePayload()
+        if (payload.status === 'PUBLISHED' && !(await ensurePublishable())) {
+            return false
+        }
+        setSubmitting(true)
+        if (!silent) {
+            setError(null)
+            setSuccess(null)
+        }
+
+        try {
+            await ApiClient.updateCourse(id, payload)
+            setCourse(prev =>
+                prev
+                    ? {
+                        ...prev,
+                        ...payload,
+                        tags: payload.tags,
+                        learningOutcomes: payload.learningOutcomes,
+                        requirements: payload.requirements,
+                        level: payload.level,
+                        category: payload.category,
+                        description: payload.description,
+                        title: payload.title,
+                        slug: payload.slug,
+                        thumbnail: payload.thumbnail ?? '',
+                        status: payload.status ?? prev.status,
+                    }
+                    : prev
+            )
+            if (!silent) {
+                setSuccess('Course updated successfully')
+            }
+            setFormDirty(false)
+            if (redirect) {
+                setTimeout(() => router.push('/admin/courses'), 300)
+            }
+            return true
+        } catch (err) {
+            if (err instanceof Error) {
+                setError(err.message)
+            } else if (typeof err === 'object' && err !== null && 'error' in err) {
+                const apiError = err as { error?: { message?: string } }
+                setError(apiError.error?.message || 'Failed to update course')
+            } else {
+                setError('Failed to update course')
+            }
+            return false
+        } finally {
+            setSubmitting(false)
+        }
     }
 
     const hydrateLessonForm = (lesson: any, chapterId: string) => {
@@ -200,46 +371,19 @@ const getAuthHeaders = (): Record<string, string> => {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
-        setSubmitting(true)
-        setError(null)
-        setSuccess(null)
+        await saveCourseInfo({ redirect: false })
+    }
 
-        try {
-            const payload = {
-                title: form.title,
-                slug: form.slug,
-                description: form.description,
-                thumbnail: form.thumbnail || undefined,
-                level: form.level as CourseLevel,
-                category: form.category,
-                tags: form.tags.split(',').map(tag => tag.trim()).filter(Boolean),
-                status: form.status as 'DRAFT' | 'PUBLISHED' | 'ARCHIVED',
-                learningOutcomes: form.learningOutcomes
-                    .split('\n')
-                    .map(item => item.trim())
-                    .filter(Boolean),
-                requirements: form.requirements
-                    .split('\n')
-                    .map(item => item.trim())
-                    .filter(Boolean),
-                instructorId: form.instructorId,
-            }
+    const goToStep = async (targetStep: number) => {
+        if (targetStep === activeStep) return
+        if (targetStep > 1 && !course) return
 
-            await ApiClient.updateCourse(id, payload)
-            setSuccess('Course updated successfully')
-            setTimeout(() => router.push('/admin/courses'), 1200)
-        } catch (err) {
-            if (err instanceof Error) {
-                setError(err.message)
-            } else if (typeof err === 'object' && err !== null && 'error' in err) {
-                const apiError = err as { error?: { message?: string } }
-                setError(apiError.error?.message || 'Failed to update course')
-            } else {
-                setError('Failed to update course')
-            }
-        } finally {
-            setSubmitting(false)
+        if (formDirty) {
+            const saved = await saveCourseInfo({ silent: true, validateStep: activeStep })
+            if (!saved) return
         }
+
+        setActiveStep(targetStep)
     }
 
     const assetTypes = [
@@ -867,29 +1011,78 @@ const handleDeleteLessonAsset = async (assetId: string) => {
     return (
         <DashboardLayout>
             <div className="space-y-8 pb-12">
-                <div className="flex flex-col gap-4 border-b pb-6 lg:flex-row lg:items-end lg:justify-between">
-                    <div className="space-y-1">
-                        <p className="text-sm text-muted-foreground">Course #{course?.id ?? id}</p>
-                        <h1 className="text-3xl font-semibold tracking-tight">Edit Course</h1>
-                        <p className="text-sm text-muted-foreground">
-                            Update catalog details, media, and supporting materials for learners.
-                        </p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                        <Button asChild variant="ghost" size="sm">
-                            <Link href="/admin/courses">Back to courses</Link>
-                        </Button>
-                        {course?.slug && (
-                            <Button asChild variant="outline" size="sm">
-                                <Link href={`/courses/${course.slug}`} target="_blank">
-                                    Preview course
-                                </Link>
+                <div className="space-y-2">
+                    <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between pb-3">
+                        <div className="space-y-1">
+                            <p className="text-sm text-muted-foreground">Course #{course?.id ?? id}</p>
+                            <div className="flex flex-wrap items-center gap-3">
+                                <h1 className="text-3xl font-semibold tracking-tight">Edit Course</h1>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                                Update catalog details, media, and supporting materials for learners.
+                            </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2 lg:justify-end">
+                            <Button asChild variant="ghost" size="sm">
+                                <Link href="/admin/courses">Back to courses</Link>
                             </Button>
-                        )}
+                            {course?.slug && (
+                                <Button asChild variant="outline" size="sm">
+                                    <Link href={`/courses/${course.slug}`} target="_blank">
+                                        Preview course
+                                    </Link>
+                                </Button>
+                            )}
+                        </div>
                     </div>
+                    <div
+                        className="flex w-full flex-wrap items-center gap-3 rounded-lg border border-primary/20 border-b border-solid bg-primary/5 px-3 py-2"
+                        style={{ marginTop: 8, marginBottom: 8 }}
+                    >
+                        <div className="flex items-center gap-2">
+                            <p className="text-sm uppercase tracking-wider text-primary font-semibold">Course status</p>
+                            <p className="text-xs text-muted-foreground">Control visibility</p>
+                        </div>
+                        <div className="flex flex-1 items-center justify-between gap-3">
+                            <Select
+                                value={form.status}
+                                onValueChange={(value) => handleChange('status', value)}
+                            >
+                                <SelectTrigger className="w-32">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="DRAFT">Draft</SelectItem>
+                                    <SelectItem value="PUBLISHED">Published</SelectItem>
+                                    <SelectItem value="ARCHIVED">Archived</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <Button
+                                disabled={submitting}
+                                onClick={async () => {
+                                    const prev = course?.status || form.status
+                                    const payloadStatus = form.status
+                                    const saved = await saveCourseInfo({ silent: false, validateStep: 'all' })
+                                    if (saved) {
+                                        if (payloadStatus === 'PUBLISHED') {
+                                            window.alert('Course published')
+                                        } else if (payloadStatus === 'DRAFT') {
+                                            window.alert('Course set to Draft')
+                                        } else if (payloadStatus === 'ARCHIVED') {
+                                            window.alert('Course archived')
+                                        }
+                                    } else {
+                                        handleChange('status', prev)
+                                    }
+                                }}
+                            >
+                                {submitting ? 'Saving…' : 'Apply status'}
+                            </Button>
+                        </div>
+                    </div>
+                    <div className="h-px w-full bg-border" />
                 </div>
-
-                {(error || success) && (
+                {(error) && (
                     <div className="space-y-3">
                         {error && (
                             <Alert variant="destructive">
@@ -897,15 +1090,67 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                                 <AlertDescription>{error}</AlertDescription>
                             </Alert>
                         )}
-                        {success && (
-                            <Alert>
-                                <AlertTitle>Updates applied</AlertTitle>
-                                <AlertDescription>{success}</AlertDescription>
-                            </Alert>
-                        )}
                     </div>
                 )}
 
+                <Card className="mt-4 border-primary/20 bg-primary/5">
+                    <CardContent className="space-y-5 pt-3">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <p className="text-sm uppercase tracking-wider text-primary font-semibold">Course setup</p>
+                            </div>
+                            <span className="inline-flex items-center gap-2 rounded-full bg-primary text-primary-foreground px-3 py-1 text-xs font-semibold shadow-sm">
+                                <span className="h-2 w-2 rounded-full bg-primary-foreground/90" />
+                                Step {activeStep} of {steps.length}
+                            </span>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-3">
+                            {steps.map(step => {
+                                const isCurrent = activeStep === step.id
+                                const isDone = activeStep > step.id
+                                return (
+                                    <button
+                                        key={step.id}
+                                        onClick={() => goToStep(step.id)}
+                                        disabled={submitting || (step.id > 1 && !course)}
+                                        className={cn(
+                                            'flex items-center gap-3 rounded-lg border px-3 py-3 text-left transition hover:border-primary/50',
+                                            isCurrent
+                                                ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                                                : isDone
+                                                    ? 'border-primary/50 bg-primary/10 text-primary'
+                                                    : 'border-border bg-card text-foreground hover:bg-accent'
+                                        )}
+                                    >
+                                        <div
+                                            className={cn(
+                                                'flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold',
+                                                isCurrent
+                                                    ? 'bg-primary-foreground/20 text-primary-foreground'
+                                                    : isDone
+                                                        ? 'bg-primary/20 text-primary'
+                                                        : 'bg-muted text-muted-foreground'
+                                            )}
+                                        >
+                                            {isDone ? <Check className="h-4 w-4" /> : step.id}
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className={cn('text-sm font-semibold', isCurrent ? 'text-primary-foreground' : undefined)}>
+                                                {step.title}
+                                            </p>
+                                            <p className={cn('text-xs text-muted-foreground', isCurrent ? 'text-primary-foreground/80' : undefined)}>
+                                                {step.description}
+                                            </p>
+                                        </div>
+                                    </button>
+                                )
+                            })}
+                        </div>
+                        <Progress value={(activeStep / steps.length) * 100} className="h-2" />
+                    </CardContent>
+                </Card>
+
+                {activeStep === 1 && (
                 <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
                     <Card className="h-full">
                         <CardHeader className="pb-4">
@@ -927,32 +1172,44 @@ const handleDeleteLessonAsset = async (assetId: string) => {
 
                                     <div className="grid gap-4 md:grid-cols-2">
                                         <div className="space-y-2">
-                                            <Label htmlFor="title">Title</Label>
+                                            <div className="flex items-center gap-2">
+                                                <Label htmlFor="title">Title</Label>
+                                                <InfoHint text="Course name shown to learners." />
+                                            </div>
                                             <Input
                                                 id="title"
                                                 value={form.title}
                                                 onChange={e => handleChange('title', e.target.value)}
                                                 required
+                                                ref={titleRef}
                                             />
                                         </div>
                                         <div className="space-y-2">
-                                            <Label htmlFor="slug">Slug</Label>
+                                            <div className="flex items-center gap-2">
+                                                <Label htmlFor="slug">Slug</Label>
+                                                <InfoHint text="Used in the course URL; lowercase, hyphenated is recommended." />
+                                            </div>
                                             <Input
                                                 id="slug"
                                                 value={form.slug}
                                                 onChange={e => handleChange('slug', e.target.value)}
                                                 required
+                                                ref={slugRef}
                                             />
                                         </div>
                                     </div>
                                     <div className="space-y-2">
-                                        <Label htmlFor="description">Description</Label>
+                                        <div className="flex items-center gap-2">
+                                            <Label htmlFor="description">Description</Label>
+                                            <InfoHint text="Short summary learners see on the course page." />
+                                        </div>
                                         <Textarea
                                             id="description"
                                             rows={4}
                                             value={form.description}
                                             onChange={e => handleChange('description', e.target.value)}
                                             required
+                                            ref={descriptionRef}
                                         />
                                     </div>
 
@@ -981,53 +1238,8 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                                 </section>
 
                                 <section className="space-y-4">
-                                    <div>
-                                        <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                                            Categorization
-                                        </p>
-                                        <h3 className="text-lg font-semibold">Media & ownership</h3>
-                                        <p className="text-sm text-muted-foreground">
-                                            Attach visuals, pick a category, and assign an instructor.
-                                        </p>
-                                    </div>
-                                    <div className="grid gap-4 md:grid-cols-2">
-                                        <div className="space-y-2">
-                                            <Label htmlFor="thumbnail">Thumbnail URL</Label>
-                                            <Input
-                                                id="thumbnail"
-                                                value={form.thumbnail}
-                                                onChange={e => handleChange('thumbnail', e.target.value)}
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="category">Category</Label>
-                                            <Input
-                                                id="category"
-                                                value={form.category}
-                                                onChange={e => handleChange('category', e.target.value)}
-                                                required
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="grid gap-4 md:grid-cols-2">
-                                        <div className="space-y-2">
-                                            <Label>Level</Label>
-                                            <Select value={form.level} onValueChange={value => handleChange('level', value)}>
-                                                <SelectTrigger>
-                                                    <SelectValue placeholder="Select level" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {levels.map(level => (
-                                                        <SelectItem key={level} value={level}>
-                                                            {level}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    </div>
                                     <div className="border rounded-lg p-4 space-y-3">
-                                        <p className="text-xs uppercase tracking-wider text-muted-foreground">Step 3</p>
+                                        <p className="text-xs uppercase tracking-wider text-muted-foreground">Publish</p>
                                         <p className="text-sm font-semibold">Publish settings</p>
                                         <p className="text-xs text-muted-foreground">
                                             Set completion conditions, certificate rules, and publish status.
@@ -1064,38 +1276,27 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                                                 onChange={e => handleChange('autoCertificate', e.target.checked)}
                                             />
                                         </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="status">Course status</Label>
-                                            <Select value={form.status} onValueChange={value => handleChange('status', value)}>
-                                                <SelectTrigger id="status">
-                                                    <SelectValue placeholder="Select status" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="DRAFT">Draft (hidden)</SelectItem>
-                                                    <SelectItem value="PUBLISHED">Published (visible)</SelectItem>
-                                                    <SelectItem value="ARCHIVED">Archived</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="tags">Tags</Label>
-                                        <Input
-                                            id="tags"
-                                            value={form.tags}
-                                            onChange={e => handleChange('tags', e.target.value)}
-                                        />
-                                        <p className="text-xs text-muted-foreground">
-                                            Comma-separated keywords that power search, e.g. security, fundamentals.
-                                        </p>
                                     </div>
                                 </section>
 
-                                <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:justify-end">
+                                <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:justify-end">
                                     <Button type="button" variant="outline" asChild>
                                         <Link href="/admin/courses">Cancel</Link>
                                     </Button>
-                                    <Button type="submit" disabled={submitting}>
+                                    <Button type="button" disabled={submitting} onClick={() => goToStep(2)}>
+                                        {submitting ? 'Saving…' : 'Go to Step 2'}
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="secondary"
+                                        disabled={submitting}
+                                        onClick={async () => {
+                                            await saveCourseInfo({ redirect: true, validateStep: 'all' })
+                                        }}
+                                    >
+                                        {submitting ? 'Saving…' : 'Save changes & Exit'}
+                                    </Button>
+                                    <Button type="submit" className="hidden" disabled={submitting}>
                                         {submitting ? (
                                             <>
                                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1159,11 +1360,105 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                         {/* Instructor & workflow removed per new flow */}
                     </div>
                 </div>
+                )}
 
-                {course && (
+                {activeStep === 2 && (
                     <Card>
                         <CardHeader>
-                            <CardTitle>Step 2: Design the course</CardTitle>
+                            <CardTitle>Step 2: Media & ownership</CardTitle>
+                            <p className="text-sm text-muted-foreground">
+                                Provide visuals and metadata so learners can find and trust the course.
+                            </p>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            <div className="grid gap-4 md:grid-cols-2">
+                                <div className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                        <Label htmlFor="thumbnail">Thumbnail URL</Label>
+                                        <InfoHint text="Optional image for course cards; use a 16:9 link." />
+                                    </div>
+                                    <Input
+                                        id="thumbnail"
+                                        value={form.thumbnail}
+                                        onChange={e => handleChange('thumbnail', e.target.value)}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                        <Label htmlFor="category">Category</Label>
+                                        <InfoHint text="Helps learners filter the catalog." />
+                                    </div>
+                                    <Input
+                                        id="category"
+                                        value={form.category}
+                                        onChange={e => handleChange('category', e.target.value)}
+                                        required
+                                        ref={categoryRef}
+                                    />
+                                </div>
+                            </div>
+                            <div className="grid gap-4 md:grid-cols-2">
+                                <div className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                        <Label>Level</Label>
+                                        <InfoHint text="Difficulty level visible to learners." />
+                                    </div>
+                                    <Select value={form.level} onValueChange={value => handleChange('level', value)}>
+                                        <SelectTrigger ref={levelRef}>
+                                            <SelectValue placeholder="Select level" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {levels.map(level => (
+                                                <SelectItem key={level} value={level}>
+                                                    {level}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <div className="flex items-center gap-2">
+                                    <Label htmlFor="tags">Tags</Label>
+                                    <InfoHint text="Comma-separated keywords for search." />
+                                </div>
+                                <Input
+                                    id="tags"
+                                    value={form.tags}
+                                    onChange={e => handleChange('tags', e.target.value)}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Comma-separated keywords that power search, e.g. security, fundamentals.
+                                </p>
+                            </div>
+
+                            <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:justify-end">
+                                <Button type="button" variant="outline" onClick={() => goToStep(1)} disabled={submitting}>
+                                    Back to Step 1
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    onClick={async () => {
+                                        const saved = await saveCourseInfo({ silent: false, validateStep: 2 })
+                                        if (saved) router.push('/admin/courses')
+                                    }}
+                                    disabled={submitting}
+                                >
+                                    {submitting ? 'Saving…' : 'Save changes & Exit'}
+                                </Button>
+                                <Button type="button" onClick={() => goToStep(3)} disabled={submitting}>
+                                    Go to Step 3
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {course && activeStep === 3 && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Step 3: Design the course</CardTitle>
                             <p className="text-sm text-muted-foreground">
                                 Build chapters and lessons, then attach lesson-specific materials.
                             </p>
@@ -1304,11 +1599,39 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                     </Card>
                 )}
 
-                {course && (
-                    <div className="space-y-6">
-                        <CourseAIConfig courseId={id} />
-                        <CourseAIAssistantTemplate courseId={id} />
-                    </div>
+                {course && activeStep === 3 && (
+                    <>
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>AI Learning Assistant Configuration</CardTitle>
+                                <p className="text-sm text-muted-foreground">
+                                    Fine-tune prompts, model selection, and context used by the course assistant.
+                                </p>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="space-y-6">
+                                    <CourseAIConfig courseId={id} />
+                                    <CourseAIAssistantTemplate courseId={id} />
+                                </div>
+                            </CardContent>
+                        </Card>
+                        <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:justify-end">
+                            <Button type="button" variant="outline" onClick={() => goToStep(2)} disabled={submitting}>
+                                Back to Step 2
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                onClick={async () => {
+                                    const saved = await saveCourseInfo({ silent: false, validateStep: 'all' })
+                                    if (saved) router.push('/admin/courses')
+                                }}
+                                disabled={submitting}
+                            >
+                                {submitting ? 'Saving…' : 'Save changes & Exit'}
+                            </Button>
+                        </div>
+                    </>
                 )}
 
                 <Dialog open={lessonModalOpen} onOpenChange={setLessonModalOpen}>

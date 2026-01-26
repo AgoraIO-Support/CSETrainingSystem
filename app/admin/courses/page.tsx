@@ -139,8 +139,13 @@ export default function AdminCoursesPage() {
                                                 className="w-20 h-14 object-cover rounded"
                                             />
                                             <div className="flex-1">
-                                                <h4 className="font-semibold">{course.title}</h4>
-                                                <div className="flex items-center space-x-4 mt-1 text-sm">
+                                                <div className="flex items-center gap-2">
+                                                    <Badge variant={course.status === 'PUBLISHED' ? 'default' : course.status === 'DRAFT' ? 'outline' : 'destructive'}>
+                                                        {course.status}
+                                                    </Badge>
+                                                    <h4 className="font-semibold">{course.title}</h4>
+                                                </div>
+                                                <div className="flex flex-wrap items-center gap-2 mt-1 text-sm">
                                                     <span className="text-muted-foreground">
                                                         {course.instructor?.name}
                                                     </span>
@@ -155,7 +160,7 @@ export default function AdminCoursesPage() {
                                             </div>
                                         </div>
                                         <div className="flex items-center space-x-2">
-                                            <Link href={`/courses/${course.id}`}>
+                                            <Link href={`/courses/${course.slug || course.id}`}>
                                                 <Button variant="ghost" size="icon">
                                                     <Eye className="h-4 w-4" />
                                                 </Button>

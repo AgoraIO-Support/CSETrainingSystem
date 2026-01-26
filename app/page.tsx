@@ -153,7 +153,7 @@ export default function HomePage() {
                                         </span>
                                         <span className="font-medium">⭐ {course.rating}</span>
                                     </div>
-                                    <Link href={`/courses/${course.id}`}>
+                                    <Link href={`/courses/${course.slug || course.id}`}>
                                         <Button variant="outline" className="w-full">
                                             View Course
                                         </Button>
