@@ -21,6 +21,26 @@ export class KnowledgeContextJobService {
         })
     }
 
+    /**
+     * Check if any active job exists (QUEUED, RUNNING, or RETRY_WAIT)
+     * Use this for duplicate prevention - prevents creating new jobs while one is pending
+     */
+    async getActiveJobForLesson(lessonId: string) {
+        return this.prisma.knowledgeContextJob.findFirst({
+            where: {
+                lessonId,
+                state: {
+                    in: [
+                        KnowledgeContextJobState.QUEUED,
+                        KnowledgeContextJobState.RUNNING,
+                        KnowledgeContextJobState.RETRY_WAIT,
+                    ],
+                },
+            },
+            orderBy: { createdAt: 'desc' },
+        })
+    }
+
     async cancelActiveJobs(lessonId: string) {
         await this.prisma.knowledgeContextJob.updateMany({
             where: {

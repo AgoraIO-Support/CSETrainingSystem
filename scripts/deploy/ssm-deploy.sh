@@ -8,7 +8,7 @@ DEPLOY_PATH="${DEPLOY_PATH:-/opt/cselearning/app}"
 SERVICE_USER="${SERVICE_USER:-ubuntu}"
 ENV_FILE="${ENV_FILE:-/home/ubuntu/cselearning.env}"
 WEB_SERVICE="${WEB_SERVICE:-container-cselearning-web.service}"
-BACKEND_SERVICE="${BACKEND_SERVICE:-container-cselearning-backend.service}"
+WORKER_SERVICE="${WORKER_SERVICE:-container-cselearning-worker.service}"
 DEPLOY_REF="${DEPLOY_REF:-}"
 SMOKE_URL="${SMOKE_URL:-}"
 
@@ -36,7 +36,7 @@ remote_script+="DEPLOY_PATH='${DEPLOY_PATH}'"$'\n'
 remote_script+="SERVICE_USER='${SERVICE_USER}'"$'\n'
 remote_script+="ENV_FILE='${ENV_FILE}'"$'\n'
 remote_script+="WEB_SERVICE='${WEB_SERVICE}'"$'\n'
-remote_script+="BACKEND_SERVICE='${BACKEND_SERVICE}'"$'\n'
+remote_script+="WORKER_SERVICE='${WORKER_SERVICE}'"$'\n'
 remote_script+="DEPLOY_REF='${DEPLOY_REF}'"$'\n'
 remote_script+="SMOKE_URL='${SMOKE_URL}'"$'\n'
 
@@ -58,17 +58,17 @@ git status --porcelain || true
 
 echo "==> Build images"
 podman build -t localhost/cselearning-web:latest -f Containerfile .
-podman build -t localhost/cselearning-backend:latest -f backend/Containerfile .
 podman build --target migrator -t localhost/cselearning-migrator:latest -f Containerfile .
+podman build --target worker -t localhost/cselearning-worker:latest -f Containerfile .
 
 echo "==> Run DB migrations"
 podman run --rm --env-file "${ENV_FILE}" localhost/cselearning-migrator:latest
 
 echo "==> Restart services (systemd --user)"
-runuser -l "${SERVICE_USER}" -c "systemctl --user restart ${WEB_SERVICE} ${BACKEND_SERVICE}"
+runuser -l "${SERVICE_USER}" -c "systemctl --user restart ${WEB_SERVICE} ${WORKER_SERVICE}"
 
 echo "==> Show service status"
-runuser -l "${SERVICE_USER}" -c "systemctl --user --no-pager --full status ${WEB_SERVICE} ${BACKEND_SERVICE} | sed -n '1,120p'"
+runuser -l "${SERVICE_USER}" -c "systemctl --user --no-pager --full status ${WEB_SERVICE} ${WORKER_SERVICE} | sed -n '1,120p'"
 
 if [[ -n "${SMOKE_URL}" ]]; then
   echo "==> Smoke check ${SMOKE_URL}"

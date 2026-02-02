@@ -258,27 +258,50 @@ export function KnowledgeContextStatusCard({ lessonId }: { lessonId: string }) {
                         </div>
 
                         {showLogs && (
-                            <div className="rounded-lg border p-3">
+                            <div className="rounded-lg border">
+                                <div className="flex items-center justify-between border-b bg-muted/50 px-3 py-2">
+                                    <span className="text-xs font-medium">Job Events</span>
+                                    <span className="text-xs text-muted-foreground">{logs?.length ?? 0} events</span>
+                                </div>
                                 {logsLoading ? (
-                                    <div className="flex items-center justify-center py-4">
+                                    <div className="flex items-center justify-center py-8">
                                         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                                     </div>
                                 ) : !logs?.length ? (
-                                    <p className="text-sm text-muted-foreground">No job events yet.</p>
+                                    <p className="px-3 py-4 text-sm text-muted-foreground">No job events yet.</p>
                                 ) : (
-                                    <div className="max-h-64 space-y-2 overflow-y-auto text-xs">
-                                        {logs.map(l => (
-                                            <div key={l.id} className="flex items-start gap-2">
-                                                <span className="w-14 shrink-0 rounded bg-muted px-1 py-0.5 text-center uppercase">
-                                                    {l.level}
-                                                </span>
-                                                <div className="min-w-0 flex-1">
-                                                    <div className="truncate">{l.message}</div>
-                                                    <div className="text-muted-foreground">{new Date(l.createdAt).toLocaleString()}</div>
+                                    <div className="max-h-80 overflow-y-auto">
+                                        {logs.map((l, idx) => (
+                                            <div
+                                                key={l.id}
+                                                className={`px-3 py-2 text-xs ${idx !== logs.length - 1 ? 'border-b' : ''} ${
+                                                    l.level === 'error' ? 'bg-destructive/5' : l.level === 'warn' ? 'bg-yellow-500/5' : ''
+                                                }`}
+                                            >
+                                                <div className="mb-1 flex items-center gap-2">
+                                                    <span
+                                                        className={`inline-flex h-5 w-12 items-center justify-center rounded text-[10px] font-medium uppercase ${
+                                                            l.level === 'error'
+                                                                ? 'bg-destructive/10 text-destructive'
+                                                                : l.level === 'warn'
+                                                                  ? 'bg-yellow-500/10 text-yellow-700'
+                                                                  : 'bg-muted text-muted-foreground'
+                                                        }`}
+                                                    >
+                                                        {l.level}
+                                                    </span>
+                                                    {l.stage && (
+                                                        <span className="rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] text-primary">
+                                                            {l.stage}
+                                                        </span>
+                                                    )}
+                                                    <span className="ml-auto text-[10px] text-muted-foreground">
+                                                        {new Date(l.createdAt).toLocaleTimeString()}
+                                                    </span>
                                                 </div>
-                                                {l.stage && (
-                                                    <span className="shrink-0 rounded bg-muted px-2 py-0.5 font-mono">{l.stage}</span>
-                                                )}
+                                                <div className="whitespace-pre-wrap break-words pl-14 text-foreground">
+                                                    {l.message}
+                                                </div>
                                             </div>
                                         ))}
                                     </div>

@@ -3,7 +3,7 @@ import { withAdminAuth } from '@/lib/auth-middleware'
 import { z } from 'zod'
 import { updateLessonSchema } from '@/lib/validations'
 import { CourseStructureService } from '@/lib/services/course-structure.service'
-import { getBackendInternalBaseUrl, getBackendInternalBearerToken } from '@/lib/backend-internal'
+import { CascadeDeleteService } from '@/lib/services/cascade-delete.service'
 
 // PATCH /admin/courses/:id/chapters/:chapterId/lessons/:lessonId
 export const PATCH = withAdminAuth(async (req, user, { params }: { params: Promise<{ id: string; chapterId: string; lessonId: string }> }) => {
@@ -55,32 +55,29 @@ export const DELETE = withAdminAuth(async (req, user, { params }: { params: Prom
   try {
     const { id: courseId, chapterId, lessonId } = await params
 
-    const backendBase = getBackendInternalBaseUrl()
-    if (!backendBase) {
+    // Validate hierarchy: lesson belongs to chapter and course
+    const isValid = await CascadeDeleteService.validateLessonHierarchy(courseId, chapterId, lessonId)
+    if (!isValid) {
       return NextResponse.json(
-        { success: false, error: { code: 'CONFIG_ERROR', message: 'BACKEND_INTERNAL_URL is not configured' } },
-        { status: 500 }
+        { success: false, error: { code: 'HIERARCHY_MISMATCH', message: 'Lesson does not belong to chapter/course' } },
+        { status: 409 }
       )
     }
 
-    const res = await fetch(`${backendBase}/api/admin/courses/${courseId}/chapters/${chapterId}/lessons/${lessonId}`, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: getBackendInternalBearerToken(user),
-      },
-    })
-
-    if (!res.ok) {
-      // backend 404 is idempotent success
-      if (res.status === 404) return NextResponse.json({ success: true })
-      const body = await res.json().catch(() => null)
-      return NextResponse.json(body ?? { success: false, error: { code: 'BACKEND_ERROR' } }, { status: res.status })
-    }
+    await CascadeDeleteService.deleteLessonCascade(lessonId)
 
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Delete lesson error:', error)
+
+    // S3 cleanup failure returns 502 to indicate partial failure
+    if (error instanceof Error && error.message.startsWith('S3_CLEANUP_FAILED')) {
+      return NextResponse.json(
+        { success: false, error: { code: 'S3_CLEANUP_FAILED', message: error.message } },
+        { status: 502 }
+      )
+    }
+
     return NextResponse.json(
       { success: false, error: { code: 'SYSTEM_001', message: 'Failed to delete lesson' } },
       { status: 500 }

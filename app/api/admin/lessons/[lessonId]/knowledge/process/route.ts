@@ -45,23 +45,27 @@ export const POST = withAdminAuth(async (
 
         const body = await request.json().catch(() => ({} as any))
         const force = Boolean(body?.force)
-        const promptTemplateId = typeof body?.promptTemplateId === 'string' ? body.promptTemplateId : null
+        // Support both old field name (promptTemplateId) and new field names (knowledgePromptTemplateId, anchorsPromptTemplateId)
+        const knowledgePromptTemplateId = typeof body?.knowledgePromptTemplateId === 'string' ? body.knowledgePromptTemplateId
+            : typeof body?.promptTemplateId === 'string' ? body.promptTemplateId : null
+        const anchorsPromptTemplateId = typeof body?.anchorsPromptTemplateId === 'string' ? body.anchorsPromptTemplateId : null
 
         const jobService = new KnowledgeContextJobService(prisma)
 
-        const runningJob = await jobService.getRunningJobForLesson(lessonId)
-        if (runningJob && !force) {
+        // Check for any active job (QUEUED, RUNNING, or RETRY_WAIT) to prevent duplicates
+        const activeJob = await jobService.getActiveJobForLesson(lessonId)
+        if (activeJob && !force) {
             return NextResponse.json(
                 {
                     success: false,
-                    error: 'Knowledge context generation is already running',
+                    error: `Knowledge context generation is already ${activeJob.state.toLowerCase().replace('_', ' ')}`,
                     data: {
                         lessonId,
-                        jobId: runningJob.id,
-                        state: runningJob.state,
-                        stage: runningJob.stage,
-                        progress: runningJob.progress,
-                        lastHeartbeatAt: runningJob.lastHeartbeatAt?.toISOString() ?? null,
+                        jobId: activeJob.id,
+                        state: activeJob.state,
+                        stage: activeJob.stage,
+                        progress: activeJob.progress,
+                        lastHeartbeatAt: activeJob.lastHeartbeatAt?.toISOString() ?? null,
                     },
                 },
                 { status: 409 }
@@ -77,7 +81,8 @@ export const POST = withAdminAuth(async (
             transcriptId: transcript.id,
             metrics: {
                 transcriptS3Key: transcript.s3Key,
-                promptTemplateId,
+                promptTemplateId: knowledgePromptTemplateId,
+                anchorsPromptTemplateId,
             },
         })
 
@@ -91,7 +96,8 @@ export const POST = withAdminAuth(async (
                 transcriptId: transcript.id,
                 transcriptS3Key: transcript.s3Key,
                 force,
-                promptTemplateId,
+                promptTemplateId: knowledgePromptTemplateId,
+                anchorsPromptTemplateId,
             },
         })
 

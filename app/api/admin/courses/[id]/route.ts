@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { withAdminAuth } from '@/lib/auth-middleware'
 import { CourseService } from '@/lib/services/course.service'
+import { CascadeDeleteService } from '@/lib/services/cascade-delete.service'
 import { updateCourseSchema } from '@/lib/validations'
 import { z } from 'zod'
-import { getBackendInternalBaseUrl, getBackendInternalBearerToken } from '@/lib/backend-internal'
 
 export const PUT = withAdminAuth(async (req, user, { params }: { params: Promise<{ id: string }> }) => {
     try {
@@ -64,38 +64,23 @@ export const DELETE = withAdminAuth(async (req, user, { params }: { params: Prom
     try {
         const { id } = await params
 
-        const backendBase = getBackendInternalBaseUrl()
-        if (!backendBase) {
-            return NextResponse.json(
-                { success: false, error: { code: 'CONFIG_ERROR', message: 'BACKEND_INTERNAL_URL is not configured' } },
-                { status: 500 }
-                )
-        }
-
-        const res = await fetch(`${backendBase}/api/admin/courses/${id}`, {
-            method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: getBackendInternalBearerToken(user),
-            },
-        })
-
-        if (!res.ok) {
-            // 后端 404 视为幂等成功
-            if (res.status === 404) {
-                return NextResponse.json({ success: true })
-            }
-            const body = await res.json().catch(() => null)
-            return NextResponse.json(body ?? { success: false, error: { code: 'BACKEND_ERROR' } }, { status: res.status })
-        }
+        await CascadeDeleteService.deleteCourseCascade(id)
 
         return NextResponse.json({ success: true })
     } catch (error) {
-        console.error('Course delete proxy error:', error)
-        // 后端不可达不得返回假成功
+        console.error('Course delete error:', error)
+
+        // S3 cleanup failure returns 502 to indicate partial failure
+        if (error instanceof Error && error.message.startsWith('S3_CLEANUP_FAILED')) {
+            return NextResponse.json(
+                { success: false, error: { code: 'S3_CLEANUP_FAILED', message: error.message } },
+                { status: 502 }
+            )
+        }
+
         return NextResponse.json(
-            { success: false, error: { code: 'BACKEND_UNREACHABLE', message: 'Backend unreachable while deleting course' } },
-            { status: 502 }
+            { success: false, error: { code: 'SYSTEM_001', message: 'Failed to delete course' } },
+            { status: 500 }
         )
     }
 })

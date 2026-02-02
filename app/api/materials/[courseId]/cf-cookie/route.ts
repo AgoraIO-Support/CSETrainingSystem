@@ -1,35 +1,68 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { withAuth } from '@/lib/auth-middleware'
-import { getBackendInternalBaseUrl, getBackendInternalBearerToken } from '@/lib/backend-internal'
+import { withAuth, AuthUser } from '@/lib/auth-middleware'
+import { CloudFrontCookieService } from '@/lib/services/cloudfront-cookie.service'
 
 // GET /api/materials/:courseId/cf-cookie
-// Proxies the backend signed-cookie endpoint so the browser never talks to the backend directly.
-export const GET = withAuth(async (req: NextRequest, _user, { params }: { params: Promise<{ courseId: string }> }) => {
+// Generates CloudFront signed cookies for enrolled users to access course materials.
+export const GET = withAuth(async (req: NextRequest, user: AuthUser, { params }: { params: Promise<{ courseId: string }> }) => {
     const { courseId } = await params
 
-    const backendBase = getBackendInternalBaseUrl()
-    if (!backendBase) {
+    // Check if CloudFront is configured
+    if (!CloudFrontCookieService.isConfigured()) {
         return NextResponse.json(
-            { success: false, error: { code: 'CONFIG_ERROR', message: 'BACKEND_INTERNAL_URL is not configured' } },
-            { status: 500 }
+            { success: false, error: { code: 'CLOUDFRONT_NOT_CONFIGURED', message: 'CloudFront signed cookies are not configured' } },
+            { status: 501 }
         )
     }
 
-    const res = await fetch(`${backendBase}/api/materials/${courseId}/cf-cookie`, {
-        method: 'GET',
-        headers: { Authorization: getBackendInternalBearerToken(_user) },
-        // Backend returns 204 with Set-Cookie headers.
-        redirect: 'manual',
-    })
-
-    const nextRes = new NextResponse(null, { status: res.status })
-
-    // Node/undici supports `getSetCookie()` for retrieving multiple Set-Cookie headers.
-    const getSetCookie = (res.headers as any).getSetCookie as undefined | (() => string[])
-    const setCookies = getSetCookie ? getSetCookie.call(res.headers) : []
-    for (const cookie of setCookies) {
-        nextRes.headers.append('set-cookie', cookie)
+    // Check if user is enrolled in the course
+    const isEnrolled = await CloudFrontCookieService.isUserEnrolled(user.id, courseId)
+    if (!isEnrolled) {
+        return NextResponse.json(
+            { success: false, error: { code: 'NOT_ENROLLED', message: 'User is not enrolled in this course' } },
+            { status: 403 }
+        )
     }
 
-    return nextRes
+    try {
+        // Generate signed cookies
+        const cookies = CloudFrontCookieService.generateSignedCookies(courseId)
+        const cookieOptions = CloudFrontCookieService.getCookieOptions()
+
+        // Build cookie string with options
+        const buildCookieString = (name: string, value: string) => {
+            const parts = [
+                `${name}=${value}`,
+                `Path=${cookieOptions.path}`,
+                `Max-Age=${cookieOptions.maxAge}`,
+                cookieOptions.httpOnly ? 'HttpOnly' : '',
+                cookieOptions.secure ? 'Secure' : '',
+                `SameSite=${cookieOptions.sameSite.charAt(0).toUpperCase() + cookieOptions.sameSite.slice(1)}`,
+                cookieOptions.domain ? `Domain=${cookieOptions.domain}` : '',
+            ].filter(Boolean)
+            return parts.join('; ')
+        }
+
+        // Return 204 No Content with cookies set
+        const nextRes = new NextResponse(null, { status: 204 })
+        nextRes.headers.append('set-cookie', buildCookieString('CloudFront-Policy', cookies['CloudFront-Policy']))
+        nextRes.headers.append('set-cookie', buildCookieString('CloudFront-Signature', cookies['CloudFront-Signature']))
+        nextRes.headers.append('set-cookie', buildCookieString('CloudFront-Key-Pair-Id', cookies['CloudFront-Key-Pair-Id']))
+
+        return nextRes
+    } catch (error) {
+        console.error('CloudFront cookie generation error:', error)
+
+        if (error instanceof Error && error.message === 'CLOUDFRONT_COOKIE_GENERATION_FAILED') {
+            return NextResponse.json(
+                { success: false, error: { code: 'CLOUDFRONT_COOKIE_GENERATION_FAILED', message: 'Failed to generate signed cookies' } },
+                { status: 500 }
+            )
+        }
+
+        return NextResponse.json(
+            { success: false, error: { code: 'SYSTEM_001', message: 'Failed to generate CloudFront cookies' } },
+            { status: 500 }
+        )
+    }
 })

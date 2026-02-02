@@ -1,6 +1,6 @@
 type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
-type LogCategory = 'API' | 'DB' | 'S3' | 'OpenAI' | 'AIService' | 'KnowledgeContext'
+type LogCategory = 'API' | 'DB' | 'S3' | 'OpenAI' | 'AIService' | 'KnowledgeContext' | 'Worker' | 'TranscriptProcessing'
 
 const DEFAULT_ENABLED = process.env.NODE_ENV !== 'production'
 

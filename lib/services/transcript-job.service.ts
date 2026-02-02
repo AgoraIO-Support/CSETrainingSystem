@@ -21,6 +21,26 @@ export class TranscriptJobService {
         })
     }
 
+    /**
+     * Check if any active job exists (QUEUED, RUNNING, or RETRY_WAIT)
+     * Use this for duplicate prevention - prevents creating new jobs while one is pending
+     */
+    async getActiveJobForTranscript(transcriptId: string) {
+        return this.prisma.transcriptProcessingJob.findFirst({
+            where: {
+                transcriptId,
+                state: {
+                    in: [
+                        TranscriptJobState.QUEUED,
+                        TranscriptJobState.RUNNING,
+                        TranscriptJobState.RETRY_WAIT,
+                    ],
+                },
+            },
+            orderBy: { createdAt: 'desc' },
+        })
+    }
+
     async cancelActiveJobs(transcriptId: string) {
         await this.prisma.transcriptProcessingJob.updateMany({
             where: {

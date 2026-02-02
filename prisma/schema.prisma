@@ -5,12 +5,6 @@ generator client {
   provider = "prisma-client-js"
 }
 
-generator backendClient {
-  provider      = "prisma-client-js"
-  output        = "../backend/node_modules/.prisma/client"
-  binaryTargets = ["native"]
-}
-
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")

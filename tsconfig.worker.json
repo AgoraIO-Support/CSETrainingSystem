@@ -1,0 +1,41 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2021"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "dist-worker",
+    "rootDir": ".",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "declaration": false,
+    "paths": {
+      "@/*": ["./*"]
+    },
+    "baseUrl": "."
+  },
+  "include": [
+    "scripts/transcript-worker.ts",
+    "lib/aws-s3.ts",
+    "lib/logger.ts",
+    "lib/prisma.ts",
+    "lib/services/knowledge-context.service.ts",
+    "lib/services/knowledge-context-job.service.ts",
+    "lib/services/transcript-processing.service.ts",
+    "lib/services/transcript-job.service.ts",
+    "lib/services/vtt-to-xml.service.ts",
+    "lib/services/vtt-parser.service.ts",
+    "lib/services/vtt.service.ts",
+    "lib/services/ai-prompt-resolver.service.ts",
+    "lib/services/openai-models.ts",
+    "lib/services/_legacy_chunking.service.ts",
+    "lib/services/_legacy_embedding.service.ts",
+    "lib/services/_legacy_vector-store.service.ts",
+    "types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

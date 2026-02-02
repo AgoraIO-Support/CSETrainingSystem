@@ -12,10 +12,6 @@ FROM base AS deps
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
 
-# Prisma schema includes a second generator that outputs into `backend/node_modules/...`.
-# Ensure the path exists so `npm ci` (and Prisma generate) does not fail.
-RUN mkdir -p backend/node_modules/.prisma/client
-
 # Make `npm ci` more resilient in Podman/VM networking environments (macOS Podman machine can be flaky).
 ENV NPM_CONFIG_FETCH_RETRIES=5 \
   NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=20000 \
@@ -47,6 +43,29 @@ FROM deps AS migrator
 COPY prisma ./prisma
 COPY tsconfig.json ./
 CMD ["npx", "prisma", "migrate", "deploy"]
+
+# Worker image for background job processing (transcript/knowledge context)
+FROM deps AS worker-build
+COPY lib ./lib
+COPY types ./types
+COPY scripts/transcript-worker.ts ./scripts/
+COPY scripts/build-worker.mjs ./scripts/
+RUN node scripts/build-worker.mjs
+
+# Prepare minimal node_modules for worker (only externalized dependencies)
+FROM deps AS worker-deps
+RUN rm -rf node_modules && npm ci --omit=dev --no-audit --no-fund
+# Ensure Prisma client is generated for production
+RUN npx prisma generate
+
+FROM base AS worker
+WORKDIR /app
+ENV NODE_ENV=production
+# Copy only production dependencies (much smaller than full node_modules)
+COPY --from=worker-deps /app/node_modules ./node_modules
+COPY --from=worker-build /app/dist-worker ./dist-worker
+COPY prisma ./prisma
+CMD ["node", "dist-worker/scripts/transcript-worker.js"]
 
 # Runtime image (standalone output)
 FROM base AS web

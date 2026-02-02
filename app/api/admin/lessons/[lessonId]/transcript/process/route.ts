@@ -55,19 +55,20 @@ export const POST = withAdminAuth(async (
 
     const jobService = new TranscriptJobService(prisma);
 
-    const runningJob = await jobService.getRunningJobForTranscript(transcript.id);
-    if (runningJob && !force) {
+    // Check for any active job (QUEUED, RUNNING, or RETRY_WAIT) to prevent duplicates
+    const activeJob = await jobService.getActiveJobForTranscript(transcript.id);
+    if (activeJob && !force) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Transcript processing is already running',
+          error: `Transcript processing is already ${activeJob.state.toLowerCase().replace('_', ' ')}`,
           data: {
             transcriptId: transcript.id,
-            jobId: runningJob.id,
-            state: runningJob.state,
-            stage: runningJob.stage,
-            progress: runningJob.progress,
-            lastHeartbeatAt: runningJob.lastHeartbeatAt?.toISOString() ?? null,
+            jobId: activeJob.id,
+            state: activeJob.state,
+            stage: activeJob.stage,
+            progress: activeJob.progress,
+            lastHeartbeatAt: activeJob.lastHeartbeatAt?.toISOString() ?? null,
           },
         },
         { status: 409 }

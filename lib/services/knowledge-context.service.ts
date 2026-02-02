@@ -120,7 +120,23 @@ export class KnowledgeContextService {
         sectionCount: result.metadata.sectionCount,
         anchorCount: result.metadata.anchorCount,
         processingTimeMs: result.metadata.processingTimeMs,
+        usedFallbackEnrichment: result.metadata.usedFallbackEnrichment,
+        fallbackReason: result.metadata.fallbackReason,
       });
+
+      // Warn if AI enrichment fallback was used
+      if (result.metadata.usedFallbackEnrichment) {
+        log('KnowledgeContext', 'warn', 'AI enrichment fallback was used', {
+          lessonId,
+          fallbackReason: result.metadata.fallbackReason,
+        });
+        // Notify via job stage callback if available
+        await options?.onJobStage?.({
+          stage: 'GENERATING_XML',
+          progress: 50,
+          currentStep: `Warning: ${result.metadata.fallbackReason || 'AI enrichment unavailable, using basic titles'}`,
+        });
+      }
 
       // Store XML to S3
       await options?.onJobStage?.({ stage: 'STORING_XML', progress: 60, currentStep: 'Storing XML to S3' });

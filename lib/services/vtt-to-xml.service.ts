@@ -75,6 +75,10 @@ export interface XMLGenerationResult {
     sectionCount: number;
     anchorCount: number;
     processingTimeMs: number;
+    /** True if AI enrichment was skipped or failed and fallback was used */
+    usedFallbackEnrichment: boolean;
+    /** Reason for fallback, if applicable */
+    fallbackReason?: string;
   };
 }
 
@@ -222,6 +226,8 @@ export class VTTToXMLService {
         sectionCount: sections.length,
         anchorCount: anchors.length,
         processingTimeMs: Date.now() - startTime,
+        usedFallbackEnrichment: this.enrichmentResult.usedFallback,
+        fallbackReason: this.enrichmentResult.fallbackReason,
       },
     };
   }
@@ -302,6 +308,12 @@ export class VTTToXMLService {
     return Math.ceil(text.length / 4);
   }
 
+  /** Internal result type for enrichment that tracks fallback usage */
+  private enrichmentResult: { usedFallback: boolean; fallbackReason?: string } = {
+    usedFallback: false,
+    fallbackReason: undefined,
+  };
+
   /**
    * Step 2: Use GPT-4o-mini to generate section titles and extract concepts
    */
@@ -309,8 +321,19 @@ export class VTTToXMLService {
     paragraphs: AggregatedParagraph[],
     context: CourseContext
   ): Promise<EnrichedSection[]> {
+    // Reset enrichment tracking
+    this.enrichmentResult = { usedFallback: false, fallbackReason: undefined };
+
     if (!this.openaiApiKey) {
       // Fallback: generate titles without AI
+      this.enrichmentResult = {
+        usedFallback: true,
+        fallbackReason: 'OPENAI_API_KEY not configured',
+      };
+      log('KnowledgeContext', 'warn', 'AI enrichment skipped: no API key', {
+        courseId: context.courseId,
+        lessonId: context.lessonId,
+      });
       return this.enrichWithoutAI(paragraphs);
     }
 
@@ -323,11 +346,24 @@ export class VTTToXMLService {
     // Batch paragraphs into groups of 10 for efficient API calls
     const batchSize = 10;
     const enrichedSections: EnrichedSection[] = [];
+    let batchFallbackCount = 0;
 
     for (let i = 0; i < paragraphs.length; i += batchSize) {
       const batch = paragraphs.slice(i, i + batchSize);
-      const batchResults = await this.enrichBatchWithAI(batch, context, i, promptConfig);
+      const { sections: batchResults, usedFallback } = await this.enrichBatchWithAI(batch, context, i, promptConfig);
       enrichedSections.push(...batchResults);
+      if (usedFallback) {
+        batchFallbackCount++;
+      }
+    }
+
+    // If any batch used fallback, mark overall result
+    if (batchFallbackCount > 0) {
+      const totalBatches = Math.ceil(paragraphs.length / batchSize);
+      this.enrichmentResult = {
+        usedFallback: true,
+        fallbackReason: `AI enrichment failed for ${batchFallbackCount}/${totalBatches} batches`,
+      };
     }
 
     return enrichedSections;
@@ -341,7 +377,7 @@ export class VTTToXMLService {
     context: CourseContext,
     startIndex: number,
     promptConfig: Awaited<ReturnType<typeof AIPromptResolverService.resolve>>
-  ): Promise<EnrichedSection[]> {
+  ): Promise<{ sections: EnrichedSection[]; usedFallback: boolean }> {
     const sections = paragraphs.map((p, i) => ({
       index: i,
       timestamp: VTTParserService.formatTimestamp(p.startTime, true),
@@ -421,7 +457,7 @@ export class VTTToXMLService {
         if (logOpenAiContent) {
           log('OpenAI', 'error', 'vtt-to-xml chat.completions error body', { status: response.status, body: errorText });
         }
-        return this.enrichWithoutAI(paragraphs);
+        return { sections: this.enrichWithoutAI(paragraphs), usedFallback: true };
       }
 
       const data = await response.json();
@@ -445,7 +481,7 @@ export class VTTToXMLService {
       // Parse JSON response
       const parsed = this.parseAIResponse(content);
 
-      return paragraphs.map((para, idx) => {
+      const sections = paragraphs.map((para, idx) => {
         const aiResult = parsed[idx] || {};
         const timestamp = VTTParserService.formatTimestamp(para.startTime, true);
         const endTimestamp = VTTParserService.formatTimestamp(para.endTime, true);
@@ -465,12 +501,13 @@ export class VTTToXMLService {
           anchorSummary: aiResult.summary,
         };
       });
+      return { sections, usedFallback: false };
     } catch (error) {
       log('OpenAI', 'error', 'vtt-to-xml chat.completions exception', {
         batchStartIndex: startIndex,
         error: error instanceof Error ? error.message : String(error),
       });
-      return this.enrichWithoutAI(paragraphs);
+      return { sections: this.enrichWithoutAI(paragraphs), usedFallback: true };
     }
   }
 
