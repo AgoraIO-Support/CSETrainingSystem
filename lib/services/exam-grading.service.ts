@@ -219,11 +219,7 @@ export class ExamGradingService {
     let isCorrect = false;
 
     switch (type) {
-      case ExamQuestionType.MULTIPLE_CHOICE:
-        // Canonical format: correctAnswer is the option index as a string ("0".."3").
-        // Backward compatibility:
-        // - letter format ("A".."D")
-        // - option text
+      case ExamQuestionType.SINGLE_CHOICE:
         if (options && selectedOption !== null) {
           const trimmed = correctAnswer.trim();
           let correctIndex = Number.parseInt(trimmed, 10);
@@ -236,6 +232,34 @@ export class ExamGradingService {
           }
           if (Number.isFinite(correctIndex) && correctIndex >= 0 && correctIndex < options.length) {
             isCorrect = selectedOption === correctIndex;
+          }
+        }
+        break;
+
+      case ExamQuestionType.MULTIPLE_CHOICE:
+        if (options) {
+          const trimmed = correctAnswer.trim();
+          const correctIndexes = trimmed
+            .split(',')
+            .map((t) => Number.parseInt(t, 10))
+            .filter((n) => Number.isFinite(n) && n >= 0 && n < options.length);
+
+          const userSelections =
+            answer && answer.includes(',')
+              ? answer
+                  .split(',')
+                  .map((t) => Number.parseInt(t, 10))
+                  .filter((n) => Number.isFinite(n) && n >= 0 && n < options.length)
+              : selectedOption !== null && selectedOption !== undefined
+                  ? [selectedOption]
+                  : [];
+
+          if (correctIndexes.length > 0 && userSelections.length > 0) {
+            const correctSet = new Set(correctIndexes);
+            const userSet = new Set(userSelections);
+            if (correctSet.size === userSet.size) {
+              isCorrect = [...correctSet].every((idx) => userSet.has(idx));
+            }
           }
         }
         break;

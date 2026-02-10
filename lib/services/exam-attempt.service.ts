@@ -254,7 +254,11 @@ export class ExamAttemptService {
       questions: questions.map(q => {
         let options = q.options as string[] | null;
         // Optionally randomize options for MC questions
-        if (exam.randomizeOptions && options && q.type === ExamQuestionType.MULTIPLE_CHOICE) {
+        if (
+          exam.randomizeOptions &&
+          options &&
+          (q.type === ExamQuestionType.MULTIPLE_CHOICE || q.type === ExamQuestionType.SINGLE_CHOICE)
+        ) {
           options = this.shuffleArray([...options]);
         }
 

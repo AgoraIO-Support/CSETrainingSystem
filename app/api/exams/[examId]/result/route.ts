@@ -147,8 +147,17 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
         };
 
         let userAnswer: string | null = answer.answer;
-        if (questionType === 'MULTIPLE_CHOICE') {
+        if (questionType === 'SINGLE_CHOICE') {
           userAnswer = formatMcOption(answer.selectedOption) ?? null;
+        } else if (questionType === 'MULTIPLE_CHOICE') {
+          const selected =
+            (answer.answer || '')
+              .split(',')
+              .map(v => Number.parseInt(v, 10))
+              .filter(n => Number.isFinite(n)) || [];
+          userAnswer = selected.length
+            ? selected.map(idx => formatMcOption(idx)).filter(Boolean).join(', ')
+            : formatMcOption(answer.selectedOption) ?? null;
         } else if (questionType === 'TRUE_FALSE') {
           userAnswer =
             answer.answer === 'true' ? 'True' : answer.answer === 'false' ? 'False' : null;
@@ -158,9 +167,14 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
 
         let correctAnswer: string | null = answer.question.correctAnswer;
         if (answer.question.correctAnswer) {
-          if (questionType === 'MULTIPLE_CHOICE') {
+          if (questionType === 'SINGLE_CHOICE') {
             const idx = Number.parseInt(answer.question.correctAnswer, 10);
             correctAnswer = Number.isFinite(idx) ? formatMcOption(idx) : answer.question.correctAnswer;
+          } else if (questionType === 'MULTIPLE_CHOICE') {
+            const idxList = answer.question.correctAnswer.split(',').map(v => Number.parseInt(v, 10)).filter(n => Number.isFinite(n));
+            correctAnswer = idxList.length
+              ? idxList.map(idx => formatMcOption(idx)).filter(Boolean).join(', ')
+              : answer.question.correctAnswer;
           } else if (questionType === 'TRUE_FALSE') {
             correctAnswer =
               answer.question.correctAnswer === 'true'

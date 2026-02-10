@@ -1164,6 +1164,7 @@ enum ExamType {
 }
 
 enum ExamQuestionType {
+  SINGLE_CHOICE
   MULTIPLE_CHOICE
   TRUE_FALSE
   FILL_IN_BLANK

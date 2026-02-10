@@ -53,6 +53,7 @@ interface AttemptData {
 type AnswerState = {
     answer?: string
     selectedOption?: number
+    selectedOptions?: number[]
     recordingS3Key?: string
     recordingStatus?: 'PENDING_UPLOAD' | 'UPLOADED' | 'FAILED'
 }
@@ -94,9 +95,13 @@ export default function TakeExamPage({ params }: PageProps) {
                 if (currentResponse.data.existingAnswers) {
                     const existingAnswers: Record<string, AnswerState> = {}
                     Object.entries(currentResponse.data.existingAnswers).forEach(([questionId, ans]) => {
+                        const parsedSelections = ans.answer
+                            ? ans.answer.split(',').map(a => Number.parseInt(a, 10)).filter(n => Number.isFinite(n))
+                            : []
                         existingAnswers[questionId] = {
                             answer: ans.answer || undefined,
                             selectedOption: ans.selectedOption ?? undefined,
+                            selectedOptions: parsedSelections && parsedSelections.length ? parsedSelections : undefined,
                             recordingS3Key: ans.recordingS3Key || undefined,
                             recordingStatus: ans.recordingStatus || undefined,
                         }
@@ -137,15 +142,19 @@ export default function TakeExamPage({ params }: PageProps) {
     }, [attemptData?.expiresAt])
 
     // Auto-save answer
-    const saveAnswer = useCallback(async (questionId: string, answer: { answer?: string; selectedOption?: number }) => {
+    const saveAnswer = useCallback(async (questionId: string, answer: AnswerState) => {
         if (!attemptData) return
 
         setSaving(true)
         try {
+            const payloadAnswer = Array.isArray(answer.selectedOptions)
+                ? answer.selectedOptions.join(',')
+                : answer.answer
             await ApiClient.saveExamAnswer(examId, {
                 attemptId: attemptData.attemptId,
                 questionId,
-                ...answer,
+                answer: payloadAnswer,
+                selectedOption: answer.selectedOption,
             })
         } catch (err) {
             console.error('Failed to save answer:', err)
@@ -155,11 +164,11 @@ export default function TakeExamPage({ params }: PageProps) {
     }, [attemptData, examId])
 
     // Handle answer change
-    const handleAnswerChange = (questionId: string, answer: { answer?: string; selectedOption?: number }) => {
-        setAnswers(prev => ({
-            ...prev,
-            [questionId]: answer,
-        }))
+    const handleAnswerChange = (questionId: string, answer: AnswerState) => {
+        setAnswers(prev => {
+            const next = { ...(prev[questionId] || {}), ...answer }
+            return { ...prev, [questionId]: next }
+        })
 
         // Debounce save
         const timeoutId = setTimeout(() => {
@@ -369,8 +378,8 @@ export default function TakeExamPage({ params }: PageProps) {
                         <CardContent className="space-y-6">
                             <div className="text-lg font-medium">{currentQuestion.question}</div>
 
-                            {/* Multiple Choice */}
-                            {currentQuestion.type === 'MULTIPLE_CHOICE' && currentQuestion.options && (
+                            {/* Single Choice */}
+                            {currentQuestion.type === 'SINGLE_CHOICE' && currentQuestion.options && (
                                 <div className="space-y-3">
                                     {currentQuestion.options.map((option, index) => (
                                         <div
@@ -390,6 +399,39 @@ export default function TakeExamPage({ params }: PageProps) {
                                             </div>
                                         </div>
                                     ))}
+                                </div>
+                            )}
+
+                            {/* Multiple Choice (multi-select) */}
+                            {currentQuestion.type === 'MULTIPLE_CHOICE' && currentQuestion.options && (
+                                <div className="space-y-3">
+                                    {currentQuestion.options.map((option, index) => {
+                                        const isSelected = currentAnswer?.selectedOptions?.includes(index) ?? false
+                                        return (
+                                            <div
+                                                key={index}
+                                                className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+                                                    isSelected ? 'bg-primary/10 border-primary' : 'hover:bg-accent'
+                                                }`}
+                                                onClick={() => {
+                                                    const existing = currentAnswer?.selectedOptions ?? []
+                                                    const next = isSelected
+                                                        ? existing.filter(i => i !== index)
+                                                        : [...existing, index]
+                                                    handleAnswerChange(currentQuestion.id, { selectedOptions: next })
+                                                }}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <span className="flex items-center justify-center w-8 h-8 rounded-full border font-medium">
+                                                        {String.fromCharCode(65 + index)}
+                                                    </span>
+                                                    <span>{option}</span>
+                                                    {isSelected && <CheckCircle className="h-4 w-4 text-primary ml-auto" />}
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                    <p className="text-xs text-muted-foreground">Select all options that apply.</p>
                                 </div>
                             )}
 

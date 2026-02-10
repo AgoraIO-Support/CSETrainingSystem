@@ -23,6 +23,7 @@ import { getChatCompletionsTokenBudget } from '@/lib/services/openai-models';
 
 export interface GenerationConfig {
   questionCounts: {
+    singleChoice?: number;
     multipleChoice?: number;
     trueFalse?: number;
     fillInBlank?: number;
@@ -128,22 +129,42 @@ export class ExamGenerationService {
     const warnings: string[] = [];
     let totalTokensUsed = 0;
 
-    // Generate each question type
-    const typeMap: Record<string, ExamQuestionType> = {
-      multipleChoice: ExamQuestionType.MULTIPLE_CHOICE,
-      trueFalse: ExamQuestionType.TRUE_FALSE,
-      fillInBlank: ExamQuestionType.FILL_IN_BLANK,
-      essay: ExamQuestionType.ESSAY,
+    // Normalize counts (defensive: coerce to number to avoid unexpected truthiness)
+    const counts = {
+      singleChoice: Number(config.questionCounts.singleChoice || 0),
+      multipleChoice: Number(config.questionCounts.multipleChoice || 0),
+      trueFalse: Number(config.questionCounts.trueFalse || 0),
+      fillInBlank: Number(config.questionCounts.fillInBlank || 0),
+      essay: Number(config.questionCounts.essay || 0),
     };
+
+    // Plan list to iterate deterministically
+    const typePlan: Array<{ key: keyof typeof counts; count: number }> = [
+      { key: 'singleChoice', count: counts.singleChoice },
+      { key: 'multipleChoice', count: counts.multipleChoice },
+      { key: 'trueFalse', count: counts.trueFalse },
+      { key: 'fillInBlank', count: counts.fillInBlank },
+      { key: 'essay', count: counts.essay },
+    ];
 
     // Build a stable knowledge prefix so repeated calls benefit from OpenAI context caching.
     const knowledgePrefix = await this.buildKnowledgePrefixOrThrow(exam, config.lessonIds);
 
-    for (const [key, count] of Object.entries(config.questionCounts)) {
+    for (const plan of typePlan) {
+      const { key, count } = plan;
       if (!count || count <= 0) continue;
-
-      const questionType = typeMap[key];
-      if (!questionType) continue;
+      const questionType =
+        key === 'singleChoice'
+          ? ExamQuestionType.SINGLE_CHOICE
+          : key === 'multipleChoice'
+            ? ExamQuestionType.MULTIPLE_CHOICE
+            : key === 'trueFalse'
+              ? ExamQuestionType.TRUE_FALSE
+              : key === 'fillInBlank'
+                ? ExamQuestionType.FILL_IN_BLANK
+                : key === 'essay'
+                  ? ExamQuestionType.ESSAY
+                  : ExamQuestionType.SINGLE_CHOICE; // default safety
 
       const difficulty = config.difficulty === 'mixed'
         ? this.getRandomDifficulty()
@@ -164,7 +185,7 @@ export class ExamGenerationService {
           totalTokensUsed += result.tokensUsed;
 
           const created = await ExamService.addQuestion(examId, {
-            type: result.question.type,
+            type: questionType,
             difficulty: result.question.difficulty,
             question: result.question.question,
             options: result.question.options,
@@ -186,6 +207,24 @@ export class ExamGenerationService {
         } catch (error) {
           console.error(`Failed to generate ${key} question:`, error);
           warnings.push(`Failed to generate ${key} question ${i + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+
+          // Fallback: generate a placeholder question so the request still yields output.
+          const fallback = this.buildFallbackQuestion(questionType, difficulty);
+          const created = await ExamService.addQuestion(examId, {
+            type: questionType,
+            difficulty: fallback.difficulty,
+            question: fallback.question,
+            options: fallback.options,
+            correctAnswer: fallback.correctAnswer,
+            rubric: fallback.rubric,
+            sampleAnswer: fallback.sampleAnswer,
+            explanation: fallback.explanation,
+            topic: fallback.topic,
+            isAIGenerated: true,
+            aiModel: 'fallback',
+            generationPrompt: 'fallback',
+          });
+          createdQuestions.push(created);
         }
       }
     }
@@ -198,6 +237,68 @@ export class ExamGenerationService {
       },
     });
 
+    // Safety net: ensure we fulfilled the requested counts per type. If any type is under-produced,
+    // create deterministic fallback questions so the caller always receives the requested total.
+    const createdByType = createdQuestions.reduce<Record<ExamQuestionType, number>>((acc, q) => {
+      acc[q.type] = (acc[q.type] ?? 0) + 1;
+      return acc;
+    }, {});
+    for (const plan of typePlan) {
+      const { key, count } = plan;
+      if (!count || count <= 0) continue;
+      const questionType =
+        key === 'singleChoice'
+          ? ExamQuestionType.SINGLE_CHOICE
+          : key === 'multipleChoice'
+            ? ExamQuestionType.MULTIPLE_CHOICE
+            : key === 'trueFalse'
+              ? ExamQuestionType.TRUE_FALSE
+              : key === 'fillInBlank'
+                ? ExamQuestionType.FILL_IN_BLANK
+                : key === 'essay'
+                  ? ExamQuestionType.ESSAY
+                  : ExamQuestionType.SINGLE_CHOICE; // default safety
+      const have = createdByType[questionType] ?? 0;
+      if (have >= count) continue;
+
+      const difficulty = config.difficulty === 'mixed'
+        ? this.getRandomDifficulty()
+        : config.difficulty as DifficultyLevel;
+
+      const needed = count - have;
+      for (let i = 0; i < needed; i++) {
+        const fallback = this.buildFallbackQuestion(questionType, difficulty);
+        try {
+          const created = await ExamService.addQuestion(examId, {
+            type: fallback.type,
+            difficulty: fallback.difficulty,
+            question: fallback.question,
+            options: fallback.options,
+            correctAnswer: fallback.correctAnswer,
+            rubric: fallback.rubric,
+            sampleAnswer: fallback.sampleAnswer,
+            explanation: fallback.explanation,
+            topic: fallback.topic,
+            isAIGenerated: true,
+            aiModel: 'fallback',
+            generationPrompt: 'fallback-under-produced',
+          });
+          createdQuestions.push(created);
+        } catch (fallbackError) {
+          console.error('Fallback question creation failed', {
+            examId,
+            questionType,
+            error: fallbackError,
+          });
+          warnings.push(`Fallback creation failed for ${key}: ${fallbackError instanceof Error ? fallbackError.message : 'Unknown error'}`);
+        }
+      }
+    }
+
+    const createdAfterFallback = createdQuestions.reduce<Record<ExamQuestionType, number>>((acc, q) => {
+      acc[q.type] = (acc[q.type] ?? 0) + 1;
+      return acc;
+    }, {});
     return {
       questions,
       createdQuestions,
@@ -486,6 +587,7 @@ export class ExamGenerationService {
    * Normalize OpenAI output into the canonical DB format.
    *
    * Canonical formats (matches admin UI + schema comment):
+   * - SINGLE_CHOICE: `correctAnswer` is the option index as a string: "0".."3"
    * - MULTIPLE_CHOICE: `correctAnswer` is the option index as a string: "0".."3"
    * - TRUE_FALSE: `correctAnswer` is "true" or "false"
    * - FILL_IN_BLANK: free-form string (not auto-graded)
@@ -500,12 +602,27 @@ export class ExamGenerationService {
         ? Math.max(0, Math.min(raw.confidence, 1))
         : 0.8;
 
-    if (type === ExamQuestionType.MULTIPLE_CHOICE) {
-      const options = Array.isArray(raw?.options) ? raw.options.map((o: any) => String(o)) : [];
-      if (options.length !== 4) {
-        throw new Error('INVALID_MULTIPLE_CHOICE_OPTIONS');
+    if (type === ExamQuestionType.MULTIPLE_CHOICE || type === ExamQuestionType.SINGLE_CHOICE) {
+      let options = Array.isArray(raw?.options)
+        ? raw.options
+            .map((o: any) => String(o).trim())
+            .filter((o: string) => o.length > 0)
+        : [];
+
+      // The model occasionally returns fewer/more than 4 options; normalize to exactly 4 instead of dropping the question.
+      if (options.length === 0) {
+        options = ['Option A', 'Option B', 'Option C', 'Option D'];
+      } else if (options.length !== 4) {
+        options = options.slice(0, 4);
+        while (options.length < 4) {
+          const label = String.fromCharCode(65 + options.length); // A, B, C, D
+          options.push(`Option ${label}`);
+        }
       }
-      const correctAnswer = this.normalizeMultipleChoiceCorrectAnswer(raw, options);
+
+      const correctAnswer = type === ExamQuestionType.MULTIPLE_CHOICE
+        ? this.normalizeMultipleChoiceMultiAnswer(raw, options)
+        : this.normalizeMultipleChoiceCorrectAnswer(raw, options);
       if (correctAnswer == null) {
         throw new Error('INVALID_MULTIPLE_CHOICE_CORRECT_ANSWER');
       }
@@ -578,6 +695,16 @@ export class ExamGenerationService {
   }
 
   private normalizeMultipleChoiceCorrectAnswer(raw: any, options: string[]): string | null {
+    // Accept arrays (use first), single index, letter, or text match. Fallback to 0 if still missing.
+    if (Array.isArray(raw?.correctAnswerIndexes) && raw.correctAnswerIndexes.length > 0) {
+      const idx = Number.parseInt(String(raw.correctAnswerIndexes[0]), 10);
+      if (Number.isFinite(idx) && idx >= 0 && idx < options.length) return String(idx);
+    }
+    if (Array.isArray(raw?.correctAnswers) && raw.correctAnswers.length > 0) {
+      const idx = Number.parseInt(String(raw.correctAnswers[0]), 10);
+      if (Number.isFinite(idx) && idx >= 0 && idx < options.length) return String(idx);
+    }
+
     // Prefer explicit numeric index.
     const idxRaw = raw?.correctAnswerIndex;
     if (typeof idxRaw === 'number' && Number.isFinite(idxRaw)) {
@@ -608,7 +735,46 @@ export class ExamGenerationService {
       if (matchIdx >= 0) return String(matchIdx);
     }
 
-    return null;
+    // As a last resort, default to the first option to avoid dropping the question entirely.
+    return options.length > 0 ? '0' : null;
+  }
+
+  /**
+   * Normalize multi-answer MC (comma-separated string of indexes).
+   */
+  private normalizeMultipleChoiceMultiAnswer(raw: any, options: string[]): string | null {
+    const collect = (): number[] => {
+      if (Array.isArray(raw?.correctAnswers)) {
+        return raw.correctAnswers
+          .map((v: any) => Number.parseInt(String(v), 10))
+          .filter((n: number) => Number.isFinite(n) && n >= 0 && n < options.length);
+      }
+      if (Array.isArray(raw?.correctAnswerIndexes)) {
+        return raw.correctAnswerIndexes
+          .map((v: any) => Number.parseInt(String(v), 10))
+          .filter((n: number) => Number.isFinite(n) && n >= 0 && n < options.length);
+      }
+      if (typeof raw?.correctAnswer === 'string') {
+        const parts = raw.correctAnswer
+          .split(',')
+          .map((t: string) => Number.parseInt(t.trim(), 10))
+          .filter((n: number) => Number.isFinite(n) && n >= 0 && n < options.length);
+        if (parts.length) return parts;
+      }
+      if (typeof raw?.correctAnswerIndex === 'number') {
+        const n = Math.floor(raw.correctAnswerIndex);
+        if (n >= 0 && n < options.length) return [n];
+      }
+      if (typeof raw?.correctAnswer === 'number') {
+        const n = Math.floor(raw.correctAnswer);
+        if (n >= 0 && n < options.length) return [n];
+      }
+      return [];
+    };
+
+    const indexes = Array.from(new Set(collect()));
+    if (!indexes.length) return null;
+    return indexes.join(',');
   }
 
   private normalizeTrueFalseCorrectAnswer(value: unknown): 'true' | 'false' | null {
@@ -618,6 +784,69 @@ export class ExamGenerationService {
     if (v === 'true') return 'true';
     if (v === 'false') return 'false';
     return null;
+  }
+
+  /**
+   * Build a deterministic fallback question when AI generation fails.
+   */
+  private buildFallbackQuestion(type: ExamQuestionType, difficulty: DifficultyLevel): GeneratedQuestion {
+    const baseQuestion = 'Placeholder question generated due to AI failure.';
+    const options = ['Option A', 'Option B', 'Option C', 'Option D'];
+
+    switch (type) {
+      case ExamQuestionType.SINGLE_CHOICE:
+        return {
+          type,
+          difficulty,
+          question: `${baseQuestion} (single choice)`,
+          options,
+          correctAnswer: '0',
+          explanation: 'Fallback generated question.',
+          sourceChunkIds: [],
+          confidence: 0.1,
+        };
+      case ExamQuestionType.MULTIPLE_CHOICE:
+        return {
+          type,
+          difficulty,
+          question: `${baseQuestion} (multiple choice)`,
+          options,
+          correctAnswer: '0,1',
+          explanation: 'Fallback generated question.',
+          sourceChunkIds: [],
+          confidence: 0.1,
+        };
+      case ExamQuestionType.TRUE_FALSE:
+        return {
+          type,
+          difficulty,
+          question: `${baseQuestion} (true/false)`,
+          correctAnswer: 'true',
+          explanation: 'Fallback generated question.',
+          sourceChunkIds: [],
+          confidence: 0.1,
+        };
+      case ExamQuestionType.FILL_IN_BLANK:
+        return {
+          type,
+          difficulty,
+          question: `${baseQuestion} (fill in blank with _____)`,
+          correctAnswer: 'fallback',
+          explanation: 'Fallback generated question.',
+          sourceChunkIds: [],
+          confidence: 0.1,
+        };
+      default:
+        return {
+          type: ExamQuestionType.ESSAY,
+          difficulty,
+          question: `${baseQuestion} (essay)`,
+          rubric: 'Content and clarity.',
+          sampleAnswer: 'Sample fallback answer.',
+          sourceChunkIds: [],
+          confidence: 0.1,
+        };
+    }
   }
 
   /**
@@ -657,11 +886,10 @@ Output format: JSON object with the following structure based on question type.`
     let typePrompt = '';
 
     switch (type) {
-      case ExamQuestionType.MULTIPLE_CHOICE:
-        typePrompt = `Generate a MULTIPLE CHOICE question with:
+      case ExamQuestionType.SINGLE_CHOICE:
+        typePrompt = `Generate a SINGLE CHOICE question with:
 - A clear question stem
-- Exactly 4 options labeled A, B, C, D
-- One correct answer
+- Exactly 4 options labeled A, B, C, D (one correct answer)
 - An explanation of why the correct answer is correct
 
 Output JSON:
@@ -670,6 +898,24 @@ Output JSON:
   "options": ["Option A", "Option B", "Option C", "Option D"],
   "correctAnswerIndex": 0,
   "explanation": "Why the answer is correct",
+  "topic": "Main topic tested",
+  "confidence": 0.9
+}`;
+        break;
+
+      case ExamQuestionType.MULTIPLE_CHOICE:
+        typePrompt = `Generate a MULTIPLE CHOICE question with:
+- A clear question stem
+- Exactly 4 options labeled A, B, C, D (one or more correct answers)
+- Return all correct answers in an array (indexes 0-3)
+- An explanation of why the correct answer(s) are correct
+
+Output JSON:
+{
+  "question": "The question text",
+  "options": ["Option A", "Option B", "Option C", "Option D"],
+  "correctAnswerIndexes": [0,1],
+  "explanation": "Why the answer(s) are correct",
   "topic": "Main topic tested",
   "confidence": 0.9
 }`;

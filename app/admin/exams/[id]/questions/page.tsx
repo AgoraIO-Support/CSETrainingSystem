@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, use } from 'react'
+import { useState, useEffect, use, useRef } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -26,6 +26,7 @@ import Link from 'next/link'
 import type { Exam, ExamQuestion, ExamQuestionType } from '@/types'
 
 const questionTypeLabels: Record<ExamQuestionType, string> = {
+    SINGLE_CHOICE: 'Single Choice',
     MULTIPLE_CHOICE: 'Multiple Choice',
     TRUE_FALSE: 'True/False',
     FILL_IN_BLANK: 'Fill in Blank',
@@ -60,6 +61,7 @@ interface QuestionForm {
     question: string
     options: string[]
     correctAnswer: string
+    multiCorrectAnswers: string[]
     explanation: string
     points: number
     difficulty: 'EASY' | 'MEDIUM' | 'HARD'
@@ -69,10 +71,11 @@ interface QuestionForm {
 }
 
 const defaultQuestionForm: QuestionForm = {
-    type: 'MULTIPLE_CHOICE',
+    type: 'SINGLE_CHOICE',
     question: '',
     options: ['', '', '', ''],
     correctAnswer: '',
+    multiCorrectAnswers: [],
     explanation: '',
     points: 10,
     difficulty: 'MEDIUM',
@@ -82,6 +85,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
     const { id: examId } = use(params)
     const [exam, setExam] = useState<Exam | null>(null)
     const [questions, setQuestions] = useState<ExamQuestion[]>([])
+    const formRef = useRef<HTMLDivElement | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [successMessage, setSuccessMessage] = useState<string | null>(null)
@@ -100,6 +104,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
     const [knowledgeLessonsError, setKnowledgeLessonsError] = useState<string | null>(null)
     const [selectedLessonIds, setSelectedLessonIds] = useState<string[]>([])
     const [generateConfig, setGenerateConfig] = useState({
+        singleChoice: 3,
         multipleChoice: 5,
         trueFalse: 3,
         fillInBlank: 2,
@@ -168,15 +173,21 @@ export default function ExamQuestionsPage({ params }: PageProps) {
         setEditingQuestion(null)
         setForm(defaultQuestionForm)
         setShowForm(true)
+        requestAnimationFrame(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
     }
 
     const handleEditQuestion = (question: ExamQuestion) => {
+        const parsedMultiAnswers = question.correctAnswer
+            ? question.correctAnswer.split(',').map(s => s.trim()).filter(Boolean)
+            : []
+
         setEditingQuestion(question)
         setForm({
             type: question.type,
             question: question.question,
             options: question.options || ['', '', '', ''],
             correctAnswer: question.correctAnswer || '',
+            multiCorrectAnswers: parsedMultiAnswers,
             explanation: question.explanation || '',
             points: question.points,
             difficulty: (question.difficulty as 'EASY' | 'MEDIUM' | 'HARD') || 'MEDIUM',
@@ -185,6 +196,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
             sampleAnswer: question.sampleAnswer || undefined,
         })
         setShowForm(true)
+        requestAnimationFrame(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
     }
 
     const handleDeleteQuestion = async (questionId: string) => {
@@ -206,12 +218,35 @@ export default function ExamQuestionsPage({ params }: PageProps) {
 
         try {
             const hasCorrectAnswer =
-                form.type === 'MULTIPLE_CHOICE' || form.type === 'TRUE_FALSE' || form.type === 'FILL_IN_BLANK'
+                form.type === 'SINGLE_CHOICE' ||
+                form.type === 'MULTIPLE_CHOICE' ||
+                form.type === 'TRUE_FALSE' ||
+                form.type === 'FILL_IN_BLANK'
+
+            const normalizedOptions =
+                form.type === 'SINGLE_CHOICE' || form.type === 'MULTIPLE_CHOICE'
+                    ? form.options.map(o => o.trim())
+                    : undefined
+
+            const payloadCorrectAnswer = (() => {
+                if (!hasCorrectAnswer) return undefined
+                if (form.type === 'MULTIPLE_CHOICE') {
+                    if (!form.multiCorrectAnswers.length) {
+                        throw new Error('Please select at least one correct option')
+                    }
+                    return form.multiCorrectAnswers.join(',')
+                }
+                if ((form.type === 'SINGLE_CHOICE' || form.type === 'TRUE_FALSE' || form.type === 'FILL_IN_BLANK') && !form.correctAnswer) {
+                    throw new Error('Please select a correct answer')
+                }
+                return form.correctAnswer
+            })()
+
             const payload = {
                 type: form.type,
                 question: form.question,
-                options: form.type === 'MULTIPLE_CHOICE' ? form.options.filter(o => o.trim()) : undefined,
-                correctAnswer: hasCorrectAnswer ? form.correctAnswer : undefined,
+                options: normalizedOptions,
+                correctAnswer: payloadCorrectAnswer,
                 explanation: form.explanation || undefined,
                 points: form.points,
                 difficulty: form.difficulty,
@@ -252,6 +287,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
         try {
             const config = {
                 questionCounts: {
+                    singleChoice: generateConfig.singleChoice,
                     multipleChoice: generateConfig.multipleChoice,
                     trueFalse: generateConfig.trueFalse,
                     fillInBlank: generateConfig.fillInBlank,
@@ -402,7 +438,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
 
                 {/* Question Form */}
                 {showForm && (
-                    <Card>
+                    <Card ref={formRef}>
                         <CardHeader>
                             <div className="flex items-center justify-between">
                                 <CardTitle>{editingQuestion ? 'Edit Question' : 'Add Question'}</CardTitle>
@@ -421,6 +457,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                             value={form.type}
                                             onChange={(e) => updateForm('type', e.target.value as ExamQuestionType)}
                                         >
+                                            <option value="SINGLE_CHOICE">Single Choice</option>
                                             <option value="MULTIPLE_CHOICE">Multiple Choice</option>
                                             <option value="TRUE_FALSE">True/False</option>
                                             <option value="FILL_IN_BLANK">Fill in Blank</option>
@@ -461,7 +498,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                     />
                                 </div>
 
-                                {form.type === 'MULTIPLE_CHOICE' && (
+                                {(form.type === 'SINGLE_CHOICE' || form.type === 'MULTIPLE_CHOICE') && (
                                     <div className="space-y-2">
                                         <Label>Options</Label>
                                         {form.options.map((option, index) => (
@@ -479,25 +516,53 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                     </div>
                                 )}
 
-                                {(form.type === 'MULTIPLE_CHOICE' || form.type === 'TRUE_FALSE' || form.type === 'FILL_IN_BLANK') && (
+                                {(form.type === 'SINGLE_CHOICE' || form.type === 'MULTIPLE_CHOICE' || form.type === 'TRUE_FALSE' || form.type === 'FILL_IN_BLANK') && (
                                     <div className="space-y-2">
                                         <Label>Correct Answer *</Label>
-                                        {form.type === 'MULTIPLE_CHOICE' ? (
-                                            <select
-                                                className="w-full h-10 px-3 border rounded-md bg-background"
-                                                value={form.correctAnswer}
-                                                onChange={(e) => updateForm('correctAnswer', e.target.value)}
-                                                required
-                                            >
-                                                <option value="">Select correct option...</option>
+                                        {form.type === 'SINGLE_CHOICE' ? (
+                                            <div className="space-y-2">
                                                 {form.options.map((option, index) => (
                                                     option.trim() && (
-                                                        <option key={index} value={index.toString()}>
-                                                            {String.fromCharCode(65 + index)}. {option}
-                                                        </option>
+                                                        <label key={index} className="flex items-center gap-2">
+                                                            <input
+                                                                type="radio"
+                                                                name="single-correct"
+                                                                value={index.toString()}
+                                                                checked={form.correctAnswer === index.toString()}
+                                                                onChange={(e) => updateForm('correctAnswer', e.target.value)}
+                                                                required
+                                                            />
+                                                            <span>{String.fromCharCode(65 + index)}. {option}</span>
+                                                        </label>
                                                     )
                                                 ))}
-                                            </select>
+                                            </div>
+                                        ) : form.type === 'MULTIPLE_CHOICE' ? (
+                                            <div className="space-y-2">
+                                                {form.options.map((option, index) => (
+                                                    option.trim() && (
+                                                        <label key={index} className="flex items-center gap-2">
+                                                            <input
+                                                                type="checkbox"
+                                                                value={index.toString()}
+                                                                checked={form.multiCorrectAnswers.includes(index.toString())}
+                                                                onChange={(e) => {
+                                                                    const value = e.target.value
+                                                                    setForm(prev => {
+                                                                        const exists = prev.multiCorrectAnswers.includes(value)
+                                                                        const next = exists
+                                                                            ? prev.multiCorrectAnswers.filter(v => v !== value)
+                                                                            : [...prev.multiCorrectAnswers, value]
+                                                                        return { ...prev, multiCorrectAnswers: next }
+                                                                    })
+                                                                }}
+                                                            />
+                                                            <span>{String.fromCharCode(65 + index)}. {option}</span>
+                                                        </label>
+                                                    )
+                                                ))}
+                                                <p className="text-xs text-muted-foreground">Select one or more correct options.</p>
+                                            </div>
                                         ) : form.type === 'TRUE_FALSE' ? (
                                             <select
                                                 className="w-full h-10 px-3 border rounded-md bg-background"
@@ -601,7 +666,16 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                             </div>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+                                <div className="space-y-2">
+                                    <Label>Single Choice</Label>
+                                    <Input
+                                        type="number"
+                                        min={0}
+                                        value={generateConfig.singleChoice}
+                                        onChange={(e) => setGenerateConfig(prev => ({ ...prev, singleChoice: parseInt(e.target.value) || 0 }))}
+                                    />
+                                </div>
                                 <div className="space-y-2">
                                     <Label>Multiple Choice</Label>
                                     <Input

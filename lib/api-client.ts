@@ -710,6 +710,7 @@ export class ApiClient {
 
     static async generateExamQuestions(examId: string, config: {
         questionCounts: {
+            singleChoice?: number
             multipleChoice?: number
             trueFalse?: number
             fillInBlank?: number

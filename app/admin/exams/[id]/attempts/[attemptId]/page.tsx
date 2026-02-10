@@ -24,6 +24,7 @@ import Link from 'next/link'
 import type { ExamQuestion, ExamQuestionType, GradingStatus } from '@/types'
 
 const questionTypeLabels: Record<ExamQuestionType, string> = {
+    SINGLE_CHOICE: 'Single Choice',
     MULTIPLE_CHOICE: 'Multiple Choice',
     TRUE_FALSE: 'True/False',
     FILL_IN_BLANK: 'Fill in Blank',
@@ -215,10 +216,19 @@ export default function AttemptDetailPage({ params }: PageProps) {
         })
     }
 
+    const formatOption = (options: string[], idx: number) =>
+        idx >= 0 && idx < options.length ? `${String.fromCharCode(65 + idx)}. ${options[idx]}` : null
+
     const getCorrectAnswer = (question: ExamQuestion) => {
-        if (question.type === 'MULTIPLE_CHOICE' && question.options) {
-            const index = parseInt(question.correctAnswer || '0')
-            return `${String.fromCharCode(65 + index)}. ${question.options[index]}`
+        if ((question.type === 'SINGLE_CHOICE' || question.type === 'MULTIPLE_CHOICE') && question.options) {
+            const parts = (question.correctAnswer || '').split(',').map(s => parseInt(s, 10)).filter(n => !Number.isNaN(n))
+            if (!parts.length && question.correctAnswer) {
+                const idx = parseInt(question.correctAnswer, 10)
+                const formatted = formatOption(question.options, idx)
+                if (formatted) return formatted
+            }
+            const formatted = parts.map(idx => formatOption(question.options!, idx)).filter(Boolean)
+            return formatted.length ? formatted.join(', ') : '-'
         }
         if (question.type === 'TRUE_FALSE') {
             return question.correctAnswer === 'true' ? 'True' : 'False'
@@ -230,8 +240,19 @@ export default function AttemptDetailPage({ params }: PageProps) {
     }
 
     const getUserAnswer = (answer: AttemptDetail['answers'][0]) => {
-        if (answer.question.type === 'MULTIPLE_CHOICE' && answer.question.options && answer.selectedOption !== null) {
-            return `${String.fromCharCode(65 + answer.selectedOption)}. ${answer.question.options[answer.selectedOption]}`
+        if (answer.question.type === 'SINGLE_CHOICE' && answer.question.options && answer.selectedOption !== null) {
+            return formatOption(answer.question.options, answer.selectedOption) || 'No answer provided'
+        }
+        if (answer.question.type === 'MULTIPLE_CHOICE' && answer.question.options) {
+            const selections = answer.answer
+                ? answer.answer.split(',').map(s => parseInt(s, 10)).filter(n => !Number.isNaN(n))
+                : []
+            const formatted = selections.map(idx => formatOption(answer.question.options!, idx)).filter(Boolean)
+            if (formatted.length) return formatted.join(', ')
+            if (answer.selectedOption !== null && answer.selectedOption !== undefined) {
+                return formatOption(answer.question.options, answer.selectedOption) || 'No answer provided'
+            }
+            return 'No answer provided'
         }
         if (answer.question.type === 'TRUE_FALSE' && answer.answer) {
             return answer.answer === 'true' ? 'True' : 'False'

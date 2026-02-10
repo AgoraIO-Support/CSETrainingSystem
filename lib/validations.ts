@@ -283,6 +283,7 @@ export const reorderExamQuestionsSchema = z.object({
 
 export const generateQuestionsSchema = z.object({
     questionCounts: z.object({
+        singleChoice: z.number().int().nonnegative().optional(),
         multipleChoice: z.number().int().nonnegative().optional(),
         trueFalse: z.number().int().nonnegative().optional(),
         fillInBlank: z.number().int().nonnegative().optional(),
