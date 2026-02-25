@@ -8,6 +8,7 @@ import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Loader2, AlertCircle, CheckCircle2, Clock, FileText, RefreshCw } from 'lucide-react'
 import { ApiClient } from '@/lib/api-client'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 type KnowledgeContextJob = {
     id: string
@@ -60,6 +61,7 @@ export function KnowledgeContextStatusCard({ lessonId }: { lessonId: string }) {
     const [logs, setLogs] = useState<Array<{ id: string; level: string; stage: string | null; message: string; createdAt: string }> | null>(
         null
     )
+    const [confirmOpen, setConfirmOpen] = useState(false)
 
     const fetchStatus = async () => {
         try {
@@ -113,9 +115,11 @@ export function KnowledgeContextStatusCard({ lessonId }: { lessonId: string }) {
     }, [lessonId, status?.job?.state, status?.status])
 
     const handleProcess = async () => {
-        if (!confirm('Generate (or re-generate) the Knowledge Context for this lesson from the latest VTT?')) {
-            return
-        }
+        setConfirmOpen(true)
+    }
+
+    const confirmProcess = async () => {
+        setConfirmOpen(false)
 
         try {
             setReprocessing(true)
@@ -311,7 +315,15 @@ export function KnowledgeContextStatusCard({ lessonId }: { lessonId: string }) {
                     </>
                 )}
             </CardContent>
+            <ConfirmDialog
+                open={confirmOpen}
+                onOpenChange={setConfirmOpen}
+                title="Regenerate knowledge context?"
+                description="Generate (or re-generate) the Knowledge Context for this lesson from the latest VTT."
+                confirmLabel="Generate"
+                confirmVariant="default"
+                onConfirm={confirmProcess}
+            />
         </Card>
     )
 }
-

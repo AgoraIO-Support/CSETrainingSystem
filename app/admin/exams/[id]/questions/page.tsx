@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ApiClient } from '@/lib/api-client'
 import {
     ArrowLeft,
@@ -89,6 +90,8 @@ export default function ExamQuestionsPage({ params }: PageProps) {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [successMessage, setSuccessMessage] = useState<string | null>(null)
+    const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+    const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
 
     // Form state
     const [showForm, setShowForm] = useState(false)
@@ -199,8 +202,19 @@ export default function ExamQuestionsPage({ params }: PageProps) {
         requestAnimationFrame(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
     }
 
-    const handleDeleteQuestion = async (questionId: string) => {
-        if (!window.confirm('Are you sure you want to delete this question?')) return
+    const handleDeleteQuestion = (questionId: string) => {
+        setPendingDeleteId(questionId)
+        setConfirmDeleteOpen(true)
+    }
+
+    const confirmDeleteQuestion = async () => {
+        const questionId = pendingDeleteId
+        if (!questionId) {
+            setConfirmDeleteOpen(false)
+            return
+        }
+        setConfirmDeleteOpen(false)
+        setPendingDeleteId(null)
 
         try {
             await ApiClient.deleteExamQuestion(examId, questionId)
@@ -949,6 +963,18 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                     </CardContent>
                 </Card>
             </div>
+            <ConfirmDialog
+                open={confirmDeleteOpen}
+                onOpenChange={(open) => {
+                    setConfirmDeleteOpen(open)
+                    if (!open) setPendingDeleteId(null)
+                }}
+                title="Delete question?"
+                description="This action cannot be undone."
+                confirmLabel="Delete"
+                confirmVariant="destructive"
+                onConfirm={confirmDeleteQuestion}
+            />
         </DashboardLayout>
     )
 }

@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ApiClient } from '@/lib/api-client'
 import { Search, Plus, Edit, Trash2, Eye, Loader2 } from 'lucide-react'
 import Link from 'next/link'
@@ -16,6 +17,10 @@ export default function AdminCoursesPage() {
     const [searchQuery, setSearchQuery] = useState('')
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
+    const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+    const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+    const [errorDialogOpen, setErrorDialogOpen] = useState(false)
+    const [errorDialogMessage, setErrorDialogMessage] = useState('')
 
     useEffect(() => {
         let cancelled = false
@@ -63,15 +68,27 @@ export default function AdminCoursesPage() {
         )
     }, [courses, searchQuery])
 
-    const handleDelete = async (courseId: string) => {
-        const confirmed = window.confirm('Are you sure you want to delete this course?')
-        if (!confirmed) return
+    const handleDelete = (courseId: string) => {
+        setPendingDeleteId(courseId)
+        setConfirmDeleteOpen(true)
+    }
+
+    const confirmDelete = async () => {
+        const courseId = pendingDeleteId
+        if (!courseId) {
+            setConfirmDeleteOpen(false)
+            return
+        }
+        setConfirmDeleteOpen(false)
+        setPendingDeleteId(null)
 
         try {
             await ApiClient.deleteCourse(courseId)
             setCourses(prev => prev.filter(course => course.id !== courseId))
         } catch (err) {
-            alert(err instanceof Error ? err.message : 'Failed to delete course')
+            const message = err instanceof Error ? err.message : 'Failed to delete course'
+            setErrorDialogMessage(message)
+            setErrorDialogOpen(true)
         }
     }
 
@@ -191,6 +208,27 @@ export default function AdminCoursesPage() {
                     </CardContent>
                 </Card>
             </div>
+            <ConfirmDialog
+                open={confirmDeleteOpen}
+                onOpenChange={(open) => {
+                    setConfirmDeleteOpen(open)
+                    if (!open) setPendingDeleteId(null)
+                }}
+                title="Delete course?"
+                description="This action cannot be undone."
+                confirmLabel="Delete"
+                confirmVariant="destructive"
+                onConfirm={confirmDelete}
+            />
+            <ConfirmDialog
+                open={errorDialogOpen}
+                onOpenChange={setErrorDialogOpen}
+                title="Unable to delete course"
+                description={errorDialogMessage}
+                confirmLabel="OK"
+                showCancel={false}
+                onConfirm={() => setErrorDialogOpen(false)}
+            />
         </DashboardLayout>
     )
 }

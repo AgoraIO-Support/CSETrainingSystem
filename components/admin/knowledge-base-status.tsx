@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,6 +18,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { ApiClient } from '@/lib/api-client';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 interface TranscriptStatus {
   transcriptAsset: {
@@ -86,6 +87,14 @@ export function KnowledgeBaseStatus({ lessonId, onViewChunks, onDelete }: Knowle
     message: string;
     createdAt: string;
   }> | null>(null);
+  const confirmActionRef = useRef<null | (() => void)>(null);
+  const [confirmDialog, setConfirmDialog] = useState({
+    open: false,
+    title: '',
+    description: '',
+    confirmLabel: 'Confirm',
+    confirmVariant: 'default' as 'default' | 'destructive',
+  });
 
   const fetchStatus = async () => {
     try {
@@ -116,43 +125,53 @@ export function KnowledgeBaseStatus({ lessonId, onViewChunks, onDelete }: Knowle
   }, [lessonId, status?.processing?.status]);
 
   const handleReprocess = async () => {
-    if (!confirm('Are you sure you want to reprocess this transcript? This will regenerate all embeddings.')) {
-      return;
-    }
+    confirmActionRef.current = async () => {
+      try {
+        setReprocessing(true);
+        await ApiClient.request(`/admin/lessons/${lessonId}/transcript/process`, {
+          method: 'POST',
+          body: JSON.stringify({ force: true }),
+        });
 
-    try {
-      setReprocessing(true);
-      await ApiClient.request(`/admin/lessons/${lessonId}/transcript/process`, {
-        method: 'POST',
-        body: JSON.stringify({ force: true }),
-      });
-
-      await fetchStatus();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reprocess');
-    } finally {
-      setReprocessing(false);
-    }
+        await fetchStatus();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to reprocess');
+      } finally {
+        setReprocessing(false);
+      }
+    };
+    setConfirmDialog({
+      open: true,
+      title: 'Reprocess transcript?',
+      description: 'This will regenerate all embeddings.',
+      confirmLabel: 'Reprocess',
+      confirmVariant: 'default',
+    });
   };
 
   const handleDelete = async () => {
-    if (!confirm('Are you sure you want to delete this transcript and all associated embeddings? This action cannot be undone.')) {
-      return;
-    }
+    confirmActionRef.current = async () => {
+      try {
+        setDeleting(true);
+        await ApiClient.request(`/admin/lessons/${lessonId}/transcript`, {
+          method: 'DELETE',
+        });
 
-    try {
-      setDeleting(true);
-      await ApiClient.request(`/admin/lessons/${lessonId}/transcript`, {
-        method: 'DELETE',
-      });
-
-      await fetchStatus();
-      onDelete?.();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete');
-    } finally {
-      setDeleting(false);
-    }
+        await fetchStatus();
+        onDelete?.();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to delete');
+      } finally {
+        setDeleting(false);
+      }
+    };
+    setConfirmDialog({
+      open: true,
+      title: 'Delete transcript?',
+      description: 'This will delete the transcript and all associated embeddings.',
+      confirmLabel: 'Delete',
+      confirmVariant: 'destructive',
+    });
   };
 
   const fetchLogs = async () => {
@@ -448,6 +467,23 @@ export function KnowledgeBaseStatus({ lessonId, onViewChunks, onDelete }: Knowle
           </div>
         )}
       </CardContent>
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onOpenChange={(open) => {
+          setConfirmDialog((prev) => ({ ...prev, open }));
+          if (!open) confirmActionRef.current = null;
+        }}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        confirmLabel={confirmDialog.confirmLabel}
+        confirmVariant={confirmDialog.confirmVariant}
+        onConfirm={() => {
+          const action = confirmActionRef.current;
+          setConfirmDialog((prev) => ({ ...prev, open: false }));
+          confirmActionRef.current = null;
+          if (action) action();
+        }}
+      />
     </Card>
   );
 }

@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ApiClient } from '@/lib/api-client'
 import type { Course, CourseLevel } from '@/types'
 import Link from 'next/link'
@@ -49,6 +50,7 @@ type AdminLesson = {
 type AdminChapter = {
     id: string
     title: string
+    description?: string | null
     lessons: AdminLesson[]
 }
 
@@ -106,6 +108,11 @@ const InfoHint = ({ text }: { text: string }) => (
     </span>
 )
 
+const formatStatusLabel = (value: string | null) => {
+    if (!value) return 'Unknown'
+    return value.charAt(0) + value.slice(1).toLowerCase()
+}
+
 export default function EditCoursePage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params)
     const router = useRouter()
@@ -153,6 +160,13 @@ const [formDirty, setFormDirty] = useState(false)
         learningObjectives: '',
         completionRule: 'VIEW_ASSETS',
     })
+    const [chapterForm, setChapterForm] = useState({
+        title: '',
+        description: '',
+    })
+    const [chapterModalOpen, setChapterModalOpen] = useState(false)
+    const [chapterSaving, setChapterSaving] = useState(false)
+    const [chapterError, setChapterError] = useState<string | null>(null)
     const [lessonAttachments, setLessonAttachments] = useState<LessonAttachment[]>([])
     const [pendingLessonUploads, setPendingLessonUploads] = useState<PendingLessonUpload[]>([])
     const [defaultLessonAssetType, setDefaultLessonAssetType] = useState('DOCUMENT')
@@ -160,6 +174,18 @@ const [formDirty, setFormDirty] = useState(false)
     const [lessonError, setLessonError] = useState<string | null>(null)
     const [lessonModalOpen, setLessonModalOpen] = useState(false)
     const [lessonModalChapterId, setLessonModalChapterId] = useState<string | null>(null)
+    const [statusDialogOpen, setStatusDialogOpen] = useState(false)
+    const [statusDialogMessage, setStatusDialogMessage] = useState('')
+    const [statusDialogFrom, setStatusDialogFrom] = useState<string | null>(null)
+    const [statusDialogTo, setStatusDialogTo] = useState<string | null>(null)
+    const confirmActionRef = useRef<null | (() => void)>(null)
+    const [confirmDialog, setConfirmDialog] = useState({
+        open: false,
+        title: '',
+        description: '',
+        confirmLabel: 'Confirm',
+        confirmVariant: 'default' as 'default' | 'destructive',
+    })
     const [chunkPreviewOpen, setChunkPreviewOpen] = useState(false)
     const [transcriptRefreshKey, setTranscriptRefreshKey] = useState(0)
     const [vttPromptOpen, setVttPromptOpen] = useState(false)
@@ -618,34 +644,69 @@ const handleDeleteLessonAsset = async (assetId: string) => {
     }
 };
 
-    const handleCourseAssetDelete = async (assetId: string) => {
-        const confirmed = window.confirm('Delete this course material?')
-        if (!confirmed) return
+    const handleCourseAssetDelete = (assetId: string) => {
+        confirmActionRef.current = async () => {
+            try {
+                const res = await fetch(apiUrl(`/api/admin/lessons/${selectedLessonId}/assets/${assetId}`), {
+                    method: 'DELETE',
+                    headers: {
+                        ...getAuthHeaders(),
+                    },
+                })
 
-        try {
-            const res = await fetch(apiUrl(`/api/admin/lessons/${selectedLessonId}/assets/${assetId}`), {
-                method: 'DELETE',
-                headers: {
-                    ...getAuthHeaders(),
-                },
-            })
+                if (!res.ok) {
+                    const errJson = await res.json().catch(() => null)
+                    throw new Error(errJson?.error?.message || 'Failed to delete asset')
+                }
 
-            if (!res.ok) {
-                const errJson = await res.json().catch(() => null)
-                throw new Error(errJson?.error?.message || 'Failed to delete asset')
+                await reloadCourse()
+            } catch (err) {
+                setError(err instanceof Error ? err.message : 'Failed to delete asset')
             }
-
-            await reloadCourse()
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to delete asset')
         }
+
+        setConfirmDialog({
+            open: true,
+            title: 'Delete course material?',
+            description: 'This action cannot be undone.',
+            confirmLabel: 'Delete',
+            confirmVariant: 'destructive',
+        })
     };
 
-    const handleAddChapter = async () => {
-        const title = window.prompt('Chapter title')
-        if (!title) return
-        await ApiClient.createChapter(id, { title })
-        await reloadCourse()
+    const openChapterModal = () => {
+        setChapterForm({ title: '', description: '' })
+        setChapterError(null)
+        setChapterModalOpen(true)
+    }
+
+    const closeChapterModal = () => {
+        setChapterModalOpen(false)
+        setChapterError(null)
+    }
+
+    const handleAddChapter = () => {
+        openChapterModal()
+    };
+
+    const handleSaveChapter = async () => {
+        const title = chapterForm.title.trim()
+        if (!title) {
+            setChapterError('Title is required')
+            return
+        }
+        setChapterSaving(true)
+        setChapterError(null)
+        try {
+            const description = chapterForm.description.trim()
+            await ApiClient.createChapter(id, { title, description: description || undefined })
+            await reloadCourse()
+            setChapterModalOpen(false)
+        } catch (err) {
+            setChapterError(err instanceof Error ? err.message : 'Failed to create chapter')
+        } finally {
+            setChapterSaving(false)
+        }
     };
 
     const handleRenameChapter = async (chapterId: string, currentTitle: string) => {
@@ -655,33 +716,49 @@ const handleDeleteLessonAsset = async (assetId: string) => {
         await reloadCourse()
     };
 
-    const handleDeleteChapter = async (chapterId: string) => {
-        if (!window.confirm('Delete this chapter and its lessons?')) return
-        setError(null)
-        try {
-            await ApiClient.deleteChapter(id, chapterId)
-            await reloadCourse()
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to delete chapter')
+    const handleDeleteChapter = (chapterId: string) => {
+        confirmActionRef.current = async () => {
+            setError(null)
+            try {
+                await ApiClient.deleteChapter(id, chapterId)
+                await reloadCourse()
+            } catch (err) {
+                setError(err instanceof Error ? err.message : 'Failed to delete chapter')
+            }
         }
+        setConfirmDialog({
+            open: true,
+            title: 'Delete chapter?',
+            description: 'This will also delete all lessons in this chapter.',
+            confirmLabel: 'Delete',
+            confirmVariant: 'destructive',
+        })
     };
 
     const handleAddLesson = (chapterId: string) => {
         openLessonModal(chapterId)
     };
 
-    const handleDeleteLesson = async (chapterId: string, lessonId: string) => {
-        if (!window.confirm('Delete this lesson?')) return
-        setError(null)
-        try {
-            await ApiClient.deleteLesson(id, chapterId, lessonId)
-            if (selectedLessonId === lessonId) {
-                setSelectedLessonId(null)
+    const handleDeleteLesson = (chapterId: string, lessonId: string) => {
+        confirmActionRef.current = async () => {
+            setError(null)
+            try {
+                await ApiClient.deleteLesson(id, chapterId, lessonId)
+                if (selectedLessonId === lessonId) {
+                    setSelectedLessonId(null)
+                }
+                await reloadCourse()
+            } catch (err) {
+                setError(err instanceof Error ? err.message : 'Failed to delete lesson')
             }
-            await reloadCourse()
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to delete lesson')
         }
+        setConfirmDialog({
+            open: true,
+            title: 'Delete lesson?',
+            description: 'This action cannot be undone.',
+            confirmLabel: 'Delete',
+            confirmVariant: 'destructive',
+        })
     };
 
     const handleMoveChapter = async (chapterId: string, direction: 'up' | 'down') => {
@@ -1065,12 +1142,15 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                                     const saved = await saveCourseInfo({ silent: false, validateStep: 'all' })
                                     if (saved) {
                                         if (payloadStatus === 'PUBLISHED') {
-                                            window.alert('Course published')
+                                            setStatusDialogMessage('Course published')
                                         } else if (payloadStatus === 'DRAFT') {
-                                            window.alert('Course set to Draft')
+                                            setStatusDialogMessage('Course set to Draft')
                                         } else if (payloadStatus === 'ARCHIVED') {
-                                            window.alert('Course archived')
+                                            setStatusDialogMessage('Course archived')
                                         }
+                                        setStatusDialogFrom(prev)
+                                        setStatusDialogTo(payloadStatus)
+                                        setStatusDialogOpen(true)
                                     } else {
                                         handleChange('status', prev)
                                     }
@@ -1633,6 +1713,94 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                         </div>
                     </>
                 )}
+
+                <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
+                    <DialogContent className="max-w-md">
+                        <DialogHeader>
+                            <DialogTitle>Status updated</DialogTitle>
+                            <DialogDescription className="sr-only">
+                                Course status has been updated.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="text-sm text-foreground">
+                            <span>{statusDialogMessage}</span>
+                            {statusDialogFrom && (
+                                <>
+                                    <span> (</span>
+                                    <span className="line-through text-muted-foreground">{formatStatusLabel(statusDialogFrom)}</span>
+                                    <span>)</span>
+                                </>
+                            )}
+                        </div>
+                        <DialogFooter className="gap-2 sm:gap-0">
+                            <Button type="button" onClick={() => setStatusDialogOpen(false)}>
+                                OK
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                <ConfirmDialog
+                    open={confirmDialog.open}
+                    onOpenChange={(open) => {
+                        setConfirmDialog(prev => ({ ...prev, open }))
+                        if (!open) confirmActionRef.current = null
+                    }}
+                    title={confirmDialog.title}
+                    description={confirmDialog.description}
+                    confirmLabel={confirmDialog.confirmLabel}
+                    confirmVariant={confirmDialog.confirmVariant}
+                    onConfirm={() => {
+                        const action = confirmActionRef.current
+                        setConfirmDialog(prev => ({ ...prev, open: false }))
+                        confirmActionRef.current = null
+                        if (action) action()
+                    }}
+                />
+
+                <Dialog open={chapterModalOpen} onOpenChange={(open) => (open ? openChapterModal() : closeChapterModal())}>
+                    <DialogContent className="max-w-2xl">
+                        <DialogHeader>
+                            <DialogTitle>Create chapter</DialogTitle>
+                            <DialogDescription className="sr-only">
+                                Create a chapter and optionally add a description for learners.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <Label>Title</Label>
+                                <Input
+                                    value={chapterForm.title}
+                                    onChange={(e) => setChapterForm(prev => ({ ...prev, title: e.target.value }))}
+                                    placeholder="Chapter title"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Description (optional)</Label>
+                                <Textarea
+                                    value={chapterForm.description}
+                                    onChange={(e) => setChapterForm(prev => ({ ...prev, description: e.target.value }))}
+                                    placeholder="Describe what this chapter covers"
+                                    rows={3}
+                                />
+                            </div>
+                            {chapterError && (
+                                <Alert variant="destructive">
+                                    <AlertTitle>Unable to create chapter</AlertTitle>
+                                    <AlertDescription>{chapterError}</AlertDescription>
+                                </Alert>
+                            )}
+                        </div>
+                        <DialogFooter className="gap-2 sm:gap-0">
+                            <Button type="button" variant="outline" onClick={closeChapterModal} disabled={chapterSaving}>
+                                Cancel
+                            </Button>
+                            <Button type="button" onClick={handleSaveChapter} disabled={chapterSaving}>
+                                {chapterSaving ? 'Creating…' : 'Create chapter'}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
 
                 <Dialog open={lessonModalOpen} onOpenChange={setLessonModalOpen}>
                     <DialogContent className="max-w-3xl">

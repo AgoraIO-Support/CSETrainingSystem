@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Loader2, Plus, Save, Trash2, Pencil } from 'lucide-react'
 import { SUPPORTED_OPENAI_MODELS, isSupportedOpenAIModel } from '@/lib/services/openai-models'
 
@@ -168,6 +169,8 @@ export default function AdminAIConfigPage() {
     // Edit template dialog
     const [editOpen, setEditOpen] = useState(false)
     const [editing, setEditing] = useState(false)
+    const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+    const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
     const [editForm, setEditForm] = useState<{
         id: string
         name: string
@@ -450,8 +453,19 @@ export default function AdminAIConfigPage() {
         }
     }
 
-    const handleDeleteTemplate = async (id: string) => {
-        if (!window.confirm('Delete this template? If it is used by defaults/assignments, the server will block deletion.')) return
+    const handleDeleteTemplate = (id: string) => {
+        setPendingDeleteId(id)
+        setConfirmDeleteOpen(true)
+    }
+
+    const confirmDeleteTemplate = async () => {
+        const id = pendingDeleteId
+        if (!id) {
+            setConfirmDeleteOpen(false)
+            return
+        }
+        setConfirmDeleteOpen(false)
+        setPendingDeleteId(null)
         setError(null)
         try {
             await api<{ ok: true }>(`/api/admin/ai/prompt-templates/${id}`, {
@@ -1019,6 +1033,18 @@ export default function AdminAIConfigPage() {
                     </TabsContent>
                 </Tabs>
             </div>
+            <ConfirmDialog
+                open={confirmDeleteOpen}
+                onOpenChange={(open) => {
+                    setConfirmDeleteOpen(open)
+                    if (!open) setPendingDeleteId(null)
+                }}
+                title="Delete template?"
+                description="If it is used by defaults or assignments, the server will block deletion."
+                confirmLabel="Delete"
+                confirmVariant="destructive"
+                onConfirm={confirmDeleteTemplate}
+            />
         </DashboardLayout>
     )
 }

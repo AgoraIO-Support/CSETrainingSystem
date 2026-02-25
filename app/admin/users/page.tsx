@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ApiClient } from '@/lib/api-client'
 import type { AdminUser, AdminUserStats } from '@/types'
 import { formatDate } from '@/lib/utils'
@@ -61,6 +62,16 @@ export default function AdminUsersPage() {
     const [error, setError] = useState<string | null>(null)
     const [refreshIndex, setRefreshIndex] = useState(0)
     const [actionUserId, setActionUserId] = useState<string | null>(null)
+    const confirmActionRef = useRef<null | (() => void)>(null)
+    const [confirmDialog, setConfirmDialog] = useState({
+        open: false,
+        title: '',
+        description: '',
+        confirmLabel: 'Confirm',
+        confirmVariant: 'default' as 'default' | 'destructive',
+    })
+    const [errorDialogOpen, setErrorDialogOpen] = useState(false)
+    const [errorDialogMessage, setErrorDialogMessage] = useState('')
 
     const [createOpen, setCreateOpen] = useState(false)
     const [creatingUser, setCreatingUser] = useState(false)
@@ -211,18 +222,25 @@ export default function AdminUsersPage() {
             targetRole === 'ADMIN'
                 ? `Grant admin access to ${user.name}?`
                 : `Remove admin access from ${user.name}?`
-        const confirmed = window.confirm(confirmMessage)
-        if (!confirmed) return
-
-        setActionUserId(user.id)
-        try {
-            await ApiClient.updateUser(user.id, { role: targetRole })
-            refreshData()
-        } catch (err) {
-            alert(err instanceof Error ? err.message : 'Unable to update user role')
-        } finally {
-            setActionUserId(null)
+        confirmActionRef.current = async () => {
+            setActionUserId(user.id)
+            try {
+                await ApiClient.updateUser(user.id, { role: targetRole })
+                refreshData()
+            } catch (err) {
+                setErrorDialogMessage(err instanceof Error ? err.message : 'Unable to update user role')
+                setErrorDialogOpen(true)
+            } finally {
+                setActionUserId(null)
+            }
         }
+        setConfirmDialog({
+            open: true,
+            title: 'Confirm role change',
+            description: confirmMessage,
+            confirmLabel: 'Confirm',
+            confirmVariant: 'default',
+        })
     }
 
     const handleStatusToggle = async (user: AdminUser) => {
@@ -233,18 +251,25 @@ export default function AdminUsersPage() {
             nextStatus === 'ACTIVE'
                 ? `Restore access for ${user.name}?`
                 : `Suspend ${user.name}'s access?`
-        const confirmed = window.confirm(confirmMessage)
-        if (!confirmed) return
-
-        setActionUserId(user.id)
-        try {
-            await ApiClient.updateUser(user.id, { status: nextStatus })
-            refreshData()
-        } catch (err) {
-            alert(err instanceof Error ? err.message : 'Unable to update user status')
-        } finally {
-            setActionUserId(null)
+        confirmActionRef.current = async () => {
+            setActionUserId(user.id)
+            try {
+                await ApiClient.updateUser(user.id, { status: nextStatus })
+                refreshData()
+            } catch (err) {
+                setErrorDialogMessage(err instanceof Error ? err.message : 'Unable to update user status')
+                setErrorDialogOpen(true)
+            } finally {
+                setActionUserId(null)
+            }
         }
+        setConfirmDialog({
+            open: true,
+            title: 'Confirm status change',
+            description: confirmMessage,
+            confirmLabel: 'Confirm',
+            confirmVariant: 'destructive',
+        })
     }
 
     const statusSummary = useMemo(() => {
@@ -641,6 +666,32 @@ export default function AdminUsersPage() {
                     </CardContent>
                 </Card>
             </div>
+            <ConfirmDialog
+                open={confirmDialog.open}
+                onOpenChange={(open) => {
+                    setConfirmDialog(prev => ({ ...prev, open }))
+                    if (!open) confirmActionRef.current = null
+                }}
+                title={confirmDialog.title}
+                description={confirmDialog.description}
+                confirmLabel={confirmDialog.confirmLabel}
+                confirmVariant={confirmDialog.confirmVariant}
+                onConfirm={() => {
+                    const action = confirmActionRef.current
+                    setConfirmDialog(prev => ({ ...prev, open: false }))
+                    confirmActionRef.current = null
+                    if (action) action()
+                }}
+            />
+            <ConfirmDialog
+                open={errorDialogOpen}
+                onOpenChange={setErrorDialogOpen}
+                title="Action failed"
+                description={errorDialogMessage}
+                confirmLabel="OK"
+                showCancel={false}
+                onConfirm={() => setErrorDialogOpen(false)}
+            />
         </DashboardLayout>
     )
 }

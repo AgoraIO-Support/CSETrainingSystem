@@ -147,85 +147,97 @@ export class ExamGenerationService {
       { key: 'essay', count: counts.essay },
     ];
 
+    const toQuestionType = (key: keyof typeof counts): ExamQuestionType => {
+      switch (key) {
+        case 'singleChoice':
+          return ExamQuestionType.SINGLE_CHOICE;
+        case 'multipleChoice':
+          return ExamQuestionType.MULTIPLE_CHOICE;
+        case 'trueFalse':
+          return ExamQuestionType.TRUE_FALSE;
+        case 'fillInBlank':
+          return ExamQuestionType.FILL_IN_BLANK;
+        case 'essay':
+          return ExamQuestionType.ESSAY;
+        default:
+          return ExamQuestionType.SINGLE_CHOICE;
+      }
+    };
+
+    const shuffleInPlace = <T,>(items: T[]): T[] => {
+      for (let i = items.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [items[i], items[j]] = [items[j], items[i]];
+      }
+      return items;
+    };
+
+    const questionJobs: Array<{ key: keyof typeof counts; type: ExamQuestionType; index: number }> = [];
+    for (const plan of typePlan) {
+      if (!plan.count || plan.count <= 0) continue;
+      for (let i = 0; i < plan.count; i++) {
+        questionJobs.push({ key: plan.key, type: toQuestionType(plan.key), index: i + 1 });
+      }
+    }
+    shuffleInPlace(questionJobs);
+
     // Build a stable knowledge prefix so repeated calls benefit from OpenAI context caching.
     const knowledgePrefix = await this.buildKnowledgePrefixOrThrow(exam, config.lessonIds);
 
-    for (const plan of typePlan) {
-      const { key, count } = plan;
-      if (!count || count <= 0) continue;
-      const questionType =
-        key === 'singleChoice'
-          ? ExamQuestionType.SINGLE_CHOICE
-          : key === 'multipleChoice'
-            ? ExamQuestionType.MULTIPLE_CHOICE
-            : key === 'trueFalse'
-              ? ExamQuestionType.TRUE_FALSE
-              : key === 'fillInBlank'
-                ? ExamQuestionType.FILL_IN_BLANK
-                : key === 'essay'
-                  ? ExamQuestionType.ESSAY
-                  : ExamQuestionType.SINGLE_CHOICE; // default safety
-
+    for (const job of questionJobs) {
       const difficulty = config.difficulty === 'mixed'
         ? this.getRandomDifficulty()
         : config.difficulty;
 
-      for (let i = 0; i < count; i++) {
-        try {
-          const result = await this.generateSingleQuestion(
-            questionType,
-            difficulty,
-            knowledgePrefix,
-            config.topics,
-            config.focusAreas,
-            promptConfig
-          );
+      try {
+        const result = await this.generateSingleQuestion(
+          job.type,
+          difficulty,
+          knowledgePrefix,
+          config.topics,
+          config.focusAreas,
+          promptConfig
+        );
 
-          questions.push(result.question);
-          totalTokensUsed += result.tokensUsed;
+        questions.push(result.question);
+        totalTokensUsed += result.tokensUsed;
 
-          const created = await ExamService.addQuestion(examId, {
-            type: questionType,
-            difficulty: result.question.difficulty,
-            question: result.question.question,
-            options: result.question.options,
-            correctAnswer: result.question.correctAnswer,
-            rubric: result.question.rubric,
-            sampleAnswer: result.question.sampleAnswer,
-            explanation: result.question.explanation,
-            topic: result.question.topic,
-            isAIGenerated: true,
-            aiModel: 'gpt-4o-mini',
-            generationPrompt: result.generationPrompt,
-          });
-          createdQuestions.push(created);
+        const created = await ExamService.addQuestion(examId, {
+          type: job.type,
+          difficulty: result.question.difficulty,
+          question: result.question.question,
+          options: result.question.options,
+          correctAnswer: result.question.correctAnswer,
+          rubric: result.question.rubric,
+          sampleAnswer: result.question.sampleAnswer,
+          explanation: result.question.explanation,
+          topic: result.question.topic,
+          isAIGenerated: true,
+          aiModel: 'gpt-4o-mini',
+          generationPrompt: result.generationPrompt,
+        });
+        createdQuestions.push(created);
+      } catch (error) {
+        console.error(`Failed to generate ${job.key} question:`, error);
+        warnings.push(`Failed to generate ${job.key} question ${job.index}: ${error instanceof Error ? error.message : 'Unknown error'}`);
 
-          // Get new difficulty if mixed
-          if (config.difficulty === 'mixed' && i < count - 1) {
-            // Vary difficulty for mixed mode
-          }
-        } catch (error) {
-          console.error(`Failed to generate ${key} question:`, error);
-          warnings.push(`Failed to generate ${key} question ${i + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-
-          // Fallback: generate a placeholder question so the request still yields output.
-          const fallback = this.buildFallbackQuestion(questionType, difficulty);
-          const created = await ExamService.addQuestion(examId, {
-            type: questionType,
-            difficulty: fallback.difficulty,
-            question: fallback.question,
-            options: fallback.options,
-            correctAnswer: fallback.correctAnswer,
-            rubric: fallback.rubric,
-            sampleAnswer: fallback.sampleAnswer,
-            explanation: fallback.explanation,
-            topic: fallback.topic,
-            isAIGenerated: true,
-            aiModel: 'fallback',
-            generationPrompt: 'fallback',
-          });
-          createdQuestions.push(created);
-        }
+        // Fallback: generate a placeholder question so the request still yields output.
+        const fallback = this.buildFallbackQuestion(job.type, difficulty);
+        const created = await ExamService.addQuestion(examId, {
+          type: job.type,
+          difficulty: fallback.difficulty,
+          question: fallback.question,
+          options: fallback.options,
+          correctAnswer: fallback.correctAnswer,
+          rubric: fallback.rubric,
+          sampleAnswer: fallback.sampleAnswer,
+          explanation: fallback.explanation,
+          topic: fallback.topic,
+          isAIGenerated: true,
+          aiModel: 'fallback',
+          generationPrompt: 'fallback',
+        });
+        createdQuestions.push(created);
       }
     }
 
@@ -261,12 +273,11 @@ export class ExamGenerationService {
       const have = createdByType[questionType] ?? 0;
       if (have >= count) continue;
 
-      const difficulty = config.difficulty === 'mixed'
-        ? this.getRandomDifficulty()
-        : config.difficulty as DifficultyLevel;
-
       const needed = count - have;
       for (let i = 0; i < needed; i++) {
+        const difficulty = config.difficulty === 'mixed'
+          ? this.getRandomDifficulty()
+          : config.difficulty as DifficultyLevel;
         const fallback = this.buildFallbackQuestion(questionType, difficulty);
         try {
           const created = await ExamService.addQuestion(examId, {

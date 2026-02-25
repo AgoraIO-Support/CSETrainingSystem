@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ApiClient } from '@/lib/api-client'
 import {
     Search,
@@ -65,6 +66,10 @@ export default function AdminExamsPage() {
     const [statusFilter, setStatusFilter] = useState<ExamStatus | 'ALL'>('ALL')
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
+    const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+    const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+    const [errorDialogOpen, setErrorDialogOpen] = useState(false)
+    const [errorDialogMessage, setErrorDialogMessage] = useState('')
 
     useEffect(() => {
         let cancelled = false
@@ -125,11 +130,19 @@ export default function AdminExamsPage() {
         return { total, published, draft, totalAttempts }
     }, [exams])
 
-    const handleDelete = async (examId: string) => {
-        const confirmed = window.confirm(
-            'Are you sure you want to delete this exam?\n\nNote: If the exam already has attempts, it will be archived instead of permanently deleted.'
-        )
-        if (!confirmed) return
+    const handleDelete = (examId: string) => {
+        setPendingDeleteId(examId)
+        setConfirmDeleteOpen(true)
+    }
+
+    const confirmDelete = async () => {
+        const examId = pendingDeleteId
+        if (!examId) {
+            setConfirmDeleteOpen(false)
+            return
+        }
+        setConfirmDeleteOpen(false)
+        setPendingDeleteId(null)
 
         try {
             await ApiClient.deleteExam(examId)
@@ -137,7 +150,8 @@ export default function AdminExamsPage() {
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Failed to delete exam'
             setError(message)
-            alert(message)
+            setErrorDialogMessage(message)
+            setErrorDialogOpen(true)
         }
     }
 
@@ -324,6 +338,27 @@ export default function AdminExamsPage() {
                     </CardContent>
                 </Card>
             </div>
+            <ConfirmDialog
+                open={confirmDeleteOpen}
+                onOpenChange={(open) => {
+                    setConfirmDeleteOpen(open)
+                    if (!open) setPendingDeleteId(null)
+                }}
+                title="Delete exam?"
+                description="If the exam already has attempts, it will be archived instead of permanently deleted."
+                confirmLabel="Delete"
+                confirmVariant="destructive"
+                onConfirm={confirmDelete}
+            />
+            <ConfirmDialog
+                open={errorDialogOpen}
+                onOpenChange={setErrorDialogOpen}
+                title="Unable to delete exam"
+                description={errorDialogMessage}
+                confirmLabel="OK"
+                showCancel={false}
+                onConfirm={() => setErrorDialogOpen(false)}
+            />
         </DashboardLayout>
     )
 }
