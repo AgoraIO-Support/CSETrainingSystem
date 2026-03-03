@@ -1,0 +1,1042 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<knowledge_base course_id="a4ef734c-8829-4288-b43d-bfe061626c98" lesson_id="17759bb9-163b-4988-b1a7-02cb8fe350a8" version="1.0">
+  <course_overview>
+    <title>ConvoAIInsights+Troubleshoot</title>
+    <chapter>test</chapter>
+    <lesson>test</lesson>
+
+  </course_overview>
+  <transcript_sections>
+    <section timestamp="00:00:00" end_timestamp="00:01:24" title="ConvoAI parameter overview" anchor_type="CONCEPT">
+      <content>A little and official documents. I&apos;m a lazy man so I don&apos;t create many slides, just a few slides and but mainly today I will firstly go through the document. I believe not all of you are familiar to the Conway AI parameters actually. So I&apos;m going to introduce all the parameters and I will introduce some private parameters to you which is not available in the public document. And then I would go generally tell you how the cover AI works in the back end, the 10, the 10, the 10, how 10 general process, , and the next one is just the troubleshooting tools just a lot too much. And but I believe after is this session and you are going to have the further understanding of the common AI. So, so let&apos;s first part is let&apos;s go through the official documents, especially the wrestler API parameters. So I believe so many parameters, we have so many parameters. Probably you have the confusion. What are they and how how it works.</content>
+      <key_concepts>
+        <concept>ConvoAI parameters</concept>
+        <concept>backend workflow</concept>
+        <concept>private parameters</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:01:29" end_timestamp="00:02:53" title="Agent start request basics" anchor_type="CONCEPT">
+      <content>So this is a startcom AI agent. Yeah, as you see, this is the URL, This URL and in China that they have the different URL, this is the extra CN in it. So if you enable common AI, you need to specific region if it&apos;s China region or the global region. If you just enable the service for the CN region, the agent will always be studied in China. Yeah. So the URL is different, so and in the body, in the body the 1st is name. This name must be unique identifier of the agent. The same identifier cannot be used repeatedly. So that means this name must be always unique. So if you use a, for example, if you use a channel, if you if you are won&apos;t have the how to say if you trying to start a comma EI, this name always must be the different.</content>
+      <key_concepts>
+        <concept>API endpoint URL</concept>
+        <concept>agent name identifier</concept>
+        <concept>service region</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:02:54" end_timestamp="00:04:11" title="Agent name uniqueness constraint" anchor_type="KEY_TAKEAWAY">
+      <content>Otherwise it will give you an error even though it&apos;s in a different channel. Even you try to start a comma EI in different channel, but you give the same name, it will give you an error as well. So that&apos;s a little bit different with cloud recording, In the cloud recording the differentiate recording task by the UID and RTC channel name. But this one is if the name they only check the name. So even the in different RTC channel yeah same name will result in the error. What happened to to the poster man And in the parameters, in the parameters, all of the other , parameters, they are all in properties. Please remember the properties. The first one is channel is the channel name, Token name and agora agent RTC UID. This agent RTC UID is for the agent itself, The agent itself, it will join the channel remote RTC UID. This this the UID the agent needs to subscribe to,</content>
+      <key_concepts>
+        <concept>agent name uniqueness</concept>
+        <concept>cloud recording identifier difference</concept>
+        <concept>cross-channel conflicts</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:04:16" end_timestamp="00:05:41" title="Remote UID subscription list" anchor_type="CONCEPT">
+      <content>And this one could be the could be the star sign that means any, any, any UID, any other UID, you can see this, this one is array, That means agent can subscribe to multiple users. But currently we only use Kamalia in one to one scenario. So usually it&apos;s only just one UID, but it could be multiple Uids in the future that for example in the future we have the in the same channel, we can only have one agent and multiple that end users we can talk with common AI agent at the same time. So so in that scenario you need to give the different UID&apos;s. What happened? Has a problem.</content>
+      <key_concepts>
+        <concept>multi-user subscription</concept>
+        <concept>one-to-one scenario</concept>
+        <concept>remote UID array</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:05:45" end_timestamp="00:07:14" title="Postman setup interruption">
+      <content>No, no, it&apos;s working. Why the postman doesn&apos;t work? Give me a SEC. Give me a SEC. I need to use a postman to to give you some, , example. Let me kill this one. How to how to close this one? Hey, it&apos;s still there.</content>
+      <key_concepts>
+        <concept>Postman</concept>
+        <concept>demo setup</concept>
+        <concept>tool restart</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:07:15" end_timestamp="00:08:44" title="Request fields and remote UID" anchor_type="DEMO">
+      <content>I cannot even cure it. It&apos;s cute. OK, let me open it again. Now it&apos;s working OK. You can see there&apos;s a name properties channel, Channel name token. And in Conway, the UID must be in a double quotation, And there&apos;s a remote UID. This means that this this is should be the any user, right, Any user&apos;s UID, And that means the agent had to subscribe to this user&apos;s IUID. This is very important. And sometimes when customer report issue that he couldn&apos;t, , the agent doesn&apos;t respond and after the check in, they give just give the wrong UID. They give the wrong any user&apos;s UID. So the agent doesn&apos;t receive any audio. So this one is very important, And in the morning, as I mentioned, if you have enabled RTM for the cover AI, So these two UID&apos;s, they must be unique at the time,</content>
+      <key_concepts>
+        <concept>UID quoting</concept>
+        <concept>channel name</concept>
+        <concept>remote UID subscription</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:08:44" end_timestamp="00:10:13" title="UID uniqueness and RTM role" anchor_type="CONCEPT">
+      <content>They must be unique in the whole IP ID, even in other channels, they cannot use the same UID, otherwise RTM couldn&apos;t work. This is agent RTC UID, If you have enabled RTM, that means Agent RTM UID is also the the same one. It&apos;s also the 1001. So this is the RTM. What does RTM do? Just just the the the we use it, we use it as a, , message channel between the agent, between the agent. So agent can send you the transcriptions, Agent can send client transcriptions by the RTM and in the return the user can send a message to agent as well. Agent can send user can send agent messages because sometimes they don&apos;t need to speak the audio, they don&apos;t need audio communication. They just need, , the end user. For example, currently I&apos;m in a meeting and I don&apos;t want to speak. I cannot speak, but I can send a message to agent, agent and can can , can process the the message and give you a response.</content>
+      <key_concepts>
+        <concept>RTM messaging channel</concept>
+        <concept>agent RTC UID</concept>
+        <concept>project-wide UID uniqueness</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:10:15" end_timestamp="00:11:45" title="String UID and avatar limitation" anchor_type="KEY_TAKEAWAY">
+      <content>So the remote RDC UID must be unique across the whole project? Yes, exactly. All of them, both of them, both of them, they must be unique in the whole IP ID. OK, If you use RTM, yeah, OK. I will introduce RTM later. And next one is enable string UID. In the current way, I will allow the user to use string UID. But you have to pay attention if you use Avata. Avata doesn&apos;t support the, doesn&apos;t support the string UID. So if you are using avatar, you must be using, you must be using the int UID. You cannot use the string UID. Why? Because Avatar doesn&apos;t support it. Right now all of Avata vendors don&apos;t support string UID. Yeah, yeah. It will give you an error if you see I you cannot use it must be int. OK. So the limitation is that&apos;s, that&apos;s that&apos;s our side, that&apos;s our side, our side SDK limitation. And I don&apos;t know why they don&apos;t do the competitive, competitive compatible, I don&apos;t know compatibility, they don&apos;t they don&apos;t do it yet. I think in the future it should be should be working.</content>
+      <key_concepts>
+        <concept>avatar compatibility</concept>
+        <concept>enable string UID</concept>
+        <concept>integer UID requirement</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:11:45" end_timestamp="00:13:11" title="Idle timeout parameter intro" anchor_type="CONCEPT">
+      <content>But currently if you use avatar, you must use inter ID. So who is who was trying to speak Alex, sorry. Regarding the Sprint ID, also, will it be in the road map soon or as of now we&apos;re not really planning to have this enabled? What do you mean? Sorry, I don&apos;t catch it, the road map or something? I&apos;ll just I&apos;ll just probably send it to you by PM OK, OK, I can I can talk to you later. Yeah. And and the next one parameter is idle timeout. Idle timeout means , it&apos;s very simple, It&apos;s how long if there&apos;s no no low stream is if there&apos;s no stream in the channel, the agent will leave. Agent will leave automatically by default is 30 seconds. And in some cases customer that they changed, right, They changed a very long time.</content>
+      <key_concepts>
+        <concept>agent lifecycle</concept>
+        <concept>idle timeout</concept>
+        <concept>session inactivity</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:13:11" end_timestamp="00:14:38" title="Cost risk and geofencing" anchor_type="KEY_TAKEAWAY">
+      <content>And if the user left the channel and the agent was still running in the channel, it will result in very, , huge cost to customer, We have encountered so many customers at the beginning of the cover. Yeah, right. So this is very, very important parameter and this one geoforce Geo fencing, this one is added newly, newly added previously. If how come we I started, you will know that usually at the beginning we start cover AI based on the LMLM location. If you have custom LM and your custom LM is in, it&apos;s you in the US, and when you try to start Kawa AI, by default, our Kawa AI will start in the in the same region with the LM by default. If you don&apos;t set the geofence, if you don&apos;t set this parameter, it will follow the LM location. But now we allow you to, , give the specific location of the Conway AI engine &apos;cause this will significantly impact the latency,</content>
+      <key_concepts>
+        <concept>geofencing</concept>
+        <concept>idle agent cost</concept>
+        <concept>idle timeout importance</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:14:38" end_timestamp="00:16:05" title="Agent location and latency" anchor_type="CONCEPT">
+      <content>The latency &apos;cause our agent needs to communicate with the LM and ASR and TTS. And if you give the wrong location of the agent, it will, , take much longer to communicate with LM, So this is very important. And another thing, just previously, if you use open AI, open AI, if you don&apos;t set Geo fence, the cover AI will always start in the US. And I think that&apos;s because the open AI, the how to say the LM provider, our site cannot get the public LM just open ES location, we cannot resolve it because we cannot gather their real IP address. So we cannot decide in which region we should start engine. So if you use open EI and you don&apos;t set up the Geo fence, it will always start in the US. So that&apos;s very important. Just for example, if now if you are trying to you are trying to use common AI in Singapore and if you use open AI, you must give this,</content>
+      <key_concepts>
+        <concept>ASR and TTS endpoints</concept>
+        <concept>LM provider region</concept>
+        <concept>agent geolocation</concept>
+        <concept>network latency</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:16:05" end_timestamp="00:17:34" title="OpenAI geofence start region" anchor_type="KEY_TAKEAWAY">
+      <content>you must give this parameter to to to to let the agent to start in Asia. Otherwise it will go to the US. OK, on the open AI starts the request in US or, or the other. How about the other? I&apos;m not sure. I&apos;m not sure &apos;cause there&apos;s so many, so many providers. I&apos;m not sure if, , that&apos;s really depends on if we can get their IP location. Yeah, if they don&apos;t retain that information, we don&apos;t know. So we will start in the US, right. So this parameter is very important. Yeah, as as , it&apos;s really in impact the latency. So it&apos;s very important. And for example, just to give you an example, so especially the India team, they are in the India customer may use Open AI, But they use ASRASR, Azure ASR. If Azure ASR, Azure ASR, you need to give the region. You can see this is Azure ASR and you need to give the region.</content>
+      <key_concepts>
+        <concept>agent start location</concept>
+        <concept>default US region</concept>
+        <concept>geofence parameter</concept>
+        <concept>provider IP location</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:17:36" end_timestamp="00:19:04" title="India cross-continent latency example" anchor_type="EXAMPLE">
+      <content>This, this issue from India customer is sometimes they they use open, open AI and they start Conway Air agent. But then the ASR, they choose the India region, ASR they choose Microsoft India region. So what&apos;s the what&apos;s the issue if you in this case, the agent will by default will start it in the in the US And when the agent will try to communicate with with ASR, the agent need to communicate from the US to the India Azure server. So that&apos;s a cross, cross continent communication. So it will impact the stability and the latency and so much, right. So that basically agent and ASR, they are not in the same region. So it will impact so much latency, right. So it&apos;s quite important. Advanced features, advanced features that enable AIVEDAVD. As you may know it&apos;s a intelligent interruption. I may take a bit a little bit further later about the AVD and enable MLIMMLIM</content>
+      <key_concepts>
+        <concept>Azure India ASR</concept>
+        <concept>India customer scenario</concept>
+        <concept>US agent default</concept>
+        <concept>cross-continent communication</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:19:04" end_timestamp="00:20:31" title="RTM transcription channel option" anchor_type="CONCEPT">
+      <content>means audio, a voice to voice model, right, Voice to voice model. Currently we don&apos;t have many customers using the voice to voice model and so we can skip this part MLM. Yeah, enable RTM. Yeah, as I mentioned by default, by default our engine, our agent sends the transcription using the data stream. So, but you can enable the RTM for the agent. When you enable RTM the when the agent is started, our agent will also, join the RTM channel as a user. The channel name is the same channel name here with the RTC channel. So when you enable RTM RTM for the agent, agent will use this agent RTC UID to log in the RTM. And it will also join the RTM channel which has which is the same name as RTC channel. Is that clear? OK, so currently we recommend customer to use RTM instead of data stream.</content>
+      <key_concepts>
+        <concept>RTM channel join</concept>
+        <concept>RTM enablement</concept>
+        <concept>channel naming</concept>
+        <concept>transcription data stream</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:20:31" end_timestamp="00:21:59" title="Toolkit live subtitles via RTM" anchor_type="CONCEPT">
+      <content>So as you may know, we have the, we have the, we have the toolkit, right, to display the lives, to display the, to display the live subtitles, And now we we are using toolkit. Toolkit only support RTM. So the toolkit, this is toolkit. We have the toolkit. This toolkit is used to display the live transcripts. It&apos;s used to display live transcripts and which means it will render the transcript word by word. Word rendering. And this this logic is a little is little bit complicated for customer if they want to achieve this the word rendering by themselves, it&apos;s it will be the, , complete work for them. So we have developed the toolkit for customer. They can just call the simple API to achieve the word rendering. And currently this one, this 2 kit requires RTC and RTM and it only support RTM, it doesn&apos;t support data stream. SO2 kit is very important. I may talk about later a little bit further a little bit.</content>
+      <key_concepts>
+        <concept>RTM support</concept>
+        <concept>live transcripts</concept>
+        <concept>toolkit</concept>
+        <concept>word-by-word rendering</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:22:02" end_timestamp="00:23:30" title="SALS selective attention locking" anchor_type="CONCEPT">
+      <content>So RTM and the next one is enable SALSAL means selective attention locking. It&apos;s a it&apos;s easy in simple, it&apos;s a voice print. It will, , lock to your voice print. Sal has two Model 1 is awareness and awareness and how to say when you enable SCSAL here you must , give the there&apos;s a lot of parameter of the SEL. You can see it&apos;s a separate SELSAL parameter. It&apos;s named SEL. Model 1 is locking and the other one is recognization and locking is means speaker lock model. That means the agent will log onto the speaker the by the voice by the voice print and blocking other human voices. And it has two more mode, seamless mode and the personal personalized mode. Seamless mode means when a user speaks loudly, clearly at the beginning of the conversation,</content>
+      <key_concepts>
+        <concept>locking mode</concept>
+        <concept>recognition mode</concept>
+        <concept>selective attention locking</concept>
+        <concept>voiceprint</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:23:30" end_timestamp="00:24:57" title="Personalized voiceprint enrollment" anchor_type="DEMO">
+      <content>the agent will automatically recognize the user as a speaker. That means it will, , connect to the voice current in the conversation in the agent conversation. But if we use if it&apos;s personalized mode, in this mode you have to give the you have to send send the the speaker&apos;s voice print URL which is pre registered through the sample URL. That means you have to give the you have to give the a pre pre pre recorded audio of the user. OK, this is locking, locking just I give you an example here I enable the SEL. You can see I I enable SEL and in the SEL mode. But here is SEL parameter, right SEL and the mode now is locking. That&apos;s only difference is if it&apos;s, if it&apos;s simulates mode, you don&apos;t need parameter, You don&apos;t need this, you don&apos;t need this parameter. You don&apos;t need to give the URL.</content>
+      <key_concepts>
+        <concept>personalized mode</concept>
+        <concept>pre-registered sample</concept>
+        <concept>speaker identification</concept>
+        <concept>voiceprint URL</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:24:58" end_timestamp="00:26:21" title="PCM sample requirements and limits" anchor_type="KEY_TAKEAWAY">
+      <content>So the the agent will , recognize the voice print during the conversation. And if you are using the personalized model, you need to give the sample URL. This sample URL is a PCM. It&apos;s a PCM. It&apos;s basically you, you need to record, you need to record audio and send it to the agent and the agent will, , connect to the voice print. But there there&apos;s one thing I need to, I need to, I need to emphasize if you are using simplest mode, usually our our unit algorithm, it requires you the talk continuous talk 10 seconds continuously talk 10 seconds. Then it will connect the enough sample to to, , to, to, to connect your voice print correctly. But , in the common way, actually it&apos;s very hard. , most, in the most cases they any user just say the few words and doesn&apos;t talk too much actually. So it&apos;s very hard. So, so yeah and in this scenario if you if</content>
+      <key_concepts>
+        <concept>PCM sample URL</concept>
+        <concept>continuous speech requirement</concept>
+        <concept>seamless mode</concept>
+        <concept>voiceprint recognition</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:26:21" end_timestamp="00:27:48" title="Seamless mode voiceprint failure risk" anchor_type="KEY_TAKEAWAY">
+      <content>you are using SLM and use seamless mode and at the beginning the user just say a few words, which is not enough to to make the voice print work properly. You may, , encounter the, the issue cause &apos;cause the voice point is not accurate enough and it will, may, may, , block the speaker&apos;s voice as well. It will block everything an agent cannot hear the the user. So that&apos;s a big problem. So, so actually, in my opinion, I really recommend a customer can use a personalized mode, seamless mode. It&apos;s, it&apos;s, , it&apos;s a little bit, it&apos;s a little bit tricky here because most people, they don&apos;t speak too much at the beginning of the conversation. Recognize recognization is a is basically it&apos;s based on The Voice point. It just, , give the username so it will know which user is speaking. This is used in one to many agent to many end users scenario. So we don&apos;t need to talk about this one at the moment.</content>
+      <key_concepts>
+        <concept>inaccurate voiceprint</concept>
+        <concept>personalized mode recommendation</concept>
+        <concept>short initial utterance</concept>
+        <concept>speaker blocking</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:27:50" end_timestamp="00:29:20" title="ASR option and Iris default" anchor_type="CONCEPT">
+      <content>So this is Sal. Am I clear here? Do you guys have any question about ASAL? So Sal always give a lot of the, issues. So it must be very clear. OK, so this is all the advanced features here. And the last one is ASR. ASR is optional. This planet is optional because we have the because by default we are using Iris Iris. We have the default parameter Iris. Iris is is Agora. Agora how to say Agora wrapped up ASR and actually currently Iris. In the back end we are using Microsoft and in the future we are going to use Sonics as a default vendor for the ASR. So ASR this parameter is optional and better for is using Aris and the customer doesn&apos;t give doesn&apos;t have to give the key, doesn&apos;t have give to give the ASR key and</content>
+      <key_concepts>
+        <concept>ASR optional parameter</concept>
+        <concept>Agora wrapper</concept>
+        <concept>Iris default ASR</concept>
+        <concept>Microsoft backend</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:29:20" end_timestamp="00:30:48" title="ASR vendor parameter passthrough" anchor_type="CONCEPT">
+      <content>they can use Aris and Aris. Yeah, it&apos;s a, it&apos;s a you can, you can consider it&apos;s a Goa developed ASR. And if you are using other vendor that very important parameters vendor and another one is parameters params. This premise is basically it&apos;s all these, all the parameters in this params will be passed to the vendor. It&apos;s transparent to vendor. So in the our when when are trying, when our agent trying to communicate with ASR, we will convey all the parameters in this in here to the to the vendor. For example, let me see OK, deep 1, you can see this a deep one, this vendor deep one. This is parameters and all of the all of the parameters here will be transparent and will be Tran will be, , send it to dip gram. So so that&apos;s that&apos;s so that&apos;s the case. It&apos;s you may see here ASR dip gram.</content>
+      <key_concepts>
+        <concept>ASR vendor</concept>
+        <concept>agent-to-ASR request</concept>
+        <concept>parameter passthrough</concept>
+        <concept>params field</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:30:50" end_timestamp="00:32:20" title="Extending ASR parameter support" anchor_type="KEY_TAKEAWAY">
+      <content>You can see we only have we only in this in this sample we only support that few, very few parameters here, It doesn&apos;t mean it doesn&apos;t mean we cannot support other parameters from from deep gram. Actually deep gram has many parameters. So in in some scenario we we think that the the ASR cannot the parameter couldn&apos;t meet our requirement. We can check their vendors website just documentations and SDK should be SDK, any SDK should be fine. API references, voice to agent, speech test this speech test right And we are using websockets to so you just use the websocket live audio. You can see actually the diagram they supported so many parameters here detect identities, dictations, encodings and the pointing extra key term keywords.</content>
+      <key_concepts>
+        <concept>API parameters</concept>
+        <concept>Deepgram parameters</concept>
+        <concept>SDK references</concept>
+        <concept>vendor documentation</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:32:20" end_timestamp="00:33:48" title="ASR tuning for accuracy" anchor_type="KEY_TAKEAWAY">
+      <content>So many parameters and languages models actually those all of the parameters actually you can pass in here, you can pass in this one, you can pass in params, you can put them all over here. And our agent will , send those parameters to dip gram. So, so in many cases that customers say that the the vendors they are using deep one, but they are not satisfied with accuracy. And so sometimes we need to adjust the parameters for them and we need to in this case, we need to actually we need to check what parameters could be used from deep gram. We need to check deep gram document just keywords and keywords 1 means keywords it actually means hardware keywords means hot words, hot words. So actually Diggram support hot words. But we need to put hot words in keywords here. So, so that means so listen now we need to check their document. , this is this is ASR. So this is very important.</content>
+      <key_concepts>
+        <concept>ASR parameters</concept>
+        <concept>Deepgram configuration</concept>
+        <concept>accuracy issues</concept>
+        <concept>language models</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:33:48" end_timestamp="00:35:17" title="TTS vendor keys and options" anchor_type="CONCEPT">
+      <content>So that means we sometimes we need to check the vendors document, , to to know what available parameters. Yeah, OK, this is ASR and the TTS is the same thing. It&apos;s the same thing. And you have the vendor, but the TTS, we don&apos;t have our own TTS, we don&apos;t have the default value. So customer must give the TTS vendor and key, Yeah, that means TTS customer must BYO, yeah, brand them themselves, their their own keys, TTS. And as you can see there&apos;s an extra then extra parameter for the TTS named skip patterns. This morning I had explained right, skip patterns. It will means TTS will skip the anything in the in the in in those brackets. It will skip those, those those anything in the brackets. So the TTS won&apos;t won&apos;t for especially for the coding for the code for the code and that TTS won&apos;t speak the code. So the skip patterns is very important and in also in the some scenario</content>
+      <key_concepts>
+        <concept>API keys</concept>
+        <concept>BYO credentials</concept>
+        <concept>TTS vendor</concept>
+        <concept>skip patterns</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:35:17" end_timestamp="00:36:35" title="Emoji handling with skip patterns" anchor_type="EXAMPLE">
+      <content>customer LM will return the emoji, right customer LM they will return the emoji. And in this scenario, we must, , tell LM put the emoji in the in the brackets so the TTS can skip the emoji. Otherwise, , TTS will speak the emoji. Emoji usually actually it&apos;s a characters. It&apos;s a special characters and TTS cannot really so, so skip patterns are very important. Next one is LLM. LLM is URL. It&apos;s very, , straightforward and API K you have to give the API K system messages. System messages is basically it&apos;s a, it&apos;s a prompt, It&apos;s a prompt. You have to give the prompt of the LLM and the Max history. Max history means how many, how many how many history messages agent will convey to to LLM for example.</content>
+      <key_concepts>
+        <concept>TTS rendering</concept>
+        <concept>bracketed tokens</concept>
+        <concept>emoji output</concept>
+        <concept>skip patterns</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:36:43" end_timestamp="00:38:12" title="LLM request example setup">
+      <content>Let me give you this is Auntie. This is actually when, when, when the there&apos;s only three sentences. Let me find a longer one I can give you. I can give you an actual actual actual actual request to LLM. You can see from here. You can see this is a very long. This is very long.</content>
+      <key_concepts>
+        <concept>LLM request</concept>
+        <concept>example payload</concept>
+        <concept>prompt length</concept>
+        <concept>request inspection</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:38:13" end_timestamp="00:39:05" title="Prompt section in LLM request">
+      <content>You can this is this is our request to LLM. This is our request to LLM. You can see the first part is prompt And then after the prompt it will go the this one is too long. The prompt is very long. This prompt is too long, let me let me delete it first.</content>
+      <key_concepts>
+        <concept>LLM input</concept>
+        <concept>prompt field</concept>
+        <concept>prompt truncation</concept>
+        <concept>request payload</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:39:46" end_timestamp="00:41:11" title="Conversation history array structure" anchor_type="CONCEPT">
+      <content>Basically this is an array and it contains all the history here. What is the history? This is the user and the row system. Oh, sorry. This is this whole this this all the all the all the. This is This is all the all the history. Actually, this is the first first request when it&apos;s empty. Let me find another one. Sorry. You can say we went when we send, we send a message to to the to theLLM. You can see this is a system role system. That means this is a system, this is a prompt, It&apos;s a, it&apos;s a, it&apos;s this one, it&apos;s a system messages, It&apos;s a system message. And this whole part is a prompt. So this customer has very long, has very long, has very long prompt. And then this is a message history message. You can see actually when you when we do the request, this is the last message from customer. when we send actually this is a customer input.</content>
+      <key_concepts>
+        <concept>conversation history</concept>
+        <concept>message array</concept>
+        <concept>system role</concept>
+        <concept>user role</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:41:11" end_timestamp="00:42:39" title="Max history parameter behavior" anchor_type="CONCEPT">
+      <content>And when we send customer input to LLM it will convey all the histories. You can see this all the they are all the histories. They are all histories. So this parameter says that Max history 32 by default 32. That means we will convey 32 messages history messages to the LLM. If you just set 2-2 Max messages, it will just give you 2. For example, it will only has last two messages. When when the when we send the message request to LLM, it only contain 2 messages. This is the one and this is the second one. So, so that&apos;s a message. This is a history. That&apos;s the history means yeah, this this is the actual request to the LLM. It will convey the messages or history messages. Input modality is now I think mostly validly used is text and oppo text E2 seems very small. So E2 is it depends. It&apos;s a little bit small, but it should be.</content>
+      <key_concepts>
+        <concept>context window</concept>
+        <concept>default 32 messages</concept>
+        <concept>history truncation</concept>
+        <concept>max history</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:42:40" end_timestamp="00:44:06" title="History size and LLM cost" anchor_type="KEY_TAKEAWAY">
+      <content>, from my experience, if it&apos;s ten, if it&apos;s 10 minutes talking, usually the they have 30 to 40 tens. 30 to 40 tens usually means 18 messages because 110 has 110 has one agent message and 1 user message. So 110 has 2 messages and , forty 10s usually it&apos;s 80 messages and you can you can make it bigger, but as we if this one is bigger and then you need to, , pay more to the LLM, right, The LLM cost will increase, So, but but yeah, that&apos;s OK. You can you can change it to bigger and modality usually with use text and if the if customer use that customer audio model they can use audio but usually we just use text greeting configs, greeting configs. This means that greetings you can you can set up the greeting message so when the</content>
+      <key_concepts>
+        <concept>LLM cost</concept>
+        <concept>conversation length</concept>
+        <concept>history expansion</concept>
+        <concept>token usage</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:44:06" end_timestamp="00:45:33" title="Greeting trigger on user join" anchor_type="CONCEPT">
+      <content>user just joining the channel as agent will greeting will send greetings. But I need to give you some a little bit detail here. The greeting message only will be sent when the user joins the channel. So if you start an agent, the agent is running in the channel but there&apos;s no user, the user hasn&apos;t joined the channel yet, the greetings messages will be not sent. So it will wait for the user. , the greeting message is triggered by the user joining this event, right. It will be billed 47. Yeah, of course, because we charge based on the minutes. Agent minutes. Yeah. What if I don&apos;t know, but they didn&apos;t realize that agent is running? This started why? They don&apos;t know this started the engine. Yeah, yeah, this during test, I usually, , when I test actually the agent and the RDC joins separately, they just joins firstly. Then when when connected, when the RDC started to send audio, then the agent will response. But before the agent, before the RDC user sends out any audio, they can&apos;t, the agent already joined.</content>
+      <key_concepts>
+        <concept>agent startup state</concept>
+        <concept>billing event</concept>
+        <concept>greeting message</concept>
+        <concept>user join event</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:45:33" end_timestamp="00:47:03" title="Idle timeout and greeting modes" anchor_type="CONCEPT">
+      <content>Yeah, but not long, &apos;cause you have the timeout, The idle timeout here 30 seconds. If user don&apos;t join the channel within 30 seconds, it will, , agent will leave as well. It doesn&apos;t impact much. So this this one detail, And agent will wait for the user to join the channel. And the second one is as you may see that we have the mode more means that single every, single every and a single first. What does that mean? Single every means whenever the user joins the channel, it will greet, it will send a greetings. So, but, but for example, if the user is talking to the agent in the channel, but the user may be disconnected due to the network and his user will, , back up, back online will be back online and our agent detect another user on user joining event, It will send the greetings again. So in this scenario, if his user dropped, dropped, dropped the network and come back again, he will receive the greetings again. So some customer doesn&apos;t it, And so, , in this case we create a parameter single first.</content>
+      <key_concepts>
+        <concept>Single Every mode</concept>
+        <concept>Single First mode</concept>
+        <concept>agent auto-leave</concept>
+        <concept>idle timeout</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:47:04" end_timestamp="00:48:33" title="Single First and failure message" anchor_type="CONCEPT">
+      <content>Single first means only the first time the user joins the channel, he will receive the greetings. Afterwards the greetings will not be sent anymore. So that&apos;s very quite different, Only once. And it&apos;s every time user joins the channel, it&apos;s a difference. OK, greeting message is quite simple. Just what&apos;s the message you want to send to the user? And the failure message is, , just for example, agent failed agent. No, no, the IMLM doesn&apos;t give a response. And then we will send the, , failure message. So for customer, it&apos;s very useful because , they know the probably the LLM is not responding. So we send a failure message so they they wouldn&apos;t know otherwise it&apos;s silent just customer know oh silent what happening? They don&apos;t know. So failure message is also important. And wonder, wonder is wonder very important custom, , currently custom means customer is using customer LLM. When customer choose custom, we send some extra extra. , we send customer extra parameters to the</content>
+      <key_concepts>
+        <concept>LLM no-response</concept>
+        <concept>Single First mode</concept>
+        <concept>failure message</concept>
+        <concept>greeting frequency</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:48:33" end_timestamp="00:49:59" title="Custom LLM request metadata" anchor_type="CONCEPT">
+      <content>LLM to to their LLM just 10 ID and time stamp, the request time stamp and they even we even yeah, yeah, 10 ID and the time stamp. Yeah, I think those two, yeah, custom information, if it&apos;s open AI, if it&apos;s open AI, we don&apos;t send the 10 ID and time sign. Yeah, it&apos;s only the for the custom. We send those too. OK, why? Because customers, they want to, , if you&apos;re using your custom custom LLM, right, you can do some, , logic, extra logic, Because that&apos;s your LLM you can do when you receive the request, when you receive a request, actually your server will receive a request first, You can do the actual logic based on the 1090 time stamp. But if you are user open eye, open eye doesn&apos;t care about those things. So it doesn&apos;t need it, So this only allows the customer to do some customized logic, Yeah. And style, as you may know, we have currently in the market, we have multiple protocols 1 is Open AI Journali, Anthropic.</content>
+      <key_concepts>
+        <concept>OpenAI request payload</concept>
+        <concept>custom LLM integration</concept>
+        <concept>request timestamp</concept>
+        <concept>tenant ID</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:49:59" end_timestamp="00:51:26" title="Template variables for messages" anchor_type="CONCEPT">
+      <content>Actually they have the different, , different proctors, proctors, proctors and, and , format request format is different. So, so that&apos;s why we are, , we have this this parameter, OK, Usually you don&apos;t need to care about this one template variables. What does that mean? This means it allows you to pass the variables in the greetings and failing messages and and is this a key value here? And let me give you an example, OK, for example, in some cases, you would to, , in the greetings, In the greetings, you want to give the parameter OK, OK here a a hey, you want to see this customer name? You want to you want to give the parameter here because you want to give the user customized, , greetings I need to, , show the friendly Louis.</content>
+      <key_concepts>
+        <concept>failure message</concept>
+        <concept>greeting message</concept>
+        <concept>key-value parameters</concept>
+        <concept>template variables</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:51:26" end_timestamp="00:52:55" title="Personalized greeting example" anchor_type="EXAMPLE">
+      <content>Hey, Louis, not hey, yeah, agent that can know your name, So they want to have the parameter here. But what&apos;s the value here? So you can give the template template variables. Yeah, here, just Lame Alice. Yeah, just this. Yeah, this is a parameter, the time parameter, yeah. the agent will know this parameter means means this one, this value. So this is template variables in in common use case it&apos;s it&apos;s , it&apos;s not that important. But in studio currently as , we have studio product, right in studio we use this one. So I think this one is designed to studio, designed for studio. OK, this is a parameter tablet variables and MLM.</content>
+      <key_concepts>
+        <concept>Studio usage</concept>
+        <concept>name parameter</concept>
+        <concept>personalization</concept>
+        <concept>template variable value</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:52:55" end_timestamp="00:54:23" title="Avatar vendors and credentials" anchor_type="DEMO">
+      <content>I&apos;m going to skip this part cause not many customer using this one. And Avatar I mentioned avatar when you&apos;re using Avatar, yeah, country will only support Ankur and hygiene and the vendor. Vendor you can choose Aquana, Hedgen and outer you need to enable and parameters a different vendor. We have the different parameters. Let&apos;s let me show you a little bit this is Aku. You need to give the key in outer, we need to give the, , the outer UID and outer token and our ID, our ID. So that means we need to give the UID the token. That means our tab will join the channel as well. So when you use avatar you will see that Channel. There are three users, one is agent user, one the other one is our user and the other one is end user. End user. So there are three users and two are Linux users. Yeah. Where is this about Linux deploy in the US? Are they in our server? I think that&apos;s from vendor.</content>
+      <key_concepts>
+        <concept>avatar feature</concept>
+        <concept>credential parameters</concept>
+        <concept>region support</concept>
+        <concept>vendor selection</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:54:24" end_timestamp="00:55:50" title="Vendor-hosted agent service model" anchor_type="CONCEPT">
+      <content>Vendor server. No, no, yeah, yeah, yeah. Wonder, will, wonder, Will. Yeah. Wonder will start the service, will start the agent in their server. Yeah. So they take our Linux SDK, OK, Yeah. And they will join the ITC. They will join the ITC. So both ACU and Haitian are only available in USI think so. I just checked with them a few days ago. They told me that it&apos;s it&apos;s in the US. Probably they they are going to support more regions in the future. But currently it&apos;s in the US. We already seen the US so this one thing if you use avatar you will see the agent doesn&apos;t send audio anymore. Agent will just the logic is agent will receive the audio from the end user. An agent will send Agent will request the ASR to transcript the audio and agent will send a request to LLM. Agent will send a request to TTS, but agent will send the audio received</content>
+      <key_concepts>
+        <concept>Linux SDK</concept>
+        <concept>RTC channel join</concept>
+        <concept>US-only availability</concept>
+        <concept>vendor server</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:55:50" end_timestamp="00:57:18" title="Agent and avatar media flow" anchor_type="DEMO">
+      <content>from TTS to Avatar will generate the audio and video and Avatar will send the audio video to the channel. So agent won&apos;t send any audio anymore. So agent just so you you will see in the channel. It&apos;s quite interesting, in the channel you will see one Linux only subscribe the audio and the one Linux only send the audio and video, understand? The agent just subscribe audio from the user and avatar only send the video and audio to the channel, the avatar doesn&apos;t subscribe anything, understand. Yeah. So our AI support you, you told me that our AI supporter has video profile 801080P. So still no way to change these settings, these two big yeah, I know how the country is 1080P and it has very high bit rate. I heard that whatever you pass on that, but there will be the resolution. So in the avatar part there&apos;s no the coding part. So for you to reduce the the resolution, you have to pass a smaller avatar resolution.</content>
+      <key_concepts>
+        <concept>TTS output</concept>
+        <concept>audio subscription</concept>
+        <concept>audio-video publishing</concept>
+        <concept>channel participants</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:57:19" end_timestamp="00:58:45" title="Avatar resolution behavior">
+      <content>Smaller avatar means a different avatar ID. I&apos;m not sure. I think it depends on the the vendor actually, because I think the agent you can set the resolution, but the April day has fixed resolution. So I think I had a discussion before about this part. We&apos;re , oh, this channel is weird because, , they&apos;re, , I&apos;m testing specific, , resolution, but why is equal, , throwing different resolutions. So it&apos;s a little bit awkward. You said with us that one is I think it&apos;s it&apos;s adaptive. I think sometimes, , , I, I, I don&apos;t know. Anyway, we, we don&apos;t have control. Yeah, I&apos;ve gotta doesn&apos;t have control. So yeah, we&apos;re actually talking about APS, everything that if you want to control the resolution, you have to make sure that they&apos;re passing the correct resolution on the vendor. huh. OK, So you have to prepare it. Yeah. So this is a little bit of detail of the avatar. OK, Yeah. And tent detection is is, , by default is a goal of AED and the other tools, they are used for the MLM. So you don&apos;t need to, , learn about it.</content>
+      <key_concepts>
+        <concept>adaptive resolution</concept>
+        <concept>avatar ID</concept>
+        <concept>vendor constraints</concept>
+        <concept>video resolution</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="00:58:46" end_timestamp="01:00:13" title="Interruption mode options" anchor_type="CONCEPT">
+      <content>So just tent detection, we have the few important families. One is interruption mode. Interruption mode that by default is interrupt. That means the user can interrupt the agent. The PIN means agent completes the counter trend interaction then process the human voice input ignore. That means when the agent is speaking, agent will discuss the human voice input any keywords. That means agent will, , you can only use the keyword to interrupt agent and other other words cannot be just you can just say hold on you, you set up the hold down as a keyword. You just see hold down, the agent will stop. If you see anything else, agent will just ignore it. So keywords interrupting is very, , I think it&apos;s very useful. And yeah, if you set up the keywords you need to give, if you enable keywords, you must give the detection, you must give the interrupt words, interrupt words, you must set up the interrupt words. Just this one. Yeah, just this one. If you give the interrupter mode, if you give the keywords,</content>
+      <key_concepts>
+        <concept>PIN mode</concept>
+        <concept>interrupt mode</concept>
+        <concept>interruption mode</concept>
+        <concept>turn detection</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:00:13" end_timestamp="01:01:39" title="Keyword interruption and adaptive gating" anchor_type="CONCEPT">
+      <content>you must give the interrupter keywords. Yeah, they are a pair. Adaptive. Adaptive means agent dynamically increase the voice continuity. Transport while speaking to reduce accidental interruptions. How to explain that means when the user is speaking and our agent, how our agent will judge if the users actually start speaking. Firstly, we need to receive some, , audio. We need to receive 100, 100 20 milliseconds audio. Then we will then we will know then we&apos;ll think, we will think that users is speaking right And when but when the agent is speaking, if you you are using adaptive when the agent is speaking, we will make it longer. We will agent will, , must receive 240 milliseconds. Then then the agent will will will know the the user&apos;s speaking and the user can interrupt the agent user can interrupt the agent. Yeah. So that&apos;s anyways make it harder to to, ,</content>
+      <key_concepts>
+        <concept>adaptive mode</concept>
+        <concept>audio window</concept>
+        <concept>interrupter keywords</concept>
+        <concept>voice continuity</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:01:39" end_timestamp="01:03:04" title="Interrupted duration threshold" anchor_type="KEY_TAKEAWAY">
+      <content>to to interrupt the agent when the agent is speaking. The last one is interruption, interrupted duration. This is means how long the user need to speak that our agent will stop the agent. This way is very important because in many scenario agent was interrupted respectively due to the background voice, just when you lock on the door, yeah and the mouse wise just yeah, when you&apos;re keyboard wise, it may interrupt the agent as well. So, so that&apos;s why we we need to give the proper value of this one. And can we use multiple methods for the clone detection? So, for example, combined with the keywords or I don&apos;t know, interrupt no keywords is also will interrupt the agent. If you see this keyword, it will interrupt the agent. Yeah. How about if I prefer using keywords and also the other mode?</content>
+      <key_concepts>
+        <concept>background noise</concept>
+        <concept>false interruptions</concept>
+        <concept>interrupted duration</concept>
+        <concept>speech threshold</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:03:07" end_timestamp="01:04:36" title="Natural conversation use case" anchor_type="EXAMPLE">
+      <content>Which mode you want to any mode? Give me a use case. I don&apos;t, I don&apos;t, I cannot, I cannot, I cannot. So we can only choose one mode, No, no, no. I cannot think of any scenario that you need, , 2 modes. If for the when we have natural speaking with a human, for example, if I&apos;m thinking I keep silent, then the conversation maybe get paused or I may say a word. Oh, stop. Let me think that the conversation will get post as well. So how to do that with with this term detection, You can just use interrupt and then stop the agent. Stop agent means I say stop agent speaking. This is only means stop agent speaking when the agent is speaking. Yeah, those two, those are, , applied when the agent is speaking. Oh, sorry. What does interrupt mean? Interrupt means when the agent is speaking and you want to interrupt the agent. I have to say something. Yeah, stop or something.</content>
+      <key_concepts>
+        <concept>conversation flow</concept>
+        <concept>natural speaking</concept>
+        <concept>pauses</concept>
+        <concept>turn detection</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:04:36" end_timestamp="01:06:03" title="Interrupt vs keywords vs PIN" anchor_type="CONCEPT">
+      <content>If you use interrupt you you say any words, we will we will stop the agent speaking. As long as you talk, you will agent will will be will be interrupted. Keywords means currently the agent is speaking and you you just you must give the specific word to interrupt the agent. And what what is a pen? The pen means you see anything but the agent is continue talking and after after the agent finish talking it will handle your input. It will give your input response. That means it it doesn&apos;t it doesn&apos;t ignore but it will. It means it will handle later. It will handle your input later. Ignore means if agent is speaking, if you see anything, agent will just ignore it, so your input will discard it. And thus adaptive mode combines both interact and append mode. It is a mix. No, adaptive, just, , make it a little bit harder to interrupt the agent.</content>
+      <key_concepts>
+        <concept>PIN mode</concept>
+        <concept>agent speech handling</concept>
+        <concept>interrupt mode</concept>
+        <concept>keyword mode</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:06:06" end_timestamp="01:07:32" title="Interruption duration and silence duration" anchor_type="KEY_TAKEAWAY">
+      <content>What doesn&apos;t mean harder? That means you, you, you, you. You need to talk longer. You need the duration. Yeah, yeah, you need to talk longer to interrupt them, the agent. OK, clear. So, so this interrupter mode, only the user trying was trying to interrupt the agent speaking. OK, prefix padding you can just ignore this parameter, you won&apos;t need this one. We are going to remove this one from document &apos;cause the you, you, you don&apos;t need to use it. Silence duration means how long the user will be silenced and we determine this is a finished speaking. Just after I, I finish my talk and, and after the 440 seconds agent will think this user, , has finished talking that our agent will</content>
+      <key_concepts>
+        <concept>interruption duration</concept>
+        <concept>prefix padding</concept>
+        <concept>silence duration</concept>
+        <concept>turn detection parameters</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:07:32" end_timestamp="01:08:57" title="Silence duration importance" anchor_type="KEY_TAKEAWAY">
+      <content>start, , doing the process next step , , send the send the input to LLM will talk about this one later. This one is very important parameter silence duration. So, so &apos;cause in many scenarios people they need, they have the, , during their talking, they always pause , or they don&apos;t speak they can think for one second, two seconds, I want to go to this one this. Yeah, they have the pause during the in the middle of the talking. So, so this one is very important, Stressful, stressful. That means the volume, the volume above 0. 5, it will be, , considered as a effective effect. How to say it&apos;s a, It&apos;s a, it be considered as a input, audio input. This is audio. This is a volume, volume threshold quick response. This is for the MLM. So we don&apos;t need this one. We skip this one.</content>
+      <key_concepts>
+        <concept>LLM input timing</concept>
+        <concept>end-of-turn detection</concept>
+        <concept>mid-utterance pauses</concept>
+        <concept>silence duration</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:08:57" end_timestamp="01:10:27" title="Turn detection parameter set" anchor_type="KEY_TAKEAWAY">
+      <content>And the interrupt is also for the MLM, yeah, we need to skip. And this one is also so OK, so turn detection, actually, this part is very important. Only has only has 4 parameters, but they are very important. The interrupt mode and the interrupt duration and the silence duration, they are very important. It impacted the experience so much. SALI have introduced SA already. Yep, labels labels. If you read this one you&apos;ll be confused. Actually it&apos;s quite simple. This labels, it&apos;s a, it&apos;s customized parameter for the NCS event. So that means when our server send NCS events to to your webhook, we will, , convey these labels. If you set anything in these labels, our NCS will, , bring this information and send to your webhook as well. Yeah. What&apos;s the purpose of at the level &apos;cause , some customers, they are, , they may have the different applications</content>
+      <key_concepts>
+        <concept>interrupt duration</concept>
+        <concept>interrupt mode</concept>
+        <concept>labels</concept>
+        <concept>silence duration</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:10:27" end_timestamp="01:11:54" title="Labels for multi-app webhooks" anchor_type="EXAMPLE">
+      <content>and they have the common AI, but they have the common AI, but they have the for the for the different purpose. 1 common AI application is for the is for the dating and another one is for the for the for the sales assistant. So they have the different applications and how to differentiate them. They also they need a webhook, A webhook need to receive all the all the NCES events And they need to differentiate the the this event is from the from the different business applications. Yeah, yeah, that&apos;s, that&apos;s the , , use case. RTCRTC is mainly about the encryption. So we can skip this part parameters. This parameters is basically it&apos;s for the for the agent itself, parameters silence config, silence config, it&apos;s it&apos;s how long if the how long the user will how long if the user is silent, silent and it will send a message just</content>
+      <key_concepts>
+        <concept>event routing</concept>
+        <concept>labels</concept>
+        <concept>multi-application context</concept>
+        <concept>webhook</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:11:54" end_timestamp="01:13:22" title="Silence timeout speak action" anchor_type="DEMO">
+      <content>if you send, if you set up the silence config here, if you set up the timeout 5 seconds this is a millisecond, It&apos;s a. If it&apos;s a 5000 milliseconds, that means 5 seconds. If you don&apos;t speak after, after after the agent is speaking. And if you don&apos;t speak anything in five seconds, it will it will take action here a speak. This action is a speak. That means it will speak something. It the content is be it will be it&apos;s here content makes what agent will speak a speak sync to the extra content. Yeah, usually speak usually your customer just use speak just if your user is silent for five seconds, we will customer will say, hey, are you still there, right. This thing, Are you still there? You can set up in the content. Yeah, this is a silent silence configure. It&apos;s very it&apos;s also very useful farewell config.</content>
+      <key_concepts>
+        <concept>fallback prompt</concept>
+        <concept>milliseconds configuration</concept>
+        <concept>silence timeout</concept>
+        <concept>speak action</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:13:22" end_timestamp="01:14:49" title="Farewell configuration and graceful stop" anchor_type="CONCEPT">
+      <content>Farewell configure means when you when you when you are trying to stop the agent, When you try to stop agent and our agent before the stop our agent will send a farewell message. Farewell configure, Understand. Yeah, graceful enable. That means when this enabled calling the post method to stop the agent, ensure the agent is an idle state before leaving the channel. Yeah, if it&apos;s a force, if it&apos;s a force means how to see as you may know that when when we are trying to stop the agent, when we try to stop the agent, we will just when the TTS is still speaking, when the agent is still speaking and someone just called Storm agent. So the agent will leave the channel immediately. In this case, the user, the they will just, , the TTS is still, , speaking in the middle and the user doesn&apos;t receive the full information.</content>
+      <key_concepts>
+        <concept>farewell configuration</concept>
+        <concept>farewell message</concept>
+        <concept>graceful enable</concept>
+        <concept>idle state</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:14:49" end_timestamp="01:16:19" title="Delayed stop during agent speech" anchor_type="EXAMPLE">
+      <content>So in this case that&apos;s was very, , that&apos;s a lot of good experience, right. So we that&apos;s why we set up the farewell config that means allows, allows when the speaker, when the agent is speaking, we will wait after agent finished speaking, we will stop the agent not immediately, right. For other RTCRTSC service when we call the stop, then the , the task will stop immediately. But in the AI, , we have the mechanism to to delay the stop this operation. So let TDs finish. Yeah, yeah, yeah. Let TDs finish talking data channel. That means this one is for the transcription, By default, it&apos;s using data stream. Data channel, This means transcription. Yeah, I have a question. Actually, I&apos;ve been very curious about this. But , before our team, , the the subtitle team in we use the data channel, But on stream messages in general, even speech to text, we use photo buffer instead of Jason,</content>
+      <key_concepts>
+        <concept>AI stop operation</concept>
+        <concept>agent speaking state</concept>
+        <concept>immediate stop behavior</concept>
+        <concept>stop delay mechanism</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:16:20" end_timestamp="01:17:42" title="Client-side buffering for streams">
+      <content>So in this case, why, why do it&apos;s in our server side, do we not use put the buffer to handle the stream message? I think you need to do it on client side. Clients are both side, Because , you need to Google it from the server side to match the client side. But do we still need to use put the buffer in the client side in order to use the R stream? I haven&apos;t tried. I just used the RTM, but yeah. I saw 1 ticket there was indicating put the buffer, but it didn&apos;t really say, hey, download even in our documentation doesn&apos;t say, hey, you need to use put the buffer too, So yeah, no, because our server side don&apos;t have the power buffer. I think because we we, we send, we send the, we send message. , usually if you see the ASR result, you can see the multiple, , the transcription we send, we have the duplications and we have the after the finish and ASR will send ASR side will send a lot of message, maybe a little bit different. Yeah, it will correct the, it will correct the sentence.</content>
+      <key_concepts>
+        <concept>RTM usage</concept>
+        <concept>client-side handling</concept>
+        <concept>server-client alignment</concept>
+        <concept>stream buffering</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:17:43" end_timestamp="01:19:12" title="Data stream and metrics settings" anchor_type="CONCEPT">
+      <content>So, so we need to use yeah, here is the data stream. And you need to remember that data stream is set up in the parameters, but enable RTM based in the advanced in the advanced features is in the advanced features is in a different place that&apos;s data stream, I don&apos;t have it and enable metrics. That means NCS will will send the metrics a delay, especially for the delay our our agent will send the latency of each part ASRLM latency by the NCS event. I have a question regarding the transcription. So RTM and the data stream, are they used for different scenarios? Well, we need both options because RTM is advanced. It&apos;s more, , reliable. It&apos;s more reliable and RTM. Currently we only allow the user to send message to agent by RTM data stream.</content>
+      <key_concepts>
+        <concept>advanced feature toggle</concept>
+        <concept>data stream parameter</concept>
+        <concept>enable metrics</concept>
+        <concept>latency metrics</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:19:12" end_timestamp="01:20:41" title="Data stream for non-RTM devices" anchor_type="EXAMPLE">
+      <content>That agent itself doesn&apos;t monitor the data stream message. Then why we keep this option data stream option? Because in some scenario they cannot use RTM, for example LOT device, they cannot use RTM, OK, they only have a data stream and assuming load data stream, it only has one connection, It&apos;s using the same connection with RTC. So but RTM you need extra. IoT usually doesn&apos;t need to send a text message. Yeah, yeah, so, so, so they don&apos;t need to use RTM, they just need to data stream. But no, no, for the internal communication data stream, IoT device, IoT devices also need to receive the transcriptions. Right now they also need transcription. In some IoT devices they have the screen. Yeah, they have screens IoT. Something has a camera feature, capture the image and send it over IoT, , the R1, they can capture the image and send it through. Come where? Yeah. So it means if we set the data stream, we can only receive the transcription. We cannot. Yeah, you cannot send. You cannot send the message to agent. So you have to use ATM. OK, got it.</content>
+      <key_concepts>
+        <concept>IoT devices</concept>
+        <concept>RTC shared connection</concept>
+        <concept>RTM limitation</concept>
+        <concept>single connection</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:20:45" end_timestamp="01:22:14" title="NCS error and metric events" anchor_type="CONCEPT">
+      <content>So error message. Yeah, error messages means that any ASRLMTTS, any part have an error, it will return by the NCS. This is also sent by the NCS metric is also sent by the NCS. Yeah, it&apos;s pretty much about the parameters. So I hope it&apos;s very clear. I believe not all of you understand them all. So that&apos;s why I&apos;m, , trying to explain here and I&apos;m going to introduce some, , extra actual parameters here as well. One is enable down. This is super important cause in the conveyor scenario it&apos;s always audio issues, So during the integration, we really need customer to enable down, otherwise we cannot know what happens during the, , if there&apos;s low sound, there&apos;s low response, we don&apos;t know what happened, . So enable dump and after you enable it, you can download the audio dump from Algora site. We have way to download the audio dump and I will show you the audio dump later. Yeah. And the last one is primate audio scenario. Audio scenario is also also very important. By default, if you don&apos;t set up this parameter,</content>
+      <key_concepts>
+        <concept>ASR errors</concept>
+        <concept>LLM errors</concept>
+        <concept>TTS errors</concept>
+        <concept>error messages</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:22:14" end_timestamp="01:23:41" title="AI server and AI client pairing" anchor_type="KEY_TAKEAWAY">
+      <content>our agent will use the parameter AI server. This is a dedicated scenario for the common AI AI server, but. , as you may know that if you use AI server, the client side must use AI client. If client side doesn&apos;t support AI clients, they will fall back to the cores. It will they will fall back to default, sorry, it will they will fall back to default scenario. audio this four scenario, right this is super important for the web because web doesn&apos;t support AI client if you are using the web as a client to talk to cover AI, you must give audio scenario change them to chorus. This is the one I was talking about earlier the audio profile yeah yeah, yeah the for the V2V. So what he&apos;s saying is you need to use chorus. So we need to check with Daniel if yeah, if you are using web, you must give the changes to the scholars. What happened?</content>
+      <key_concepts>
+        <concept>AI client requirement</concept>
+        <concept>AI server parameter</concept>
+        <concept>fallback behavior</concept>
+        <concept>web client limitation</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:23:41" end_timestamp="01:25:09" title="Fallback restart and audio interruption" anchor_type="EXAMPLE">
+      <content>If it is not AI, it&apos;s not AI client. It will fall back to default scenario. But when it tried to fall back, it will restart the audio mode. So you will, you will hear the, , interruption. When the agent speaking the greetings send the greetings, you will hear the interruption, a very small interruption. Is there a problem? It&apos;s not a problem cause the web, cause the web and cause web and cause web and agent. They are restarting the audio mode. They are restarting audio audio model in agent. Web or agent. I forgot, but, but anyway, there&apos;s, , agent, Yeah, Agent will restart the mode. Yeah. So just a very temporal. Yeah, yeah, yeah. Short interruption. Yeah, very short interruption. But it really impacted the experience. It happens to every, every channel. So. OK, Yeah. So it&apos;s very important. And if you are using little, if you are using little client, we highly recommend customer to follow this document to optimize audio and especially using the AI client. Scenario.</content>
+      <key_concepts>
+        <concept>audio mode restart</concept>
+        <concept>fallback restart</concept>
+        <concept>greeting interruption</concept>
+        <concept>web client behavior</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:25:15" end_timestamp="01:26:44" title="Recommendation to use AI client" anchor_type="KEY_TAKEAWAY">
+      <content>Yeah, we have a AI client. AI client. Yeah, we have the scenario AI client. We highly recommend customer using the AI client. Yeah, &apos;cause we have the a lot of the optimizations, usually if customer has some, , laggy audio freezing and and audio audio issue, usually we just assign this document to customer to follow the best practice 100% sure it will resolve the issue. So if it&apos;s a native SDK, yeah, always use AI client. It&apos;s a, it&apos;s more, , it&apos;s optimized. So Alex, for web-based customers, do we suggest Chorus or AI client? Chorus because web doesn&apos;t have AI client. OK, OK, got it, got it. So by default it&apos;s chorus only one option for web-based client, Yeah, yeah, yeah. You must manually change it. OK, Yeah, OK, got it, Got it. , oh, sorry, this is a different thing. This is the client side. This is the client side. You need to change the AI client. And for the cover AI, this parameter is changed to the server side.</content>
+      <key_concepts>
+        <concept>AI client</concept>
+        <concept>audio optimizations</concept>
+        <concept>best practices document</concept>
+        <concept>native SDK</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:26:45" end_timestamp="01:28:11" title="Server selection for web clients" anchor_type="DEMO">
+      <content>This parameter is changing the server, changing the cover AI server. By default it&apos;s using AI server. And if you are using Lead SDK, you don&apos;t need to call this this one. You just need to change the client side, change it to AI client. So the server side is using AI server and the client side is using AI client. So they are working fine. OK. But if you are using web, you need to change the server side, change covers. OK, got it. I understand, yeah, yeah. So a little bit a little bit confusing. OK, Lex parameter is named RTC publish audio auto publishing. That&apos;s another story. If, if, if the if the agent is not using AI server, for example agent is using default agent is using chorus. Let&apos;s see, if you convey agent is using chorus, when the agent joins the channel, it will stop, it will start publishing, but actually it doesn&apos;t publish anything, but it&apos;s publishing the stream, which is a, , empty stream. It will bring an issue especially for the recording &apos;cause if you start the agent</content>
+      <key_concepts>
+        <concept>AI client configuration</concept>
+        <concept>default AI server</concept>
+        <concept>server parameter override</concept>
+        <concept>web compatibility</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:28:11" end_timestamp="01:29:40" title="Cloud recording silence duration" anchor_type="CONCEPT">
+      <content>and then you start the cloud recording, cloud recording will record a silence duration. We record the silence duration cause the agent was is published in the audio. Those audios are empty. But anyway that audio will be recorded by the cloud recording. So that&apos;s why we need this parameter. This parameter only could be if you are trying to recall the cover AI, you need to, you need to you need to choose this parameter. You need to give this parameter. We also have the best practice here Cloud recording, recording conversation. With cloud recording, it says you need to. when you use callers, you need to give this parameter. I&apos;m not sure if they have changing. It&apos;s not in this document by some reason I think this is this is a private parameter, so they don&apos;t put in the public document. But actually you need to, you need to give this parameter too false. Yeah, yeah, too false. Auto publishing. Yeah, Agent. That means agent joining the. When the agent joins the channel, it will auto.</content>
+      <key_concepts>
+        <concept>audio publishing</concept>
+        <concept>cloud recording</concept>
+        <concept>recording parameter</concept>
+        <concept>silence duration</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:29:40" end_timestamp="01:31:10" title="Auto-publish recording option" anchor_type="KEY_TAKEAWAY">
+      <content>It will not auto publishing. It will wait for a user. When the user joins the channel, it will start publishing. Yeah, false means it will auto publish or not. We will not, we are not. Yeah, doesn&apos;t matter. Yeah, really matter because some customers, they don&apos;t want the silence duration at the beginning of the recording. Yeah, it can be an option. OK, OK. Yeah, yeah. And that one is AIVAD forces threshold that means this AIVD timeout. Actually this timeout when the AIVD waiting 11 I will explain it a little bit later about AIVD, it says AIVD is a little bit competitive. OK, let me let me give you a little bit explanation, OK. For example, I I just want to see, I want to go I want to go to I want to go to Disney. I want to go to This is a sentence on the Disney. And in the middle I, I paused. I paused one second and during the one second. Now, since you have enabled the AIVD and actually the silence duration is 64640 milliseconds.</content>
+      <key_concepts>
+        <concept>auto publishing</concept>
+        <concept>configuration flag</concept>
+        <concept>initial silence</concept>
+        <concept>user join trigger</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:31:10" end_timestamp="01:32:37" title="AIVAD incomplete utterance handling" anchor_type="EXAMPLE">
+      <content>So one second is longer than the sentence duration. So AVAVD will will will will will go sing to to to check if this sentences has been finished. I want to go to OK, so ARVDCI want to go to it&apos;s definitely it&apos;s not completed. So AVD will say, oh, the user is not it hasn&apos;t hasn&apos;t finished the talking. So we had to wait. So everybody will will ask agent wait, , right. So, but in this case we cannot, we cannot ask the agent wait forever. Just I want to go to and the customer doesn&apos;t say anything anymore. So, so the agent, so we have need a mechanism to ask the agent, , when it should continue because LVDLVD asks agent to stop to to to wait, but it doesn&apos;t, , receive the continue answer, continue input from user. So they need a timeout. So this is a timeout. How about, OK, default the three seconds. Yeah, default the three seconds, you can change it, but we recommend it&apos;s a change to one second. Yeah, that&apos;s a, that&apos;s a, that&apos;s a lot of story. It&apos;s a little bit hard to explain here.</content>
+      <key_concepts>
+        <concept>AIVAD</concept>
+        <concept>agent waiting</concept>
+        <concept>pause detection</concept>
+        <concept>utterance completion</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:32:40" end_timestamp="01:34:04" title="AIVAD timeout best practice" anchor_type="KEY_TAKEAWAY">
+      <content>OK, OK. So there is always a timeout for AIBAD. Yeah, yeah, yeah, yeah, definitely you should give the timeout, otherwise it will wait forever. If 3 seconds it&apos;s too long, why we set the default value to three seconds? That&apos;s a, that&apos;s a story that&apos;s that&apos;s actually in the in the real scenarios, people may pause more than two seconds. That&apos;s very common. When I talk to you, you may think if I pause in the middle 2 seconds you don&apos;t think that long but but 2-3 seconds to the from the to agent, agent may think long. OK so so this one is for the AIVD timeout, AIVD timeout. And the last one is LLM. This is a parameter for the LLM. Ignore empty tool means in some scenario that the user make a noise just users speak other language and ASR doesn&apos;t recognize this this one and ASR will just send empty, empty, empty input to agent.</content>
+      <key_concepts>
+        <concept>AIVAD timeout</concept>
+        <concept>default value</concept>
+        <concept>human pause duration</concept>
+        <concept>real-world speech</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:34:04" end_timestamp="01:35:29" title="Ignoring empty ASR inputs" anchor_type="CONCEPT">
+      <content>So this this parameter means if you ignore empty or not. If you ignore the empty that that means our agent will send will not send this empty input to the LLM. But , in some scenarios, actually in many scenarios, the user&apos;s input will be recognized as empty. For example, you see some other languages and ASL cannot, , cannot understand it, it will just return empty, So if you set up this parameter, it&apos;s not empty, true. That means this empty input to the agent and agent will not send it to LLM. It will not send a request to LLM cause agent think this is, , it&apos;s, it&apos;s, it&apos;s a lot of valid input, it will ignore it. But if you set it false, actually by default it&apos;s false. So that means even you, you give me the empty input, I will send it to LLM. But what will be? It&apos;s empty. Empty. Just a double double quotation. Double quotation. No content. Yeah, no content in it. Just double quotation.</content>
+      <key_concepts>
+        <concept>ASR failure</concept>
+        <concept>LLM request filtering</concept>
+        <concept>empty input</concept>
+        <concept>ignore-empty parameter</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:35:32" end_timestamp="01:37:01" title="User feedback on empty input" anchor_type="KEY_TAKEAWAY">
+      <content>Because we need to, we need to, we need let make the user aware that we you, you, you, you input something, but we don&apos;t get it. Yeah, You guys thought a lot about. Yeah, yeah, yeah, yeah. Actually the scenario I understand by words, yeah, actually it&apos;s very important. Actually, it&apos;s very important when you when you see something and ASR doesn&apos;t recognize it and LLM will will just you can give LLM count. You see, if you receive empty input, you can you, you need to, you need to, you need to ask a user repeat again. So it&apos;s , oh, sorry, I can&apos;t get you. Can you repeat again? You can, you can LLM could give this the response to the user, So user will be aware that your his input was now was now was now catched by by the by the by the LLM as agent. So that&apos;s very important. It&apos;s very interesting because when I use Gemini, some models, if I don&apos;t use that parameter, I face issues. It cannot connect to Gemini. Oh, yeah, yeah, yeah, yeah. In some LLM, they don&apos;t accept, they don&apos;t accept empty input. Yeah. But most models, I think they accept empty input, Yeah.</content>
+      <key_concepts>
+        <concept>ASR recognition failure</concept>
+        <concept>clarification prompt</concept>
+        <concept>empty transcription</concept>
+        <concept>user awareness</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:37:03" end_timestamp="01:38:33" title="Empty input compatibility requirement" anchor_type="KEY_TAKEAWAY">
+      <content>So if the any model doesn&apos;t accept empty input that you had to must give the empty truth, you must ignore it. Otherwise it will give you LLM cannot work. LM auto merge. It&apos;s quite important. Currently it&apos;s true what it means, what it means it means that let&apos;s see, I don&apos;t use AIVD, OK? I don&apos;t use AIVD. OK, I speak sentence. I want to go to. I paused 2 seconds Disneyland. So that&apos;s actually to to our agent. We think these are separate to input. That&apos;s separate to put to input. By default, when we try to send it to LLM, I want to go to This sentence will be sent to LLM first, Because our two seconds already longer than the silence duration. Actually our agent will try to send this input to the LLM, that&apos;s clear. And after 2 seconds you speak Disneyland. So that means if LLM is not responding yet, that means our agent will cancel the request, will cancel the first LLM request, it will come the first LLM request.</content>
+      <key_concepts>
+        <concept>LLM empty-input support</concept>
+        <concept>failure prevention</concept>
+        <concept>ignore-empty true</concept>
+        <concept>model constraints</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:38:33" end_timestamp="01:40:02" title="Auto-merge split utterances" anchor_type="DEMO">
+      <content>And then we will merge those those two input as a as a as a single input and send to LLM again. So make us some buffer in order to merge them together to send it to 11. Is it the print? Yeah. What&apos;s the buffer ? What&apos;s the the the milliseconds? No buffer as long as LLM doesn&apos;t respond yet. As long as we can cancel the LLM, we can cancel LLM request. That&apos;s really depends on how fast your LLM. Yeah, exactly. Yeah. If your LLM is very fast, you may not have a chance to cancel it, . So that&apos;s, that&apos;s, that&apos;s, that&apos;s the meaning &apos;cause it&apos;s quite important, &apos;cause as you may know that when we send the request to LLM, right, LLM, the old history will be, will be convened, And actually the IM will response based on your last message, the very last message. If you don&apos;t merge it, that&apos;s , I want to go to Disneyland. If you don&apos;t merge it, the LLM will respond based on Disneyland, the single word. And it will just, , reference the other, the other history. But if you merge it, the LLM respond based on the I want to go</content>
+      <key_concepts>
+        <concept>LLM cancellation</concept>
+        <concept>auto merge</concept>
+        <concept>response latency</concept>
+        <concept>split inputs</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:40:02" end_timestamp="01:41:31" title="Auto-merge implementation logic" anchor_type="CONCEPT">
+      <content>to Disneyland, Disneyland. So the whole sentence. So that&apos;s very important. So that&apos;s why we need to merge it. So does that mean there&apos;s another model between the ASR and the the customer LLM? If you said it, it&apos;s a little a small model. So how do how do you handle it from the auto merging? Because you put them together, Yeah, just put them together. That&apos;s a that&apos;s a few line. That&apos;s a that&apos;s a just this is logic to handle. Don&apos;t need LLM. Sometimes we have to set it to for. Yeah, yeah, yeah, all the time. Yeah, yeah, By default it&apos;s true. Yeah. Is there any scenario need false? I don&apos;t know. No, before, before it&apos;s not true. We changed it to recently. Yeah. So you can ignore this parameter anymore because you don&apos;t need to change it. But what I&apos;m talking here is because it&apos;s. I want to explain the logic here. OK, OK, here is very important. I&apos;m talking about the general process when the user let&apos;s start from the user talking user input the first thing as user input is will go to VED.</content>
+      <key_concepts>
+        <concept>ASR-to-LLM pipeline</concept>
+        <concept>concatenation logic</concept>
+        <concept>configuration toggle</concept>
+        <concept>no extra model</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:41:31" end_timestamp="01:42:59" title="VED and streaming ASR pipeline" anchor_type="CONCEPT">
+      <content>Our VED will detect voice. VED means voice activity detection VED will detect if user is talking and when the user user finished talking VED will determine when the user started talking and when the user stopped talking. So you can see the VED, it&apos;s determined, yeah, it&apos;s quite important. The next one, the audio will be sent to a SRASR will return, will return the result as you may know, ASR result will be it&apos;s also streaming response, It&apos;s also streaming response. It will, , word by word. Usually it&apos;s most of the ASR, they return the ASR result word by word. So it will first return result and then if there&apos;s a pause in the middle AI video will, will, will, will, will take in and we&apos;ll check if the users finish talking and the next one is ASR return the final result. That means the user finished talking and and ASR will retain the final result and then this result will be sent to the LMLM and LM. As I mentioned, LM request could be cancelled if user</content>
+      <key_concepts>
+        <concept>ASR streaming response</concept>
+        <concept>speech start-stop</concept>
+        <concept>voice activity detection</concept>
+        <concept>word-by-word transcription</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:42:59" end_timestamp="01:44:22" title="TTS client–server architecture" anchor_type="CONCEPT">
+      <content>continue continue to talk, And LM will be cancelled, LM request will be cancelled and then LM will send a response. LM response is also the streaming response, So, and it will have the MLLM result, final, final result and LM response. LM response will by our agent, by our agent. Sorry, this is Agent 2, Agent 2, TTS server. So for our TTS actually we have two parts. 1 is TTS client. TTS client is actually running in the agent. TTS client is running in the agent. It will it will decide when to send a request to the TTS vendor and I will I will show you the detail later. OK. And then the TTS, the TTS firstly the agent will send the the LM response to the TTS server.</content>
+      <key_concepts>
+        <concept>LLM request cancellation</concept>
+        <concept>TTS client</concept>
+        <concept>TTS server</concept>
+        <concept>streaming LLM response</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:44:23" end_timestamp="01:45:53" title="TTS request routing" anchor_type="CONCEPT">
+      <content>We have also a TTS server and the TTS server will send the actual request to the vendor and then TTS vendor will return the audio. So you can see the TTS, they have the 2 requests, 1 is from the agent to TTS server and the TTS server will send the request to the vendor. Usually you don&apos;t need to care about the TTS client. You usually you don&apos;t need to, you don&apos;t need to care about this one. But recently we see a bug. So that&apos;s why I I mentioned here. But usually it&apos;s, it&apos;s our side, our side. When we try to send a request to TTS, we mess up the state &apos;cause I will talk later, a little bit later. OK, so this is a, this is a general process. VED will determine very important. VED will determine when the user start talking, when stop talking. And ASRASR is a streaming result and there is AASR final result and then it will send to the LMMM will return the streaming response and then the LM final response and then it will be sent to the TTSTTS will return the audio. This is a. This is a.</content>
+      <key_concepts>
+        <concept>TTS client bug</concept>
+        <concept>TTS server-to-vendor request</concept>
+        <concept>TTS vendor audio</concept>
+        <concept>agent-to-TTS server request</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:45:56" end_timestamp="01:47:18" title="Short pause split example" anchor_type="EXAMPLE">
+      <content>This is a. Is it, can you see it clear? Yes, OK, you can see OK, this is a very, this is a very typical example, These are the two sentences. There are two sentences. You can see actually this gap is very small. So actually this is a user, the the user post in the middle, the user post in the middle here which is actually this, This is a very short post. But to us we we think this is 1 input. This is another one another input. Because VEDVED will determine when the user finished talking only based on the silence duration. If the post longer than silence duration it will think this is a larger input. You can see here users finish speaking actually here. Can you see here? Yes, user actually stopped talking here and from here to here this is silence.</content>
+      <key_concepts>
+        <concept>VAD decision</concept>
+        <concept>input segmentation</concept>
+        <concept>small silence gap</concept>
+        <concept>two-sentence utterance</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:47:18" end_timestamp="01:48:45" title="VAD timing markers" anchor_type="CONCEPT">
+      <content>Duration by default IS44064040 milliseconds and to here. So this is a sad situation the time out right. So our VED sync finish talking this one. This one is is our a other VEDSOS and the EOS sign this is SOS means the start of sentence our VED sync users start talking from here. But actually user talking from here, It&apos;s a little bit, , ahead, a little bit ahead &apos;cause our agent need to connect enough audio to determine if user is actually speaking, right. So the audio user&apos;s input is little bit ahead of the SOS. But it doesn&apos;t matter &apos;cause we have the another parameter named prefix padding. Yeah, our, our, our, our agent will will connect from here to here. it will connect these parts as well. So nothing will be dropped. But we determine SOS is here. SOS means start of the sentence, start of the sentence that means our VD sync the user start talking from here, right And show here this is SEOSEOS means end of the sentence.</content>
+      <key_concepts>
+        <concept>EOS marker</concept>
+        <concept>SOS marker</concept>
+        <concept>silence duration default</concept>
+        <concept>timeout behavior</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:48:46" end_timestamp="01:50:15" title="EOS after silence threshold" anchor_type="CONCEPT">
+      <content>after user stop talking reached the silence duration, there is a EOS always the EOS always after the silence duration. If you pause longer than the silence duration, we will give you the EOS. Basically this one, we think this is a, this is a complete, complete input. So we see this is a this is a new, this is a 10, this is a 10 from SOS to US. OK, so after the US, when after the EOS, VED will tell agent yeah, we, we, we receive the EOS and then we will send the ASR, the flash, the final, we will tell ASR. The users finish talking. You must give me the response as soon as possible. You must give me the result as soon as possible. So, so the basically the ASR will return the final result. Here TTLWTTLW means the time to last word. That&apos;s the, that&apos;s the metric for the ASR, ASRASR, that means how long the ASR returns the</content>
+      <key_concepts>
+        <concept>ASR final result</concept>
+        <concept>EOS emission</concept>
+        <concept>agent notification</concept>
+        <concept>silence duration threshold</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:50:15" end_timestamp="01:51:45" title="ASR final latency window" anchor_type="CONCEPT">
+      <content>final result. I understand the TTS. Usually this one is 90 seconds something. Usually it&apos;s 90 seconds. Yeah. TTLW. Yeah, 90 seconds, yeah. Milliseconds. Sorry. Milliseconds, 90 minutes. Where? Where? From final to final timeout to final to TTLW. Yeah. TTLW means ASR, , final result, how long, how long , yes, take to to give the final result. Yeah, after the user speaking. Yeah. So, so this this this is this is very typical. So this there are two input actually user just in the middle just paused, , so this is silence duration. You need to understand. Yeah, how long the user silenced. And then we think this is the end of the sentence. Yeah, OK. When you are using LED, When you are using LED, the sentence duration will be the only half will be only half LED will will wait half of the sentence duration and and and will and will take in and and check if the user finished talking LED is here. OK, And this is threshold.</content>
+      <key_concepts>
+        <concept>ASR final result latency</concept>
+        <concept>TTLW metric</concept>
+        <concept>pause-induced split</concept>
+        <concept>timing measurement</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:51:45" end_timestamp="01:53:13" title="Volume threshold and ASR timeout" anchor_type="KEY_TAKEAWAY">
+      <content>Yeah, you can see the threshold volume must be bigger than this one. Yeah. Otherwise it it&apos;s it&apos;s considered as invalid input. So this is volume. OK, so any question to this one? It&apos;s the last thing when we, when we receive the EOS, right, when we believe the user user finished talking ASR, we, we are, we will wait for the ASR final result, But we won&apos;t wait forever. We, we have the time out. If the ASR doesn&apos;t return the final result within one second, it will be time out. So, so, so we will continue anyway. So for the threshold, you said that the audio should be higher at more than the threshold point, So if it&apos;s lower than the threshold doesn&apos;t mean it&apos;s that there&apos;s an audio processing issue possibly. , , this threshold is just the recognizer start. If, if just for example, if this part, this part, this part, right, it&apos;s too small. So so we don&apos;t think this is start of the audio. So this this one only impacted when the when the only impacted the agent judge when the user start talking.</content>
+      <key_concepts>
+        <concept>ASR final timeout</concept>
+        <concept>EOS handling</concept>
+        <concept>invalid input</concept>
+        <concept>volume threshold</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:53:15" end_timestamp="01:54:18" title="Request for live demo">
+      <content>OK, For example, here, here, even though it&apos;s it&apos;s very , it&apos;s it&apos;s lower than stressful, but it will be sent to ASR as well. We don&apos;t, we don&apos;t, , cancel it. OK. Hey, Alex. Alex, one second. Just a quick suggestion from my side, if possible. Can you start maybe a real agent and quickly show, show us this in a real life conversation scenario, maybe a short to 1015 seconds and see how this flows and what he was speaking and how it reflects. I think that would be helpful, for most of the folks to understand. Sorry. Sorry. I think we need to change the meeting room. Yeah, I will talk to you later. Alex. I think you explained better than for real. That&apos;s why central CSE.</content>
+      <key_concepts>
+        <concept>agent session</concept>
+        <concept>demo request</concept>
+        <concept>real conversation scenario</concept>
+        <concept>workflow visualization</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:57:33" end_timestamp="01:59:01" title="Audio dump verification" anchor_type="KEY_TAKEAWAY">
+      <content>Straight, what&apos;s your question again? Sorry. So Alex, what I was saying is if you could show us a sample session, maybe we can start a agent and do a short session of maybe 1015 seconds. Oh, oh, sorry. I, I, I, I&apos;ve got you to turn on my speaker. Can you come again? Sorry. Yes, Sir, no problem. So what I was saying, Alex, what you explained over here, right, how to check the audio dumps, if you can do a short session of maybe 1015 seconds, start a agent and talk with it and maybe show it to us how it actually reflects. We can download the audio dumps and see how it actually reflects when you spoke to it or when the agent responded. Can we do that maybe a short session of every 1015 seconds. I think how to see &apos;cause I have this one audio, I&apos;m not sure if it&apos;s going work, going to work anyway, I will, I will help. I will show you the show you the how to check the audio dump. Yeah, you can. You can do it later and check it dump by yourself. So it&apos;s a yeah, it&apos;s it&apos;s a pretty same. Why I don&apos;t I don&apos;t think we need to do the I will show you how to download the dump and and then check a dump. Yeah, you can you you would see you would see how how it looks .</content>
+      <key_concepts>
+        <concept>audio dumps</concept>
+        <concept>debugging evidence</concept>
+        <concept>sample session</concept>
+        <concept>theory-to-practice gap</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="01:59:01" end_timestamp="02:00:26" title="Section 80">
+      <content>And I just want to yeah, I just want to see how it reflects in a real scenario, right. , see, this is this is all theoretical. How do we do it in the real scenario? So yeah, that sounds good. Yeah. OK, let me let me first finish the finish the session first. OK, We can, we can. Yeah, if you need it. You still need it. I will. I will give you the demo. OK. This is actually this, this screenshot is from the dump is from the dump. OK. So, so that&apos;s why dumping is important. Dump will tell me if the VED have detected audio. Sometimes this is audio input, but there&apos;s no VED. This is low SOS and US sign as you can see this is this is this one, this is this one. It&apos;s it&apos;s determined this is SOS and the US yeah, sometimes customer gives us some input, but our VED doesn&apos;t doesn&apos;t detect it so we don&apos;t have SOSUS so. In this case that we simply think that customer is not talking. Yeah, so this is the first part and last part is TTS and LM. This is very also another sample as I mentioned,</content>
+      <key_concepts>
+
+      </key_concepts>
+    </section>
+    <section timestamp="02:00:26" end_timestamp="02:01:47" title="TTFB in LLM responses" anchor_type="CONCEPT">
+      <content>when we receive the LM response, LM response and we will send the agent will send the request to TTS server. So as you may see, this is a TTS this is this is agent that&apos;s request to TTS server. Let&apos;s take a 10/5. This is 10 five OK. You can see the request file ID is file OK. This is this is a little bit, this is a little bit &apos;cause I need to explain a little bit more. You can see LLMLLM this is a TTFBTTFB means time to 1st byte, This simply means this is LLM first response, LLM first response. Cause LLM response is streaming as well, This is a first response from LLM and after we receive the LLM response we will start sending the request to the TTS server. This is it. This is TTS from the from the client, from the agent to TTS server. This is request processing.</content>
+      <key_concepts>
+        <concept>LLM response</concept>
+        <concept>TTFB</concept>
+        <concept>TTS request</concept>
+        <concept>time to first byte</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:01:47" end_timestamp="02:03:14" title="TTS vendor request path">
+      <content>Start processing and and this is this is the TTS server to mini Max. This is the vendor, right Mini as TTS vendor. This is requested to our server to wander to TTS vendor request and you can see this one, this one&apos;s only the two 2 words. You will see it&apos;s not a full sentence. So we started sending the request to TTS once we received the any input from the LM and and and how to say otherwise? OK, is that the client or the server? This one to the TTS server or TTS client first request that&apos;s that&apos;s a, that&apos;s a agent to TTS server. You mentioned that there&apos;s a TTS client and it&apos;s this server TTS client. Actually it&apos;s agent OK. Actually it&apos;s agent OK. In order to in order to to not mess you up, I just delete the you just think of the TTS agent. This agent is all agent is all agent itself is is working as atts client actually.</content>
+      <key_concepts>
+        <concept>MiniMax</concept>
+        <concept>TTS server</concept>
+        <concept>TTS vendor</concept>
+        <concept>upstream request</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:03:15" end_timestamp="02:04:41" title="Early partial-text TTS requests" anchor_type="CONCEPT">
+      <content>OK, so this agent requested to the TTS server, the agent to TTS server from the 10-5 you can see the 1st is AM response. This is the first LLM response and then we started sending request to TTS server, And then the TTS server will send a request to TTS vendor and the actual extra request is contains the only two, only two words here and , and then and then the it doesn&apos;t mean the TTS will TTS vendor will return the audio immediately, right. So you can see it&apos;s a it&apos;s our our side with continue to sending the request. This K this TTSTTFB means the first bat returned from the TTS. This one means the audio was returned from the TTS audio was returned from TTS. It is started that means even even we are still sending the request to TTS. But actually TTS started response started returning the audio from here.</content>
+      <key_concepts>
+        <concept>LLM first response</concept>
+        <concept>agent-to-TTS request</concept>
+        <concept>partial text chunk</concept>
+        <concept>vendor audio latency</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:04:42" end_timestamp="02:06:02" title="Overlapping LLM and TTS streams" anchor_type="CONCEPT">
+      <content>It&apos;s already started return returning the audio measure the delay. Yeah, yeah, yeah, delay is here three yeah, yeah, yeah. It&apos;s very 346 milliseconds. So what I want to say here is this is a lot of how to say it. They, they, they cross each other. The, the LLM and, and TTS request and TTS response they, they, they cross each other. So it&apos;s, it&apos;s not a streaming, it&apos;s not a stream. So the TTS started responding and then this is another request from the TTS server to TTS vendor. You can see this is a larger sentence, This is a larger sentence. Yeah. Total output. This LLM total output means this is a, this is a full, this is a full LLM response. This contains all the LLM response here. So that means I&apos;m finished responding here. But actually we started receiving the audio before, before the LLM fully stopped. You understand you got it.</content>
+      <key_concepts>
+        <concept>LLM stream</concept>
+        <concept>TTS stream</concept>
+        <concept>audio delay</concept>
+        <concept>concurrent pipelines</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:06:03" end_timestamp="02:07:33" title="Agent request vs streaming responses" anchor_type="CONCEPT">
+      <content>OK, so when I have to the process. Agent, agent, agent will send the full history and the full input from the user to the LLM. Agent request will send to LLM only once in the in the in the same term. In the one term cause input &apos;cause agent request to LLM is not streaming. OK, OK, agent requested to LLM, it convinced everything it it contains everything. But LLM will return streaming streaming&apos;s response and we send TTS request also. It&apos;s a streaming request and TTS response is also streaming response. So that&apos;s why they need the.</content>
+      <key_concepts>
+        <concept>full conversation history</concept>
+        <concept>single LLM request</concept>
+        <concept>streaming LLM response</concept>
+        <concept>streaming TTS request</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:07:33" end_timestamp="02:09:03" title="Three interleaved timeline lines" anchor_type="KEY_TAKEAWAY">
+      <content>Those are three lines, One is the LLM response, another one line is TTS request, another one is the TTS result return. They are three lines, they cross each other. OK, OK, so you can see LLM finished responding here. But actually we send a request of TTS already and the TSS has returned the returned audio. Start a return audio from here already. Yeah. And then we continuously send the TTS request &apos;cause , at the beginning we only send this one and this one. We haven&apos;t finished all the all the all the all the input from the LLM. You can see this is a this is a full LLM response and we request after here, so I&apos;m include before I send the stream to the DPS. Pardon is there is a fixed unit fix fixed what union whatever you need the checks that everts the the the LLM response is this long that will send to the DDS.</content>
+      <key_concepts>
+        <concept>LLM response line</concept>
+        <concept>TTS audio return line</concept>
+        <concept>TTS request line</concept>
+        <concept>interleaving</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:09:06" end_timestamp="02:10:34" title="TTS chunking trigger heuristics" anchor_type="KEY_TAKEAWAY">
+      <content>This is LLM response. How long our agent received the LLM response will be sent to the TTS is determined by by the agent, by the agent, by this request, this request, it will determine how many words or how long it will, when it will send a request to TTS. So agent will decide it. It&apos;s basically, it&apos;s actually this request, this request, but there&apos;s no fixed pattern. Usually when we when we see a period or the comma, we will send the request, Yeah. But for the 11 labs by default that even we send all the requests at the beginning, when the LLM start responding, we send requests earlier, early, very early to TTS to 11 labs. But 11 labs will wait 1111 labs by default. They will wait for the enough characters and they start to return the audio. So they have the mechanism, but , it will, it will make the delay longer actually. So that&apos;s why that you will see 11 labs will have the longer, will have longer, longer, longer delay than other TTS.</content>
+      <key_concepts>
+        <concept>agent chunking</concept>
+        <concept>provider defaults</concept>
+        <concept>punctuation boundaries</concept>
+        <concept>request timing</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:10:34" end_timestamp="02:12:03" title="Provider character buffering differences" anchor_type="CONCEPT">
+      <content>That&apos;s because they will wait for the, , much more, much more characters than other providers. Yeah. , OK. Yeah. So, so this is the TTS and the LLM response. , you need to understand how, how it works. Yeah. OK, clear. Not very clear, but , you you will, you will understand it gradually. Yeah, you can. I, I cannot give you a diagram &apos;cause they they are three lines and as they cross each other. How can I give you the gram? You you type the message, then you send the yeah to model, then you will draw the diagram. Gemini is very good at the diagram. Really the picture request. This means that in we did not use the response data. Instead, we use the streaming. Pardon. We come here now we use the streaming instead of the data. That&apos;s usually the data. If it does, as , the Jason as a whole, but the streaming is , yeah, yeah, yeah, yeah, yeah, yeah, yeah, definitely. Yeah, yeah, yeah, exactly. Yeah. It&apos;s a make faster. So did this message on our word by word and streaming. There&apos;s two options.</content>
+      <key_concepts>
+        <concept>TTS latency</concept>
+        <concept>character threshold</concept>
+        <concept>crossing streams</concept>
+        <concept>provider buffering</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:12:04" end_timestamp="02:13:30" title="Streaming vs captions confusion">
+      <content>You can shoot them. No, no, no, LM is is always it&apos;s a must streaming. the the subscription, there&apos;s a title subtitle subtitle options. I think there&apos;s two options word or on the No, I saw it. No, cannot LLM must give the I&apos;m not talking about the the the streaming passing, but they&apos;re showing the subtitle caption, caption caption. You mean the word wondering word by word or that&apos;s that&apos;s, that&apos;s that&apos;s that&apos;s transcription. OK, that&apos;s different. Yeah, that&apos;s different. Is this message? Does it mean that this LLM final final response, final response. It contains all the, all the the message, all the all the response. Yeah, yeah, I can. I can show you. So the how many words to be sent to TTS is decided by agent. Yeah, it&apos;s by decided by agent. OK, You can see I can see you that LLM response. LM. We need this tool. Yeah, I created it by by myself. Yeah, I&apos;m using the code. It created this one you can see let me see input.</content>
+      <key_concepts>
+        <concept>LLM streaming</concept>
+        <concept>captions</concept>
+        <concept>subtitles</concept>
+        <concept>transcription</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:13:32" end_timestamp="02:14:59" title="Single LLM input, streamed tokens" anchor_type="CONCEPT">
+      <content>You can see the LLM input is always only one. This is a, this is a, this is ALM input LLM input. And see, you can see the this is a, this is a response from the LLM TTFB. Yeah. So this is a, this is a request. This is a request to LLMLM will start return from here. And you can see the actually the the response is very it&apos;s, it&apos;s a, it&apos;s a, it&apos;s a word by word actually, &apos;cause it&apos;s a streaming, it&apos;s just a trunk, So this is ALMLM response, LM response and this all the LLM response to this single request. And in this is not finished. That&apos;s because the user probably interrupted the LLM. You can see this down, down means LLM finished the finished the response. And after down the LLM, you can see we have laser log that contains all the information, all the message,</content>
+      <key_concepts>
+        <concept>TTFB</concept>
+        <concept>single LLM request</concept>
+        <concept>streamed chunks</concept>
+        <concept>word-by-word output</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:14:59" end_timestamp="02:16:27" title="LLM response log segment">
+      <content>all the information from from the LLM. , from here, LM start responding from here. It&apos;s very long this one. , from here LLM start start responding from here and then to to here to here, right. So this this one contains all the, all the all the content. Yeah. What do you have this log in the dashboard at the top? Huh. What do you have in the dashboard at the top? Oh, this dashboard, it&apos;s a it&apos;s a it&apos;s a this tool. Yes. Yeah, yeah. OK, So this I am response. Yeah, , understand. OK. It&apos;s a streaming response. , we in our log. Yeah, you can see it can, it can very long. It can&apos;t be very long. You can see the first response, first single word response is 17 seconds, 45, 17 second. This is down. It&apos;s 19 second. It&apos;s two. It&apos;s more than it&apos;s, it&apos;s around 2 seconds. Yeah, just a response from LLM. It took 2, two seconds. So we cannot wait for the LLM finish. So we must start early to send the LLM to send the TTS request.</content>
+      <key_concepts>
+        <concept>LLM output stream</concept>
+        <concept>dashboard log view</concept>
+        <concept>response boundaries</concept>
+        <concept>streaming response</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:16:28" end_timestamp="02:17:57" title="Turn detection troubleshooting issues" anchor_type="CONCEPT">
+      <content>All right, OK. This is a TTSLM and and yeah, it&apos;s a little bit, , tricky. Yeah, when we say turn detection is very important, but it is very difficult and we see a lot of issues. So what issues customer may have, it&apos;s a it&apos;s a lot of I it&apos;s one or two example. I think turn detection has a lot of private partners that that&apos;s not even in the official documentation. Yeah, yeah, yeah. It&apos;s so many. So I, I faced some issues. I think it was a timestamp issue. So it was not really passing to it is properly because of ASR delay issues. And then you can actually use add extra private parameter to stop the timestamp or something that from ASR part. So they&apos;re exactly really complicated from term dictation. So what am I saying? Probably we should see, but it would be great if we can actually grab some scenarios and find the, the solutions for each scenario. I think firstly, it&apos;s too many and I cannot, I cannot, I, I don&apos;t know all of them. Secondly, is if this issue happened, really we will just fix it. Fix it.</content>
+      <key_concepts>
+        <concept>TTSLM</concept>
+        <concept>partner-specific behavior</concept>
+        <concept>timestamp mismatch</concept>
+        <concept>turn detection</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:17:58" end_timestamp="02:19:25" title="Debugging via logs workflow" anchor_type="KEY_TAKEAWAY">
+      <content>Yeah, we are trying to optimize it. So as you may see, currently AI has a lot of bug Yeah. If I just introduce you today, probably it will be fixed on tomorrow. So it doesn&apos;t it doesn&apos;t doesn&apos;t make sense. Yeah. If the the outdated thing. OK, let&apos;s continue Yeah and usually if you are, I just give you the general idea how it works and if you if you encounter any issue, you need to check the log itself. I think usually you, you can just first escalate to me. That&apos;s OK, I can check on that. And then the troubleshooting tool and I, I have mentioned 21 is this is created by the, this is created by the Chinese support center team. This is, this is the one I we used mostly. And this one is log analysis. Log analysis and conversation come AI into investigative tool. What&apos;s this? OK, anyway, it has a multiple three most important, three most important tool. This one&apos;s for the download log and dump, especially when you try to download audio dump, you need to use this one.</content>
+      <key_concepts>
+        <concept>bug churn</concept>
+        <concept>general system behavior</concept>
+        <concept>issue escalation</concept>
+        <concept>log inspection</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:19:26" end_timestamp="02:20:54" title="Analysis and latency logs" anchor_type="CONCEPT">
+      <content>And this one, this is a general analysis log. And this one is the latency, the tracker latency I can currently I could, I could give you a example. You can see here is firstly you will see the this is this is start information. This actually this is the server server information about the common AI agent. It will tell you what exactly the AS vendor and and TTS vendor and some you know, some configuration enable RTM extra, Yeah. And the channel task ID and IP ID tell you the ID especially it will tell you the service. It&apos;s , where&apos;s Agora, where&apos;s agent started? This is an area, this is the US. And the next one, it will give you the create a request body, request body. Currently this one, the SIP, it doesn&apos;t request body.</content>
+      <key_concepts>
+        <concept>analysis log</concept>
+        <concept>latency tracker</concept>
+        <concept>server configuration</concept>
+        <concept>task identifiers</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:20:54" end_timestamp="02:22:13" title="Quick test configuration toggles" anchor_type="DEMO">
+      <content>Let me give you another one. Especially you can use this tool to check the body. OK, let me just run a run a quick test. OK, let me sure make sure it&apos;s very SLM and let me disable this 1 and in the RTM, I don&apos;t need RTM right now. I thought they enable our AB test. Do what it was enable AB tests from the I don&apos;t know, I think it&apos;s yeah, yeah, yeah. It&apos;s a, it&apos;s a new feature, I think minimax contest minimax about.</content>
+      <key_concepts>
+        <concept>A/B testing</concept>
+        <concept>RTM setting</concept>
+        <concept>feature toggles</concept>
+        <concept>request body inspection tool</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:22:25" end_timestamp="02:23:50" title="Agent prompt output verification" anchor_type="EXAMPLE">
+      <content>Agent ID Hey, Agent ID Oh, sorry. Hi, Alex, I&apos;m Sync, your personal matchmaker and relationship coach. My mission is to introduce you to your deeply compatible partner while coaching you through each step of the journey, including the ups and downs and once. Hold on, please. Thank you. Thank you very much. You can see actually this the parameter is working fine, Mm Hmm. OK. It sounds you&apos;re checking something. If you need assistance or clarification about anything, feel free to let me know. Thank you for responding. Just give me a joke. Sure, here&apos;s a joke for you. Why did the Scarecrow win an award? Because he was outstanding in his field. Hope that brings a smile to your face. OK, I&apos;m going to leave it. First, stop the agent. We need to stop the agent, otherwise it cannot. , this tool cannot find the find the data. This is, , this one is very, ,</content>
+      <key_concepts>
+        <concept>agent ID</concept>
+        <concept>agent persona prompt</concept>
+        <concept>parameter validation</concept>
+        <concept>runtime response</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:23:50" end_timestamp="02:25:18" title="Request body fields to verify" anchor_type="KEY_TAKEAWAY">
+      <content>useful in the previously we always use this one especially it contains all the request body from the customer. So we know what parameter customer used, And you can see the channel name is a Is this a full body? Everything in a customer body it be it will be displayed here. So you can see everything especially you could you need to check the IDCUID and the agent and the remote user UID, It&apos;s it&apos;s critical yeah. If it&apos;s not right, it will it will result in no response. And the next one is this part usually the IT will give you if you see any error in the nod, it will show you here for example LLM, doesn&apos;t it LLM is is the key is not right LMK is wrong. It will show you the error here. when you see the when you use this tool, you always firstly check this error. If there&apos;s anything wrong, it will show you the error message directly here. OK, another one is this one is can you? It can show you the RTCRTC channel. You don&apos;t need to use the RTC channel name to find it. You just find it here. this one. It can help you find the RTC channel.</content>
+      <key_concepts>
+        <concept>IDCUID</concept>
+        <concept>channel name</concept>
+        <concept>full request body</concept>
+        <concept>remote user UID</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:25:19" end_timestamp="02:26:47" title="RTC channel and event history" anchor_type="CONCEPT">
+      <content>You can see this RTC channel, this is a Linux, this Linux is agent this agent and this is the user. Yeah, this is user. OK, let me let me leave it. OK, so this is RDC channel, it&apos;s quite easy to find it. And next one is insets events. It will show you the on user join insets and usually we don&apos;t care but much much about this one. The next one is a history. This is a history. It&apos;s all the history. It&apos;s a it&apos;s a it&apos;s here. You can see what what what&apos;s what&apos;s interrupt. OK, this is a history here and this is a. This is Assistant, this is Greetings, And the ASR, this is a user input. Its assistance is ALM response, So ASRLMASRLM, the voice locking work because I was talking to you, the voice locking, I disabled it. Yeah, yeah, I disabled it. You are very far from me.</content>
+      <key_concepts>
+        <concept>RTC channel mapping</concept>
+        <concept>conversation history</concept>
+        <concept>interrupt markers</concept>
+        <concept>user join events</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:26:49" end_timestamp="02:28:17" title="History-first issue triage" anchor_type="KEY_TAKEAWAY">
+      <content>Volume doesn&apos;t cross a a throttle. Yeah, this is this is a history and it will show you the history. Most of the time that when we customer report issue, you can firstly check the history. If it&apos;s, if it&apos;s, if it&apos;s detected especially for the ASRM, probably the the input is not recognized And this is agent stop and this is the latency. Sometimes we will see this is empty. That means, the input is console &apos;cause you can see actually from LLM connect it&apos;s a, it&apos;s a, it&apos;s a, it&apos;s empty, That means the user input. That means there are there are two user input and which is in turn 2 and another one is in turn 3. And at the last we, we , we, we merge the input. So here, here why it&apos;s empty that because it&apos;s a it&apos;s ALM request that was cancelled. That means when I was talking, there&apos;s a pause longer than a silence duration. I will I will show you later.</content>
+      <key_concepts>
+        <concept>ASR recognition</concept>
+        <concept>agent stop</concept>
+        <concept>empty latency entries</concept>
+        <concept>volume throttle</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:28:18" end_timestamp="02:29:44" title="LLM connect and TTFB" anchor_type="CONCEPT">
+      <content>And this one&apos;s the same thing, I think. What does the LLM connect means? LM kind means it&apos;s a it&apos;s a it&apos;s a it&apos;s AI think it&apos;s a first response so something yeah, you can see it&apos;s a TTFB. Yeah, it&apos;s a. It&apos;s a TTFB next to. I think it should be the connection because our, our our agent communicate with LLM by the websocket. They have the they have the initial the websocket connect. Yeah, yeah, you can check on this one. And to see if it&apos;s LLM disconnected. Yeah, you can see if it&apos;s disconnected. So you can see so, so usually we don&apos;t see this one, we don&apos;t see this one, but it will tell you, you can use this one to judge if the LLM is connected. Probably it&apos;s not connected. Yeah, yeah, yeah. But but it rarely happens. And then in this one, it will show you the 10 each 10 detail just this is ALM it just start from 10/2/10. One is greetings always, always greeting. If you set up the greetings, 10/1 is always greetings. It just start from the 10210.</content>
+      <key_concepts>
+        <concept>LLM connect metric</concept>
+        <concept>TTFB</concept>
+        <concept>WebSocket handshake</concept>
+        <concept>disconnect detection</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:29:44" end_timestamp="02:31:01" title="ASR interim vs final results" anchor_type="CONCEPT">
+      <content>Two is you can see the ASRASR this AS result it will show you final faults, final faults, final faults. That means ASR is the result is not final. , you can see that all the ASR interim result are here, are listed here. This is the final result. That means the ASR input has been finished. Yeah, You can see, I, I, I can tell you, you can see this is a you can see this, this is a true. And then it start again. Can you see it ASR start again. That means I post you, you remember, I post here. Hold on. Thank you. Thank you very much. You can see actually this and then I, I, I, I talk to you guys and there&apos;s the parameters working fine, right. I post in the in the middle. So that&apos;s why here. Yeah. This is a true and this is another true. That means from here, actually, we send a request to LLM already. And then we, we start again &apos;cause this, this silence to this silence post longer than silence. So yeah.</content>
+      <key_concepts>
+        <concept>ASR final flag</concept>
+        <concept>ASR interim results</concept>
+        <concept>ASR restart behavior</concept>
+        <concept>speech segment boundaries</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:31:16" end_timestamp="02:32:44" title="LLM streaming visibility issues" anchor_type="KEY_TAKEAWAY">
+      <content>You can see it will also go. You give you the You can see the. You can see LLM started responding here. LM where&apos;s 8? Where&apos;s LLM connect M stream M stream. Let me see, I think this tool may be a little bit issue LLM stream it doesn&apos;t have the LLM stream, OK, This tool may have the , it may have bug. Yeah, it doesn&apos;t have LLMLM stream, yeah. Anyway, but this tool can give you the general, , general the the process general process LM stream. It&apos;s very long. Yeah, it&apos;s very long. I think probably the the guy moved it, removed it. Let me see if there&apos;s any M connect. OK, There&apos;s no LLM related. OK, probably these two they have they have some issue you, , OK, so, so this is a very important thing is you can check the body, It&apos;s very important.</content>
+      <key_concepts>
+        <concept>LLM streaming logs</concept>
+        <concept>process trace</concept>
+        <concept>response timeline</concept>
+        <concept>tooling bugs</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:32:44" end_timestamp="02:34:12" title="Conversation history log review" anchor_type="KEY_TAKEAWAY">
+      <content>And then you can check the message, the history, get the general, general understanding of the conversation. Yeah, I can. This is a public tool. This is you can all of you guys, you can use and I have my own mind I showed you, this is created by myself and this is created by myself. Actually it&apos;s running my local and I created this page. This only for me &apos;cause currently when I was working with R&amp;D, we usually just filter the log to, to, to do the trouble footing. So, so I need a tool to do the to, to, to filter the log. So why I created this one? Usually you don&apos;t need this one. If you need this one, you just simply just escalate Yeah, if any issues that you need to filter the law, just give to me. You can see I I just I just I just yeah, this is my tool and I open this session. Let me see the LLM. I should have the, I should have the yeah. You can see my tool has filtered all the LM. You can see this is I am input. And as I say, you can see I am console, right &apos;cause I there&apos;s a pause,</content>
+      <key_concepts>
+        <concept>conversation logs</concept>
+        <concept>local internal tool</concept>
+        <concept>message history</concept>
+        <concept>public debugging tool</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:34:13" end_timestamp="02:35:40" title="Pause-driven LLM request timing" anchor_type="CONCEPT">
+      <content>There&apos;s a pause here. The pause here. This is the first true ESR True. And then I started talking again. It&apos;s one second, 300 milliseconds. Yeah, here. There&apos;s a pause between here. So actually here LLM agent already sent a request to LLM. Hey, sorry, Where&apos;s my page? Yeah. How long LLM will wait? What do you mean? That&apos;s really depends on this. Depends on how fast the LLM is. If LLM started speaking, LM started returning the result, then it&apos;s OK. That&apos;s that. That will be considered as a interrupt. Yeah. So the case you showed us Lim takes the Lim connects takes 3 around 300 millisecond and the first response takes another 300 millisecond. No, no, no, that&apos;s, that&apos;s that&apos;s whole, that&apos;s in total it&apos;s 300, right around 700 millisecond, And no, no, no, not including, not including this one, not not including including this one. Only the 392 seconds after we send a request to ILMILM,</content>
+      <key_concepts>
+        <concept>ASR final trigger</concept>
+        <concept>LLM latency dependence</concept>
+        <concept>LLM request dispatch</concept>
+        <concept>speech pause duration</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:35:40" end_timestamp="02:37:09" title="Latency and cancellation window" anchor_type="CONCEPT">
+      <content>the first respond is the latency is 392. You don&apos;t need to check this one and it is so fast. So yeah, yeah, yeah. For the ASR, you see it pause the the final is set true, but it is set forth again in between it is more than one second. So there&apos;s no time to cancel. That&apos;s because yeah, ASR returned true, but actually, but actually our our EOS is after this one. Let me, let me, let me show you, show you the here. I I feel it. For example, I finished talking here right. Maybe ASR return the final at here. OK, but our our our VED will determine the end of a sentence here. OK, So you you so it depends on that. Yeah. AIVAD silence duration. Yeah. All right. For your RAG Fe project earlier you showed what&apos;s the average latency with the RAG, I think 2 seconds. Yeah. No, the end to end. Oh, this is not good. Yeah, yeah, yeah, it&apos;s it&apos;s quite fast too.</content>
+      <key_concepts>
+        <concept>ASR final toggling</concept>
+        <concept>end-of-speech detection</concept>
+        <concept>first-token latency</concept>
+        <concept>request cancellation timing</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:37:11" end_timestamp="02:38:40" title="Auto-merge and request cancellation" anchor_type="DEMO">
+      <content>Yeah. What&apos;s the model? Did you say Cork? Yeah, Cork. OK, so you can see it&apos;s console here, that&apos;s because I continue speaking and so it&apos;s console and there&apos;s a lot of other LMLM request. This request remember it will merge the previous input, Right. We have auto merge, We merged the the first input this in first input and then we cancelled and then we sent another request. And then this in this request, we merge the first request, Do you remember auto merges that parameter, right, right. OK. And then the LLM start responding. I&apos;m start responding. And then the here and here. Yeah, yeah, this is I&apos;m responding. Yeah, finish responding here. OK, yeah. So so this is a tool you usually you don&apos;t need this one. You just need this one. Check the check the location and check the body and check the check the Argus Argus and it checked the history. Yeah. Did you face an issue connecting to Gemini because of IP location? So far I don&apos;t see many users using a Gemini.</content>
+      <key_concepts>
+        <concept>auto-merge parameter</concept>
+        <concept>merged user input</concept>
+        <concept>request cancellation</concept>
+        <concept>subsequent LLM requests</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:38:40" end_timestamp="02:40:08" title="Production log tool overview">
+      <content>Honestly, most of the users are using ChatGPT. OK, so the first tool and the other tool is this one is is this is a new one. And this one is is going to be in the production. And this is divided by our company by by the by the DE team. Actually, you can. You can open this one from wait a minute, you can actually you can open it for me. You can also open it from here. You can see this is a there&apos;s another button. Check Mattis. This website is actually named Mattis, so you can use this tool to open it as well. Check Mattis Yeah, this is a this is a tool and in this tool it will give you, but it&apos;s the whole Chinese. Sorry. Currently they don&apos;t have the English yet. And it will be have it will be have an English version. Definitely this one is it has a little bit fancy. It has a little fancy features.</content>
+      <key_concepts>
+        <concept>DE team tool</concept>
+        <concept>internal tooling</concept>
+        <concept>production rollout</concept>
+        <concept>tool access entrypoint</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:40:08" end_timestamp="02:41:34" title="Audio playback in log tool" anchor_type="DEMO">
+      <content>It will show you the audio as well. It will show you audio and it will combine all the audio dump and and convert it to a a a stream, a conversation audio. And so you will see the the you will hear the audio from the user. It&apos;s still generating. Just give us a few seconds. No, you can see it here. Let&apos;s see. Right. Yeah, this is above. This is a user input, and the bottom is agent. Agent input. You can see. Hi, Alex. I&apos;m Sync, your personal matchmaker and relationship coach. You can see through each step of the journey once you&apos;ve become a couple. Hold on, please. Thank you. Thank you very much. You can see actually this the parameter is working. You can see there&apos;s a pause, right, The pause Well, the LMS console, right. It sounds you&apos;re checking something. If you need to see, oh, is this a fancy feature that it can display it can, , convert the audio that that everything but you had to enable the audio down. Otherwise this there&apos;s no, no, no thing also stressed because of the was before.</content>
+      <key_concepts>
+        <concept>audio dump aggregation</concept>
+        <concept>conversation audio stream</concept>
+        <concept>session playback</concept>
+        <concept>user vs agent channels</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:41:34" end_timestamp="02:43:03" title="Tool replaces Audacity workflow" anchor_type="KEY_TAKEAWAY">
+      <content>So this is the the tool. Yeah, yeah, yeah. So you will hear. So you don&apos;t need to, you don&apos;t need Audacity to download it down and and, , use Audacity to open it. So, so it&apos;s a it&apos;s a much easier to use. And this is an audio and there&apos;s also a button to to go to the Argus. Yeah, it&apos;s also have the actually this one is the is is is , this one, this tool is the is the, , is created based on this tool &apos;cause this one is only the internal use. It&apos;s this is maintained by a single person, by a single engineer. And so this is not a production level tool. So we created this one. This is going to be a production level tool and it will be open to customers as well. Customer can use it as well in the future. And and this one, it&apos;s a it has a, , has a conversation history as well here. Yeah, OK. And this tool, it will give you the general OK, it&apos;s not now, not yet. So you can only use this one.</content>
+      <key_concepts>
+        <concept>Argus link button</concept>
+        <concept>Audacity replacement</concept>
+        <concept>in-browser audio review</concept>
+        <concept>internal tool maintenance</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:43:05" end_timestamp="02:44:29" title="Audio dump enablement rationale" anchor_type="KEY_TAKEAWAY">
+      <content>So this is 22 tools and I&apos;m going to send in the in the CSE group. You can use it. And the next one is audio Dom Yeah, Firstly you need to enable audio Dom and next one is you download audio Dom don&apos;t when how to download audio Dom? Why do you need audio Dom? It&apos;s because , though this one has audio, has audio, but sometimes if audio has some issue it, it won&apos;t be displayed here, Just a user input is discarded by the VADAD doesn&apos;t detect it and it it won&apos;t be, , displayed there. So we still need audio down. So when you try to download audio down, go to this page and use agent and then oh sorry, the surface PCM, surface PCM, choose surface PCM and the agent ID here and now and it will go give you a link and just download it. OK, I got the down pair ready.</content>
+      <key_concepts>
+        <concept>VAD discards</concept>
+        <concept>audio dump enablement</concept>
+        <concept>download workflow</concept>
+        <concept>missing audio in UI</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:44:37" end_timestamp="02:46:03" title="Debug dump audio files" anchor_type="CONCEPT">
+      <content>In the dump there are few very important file. This 1/2 channel, this 2 channel it will has avad sign I will show you later. And then last one is ASR in. That means the actual audio we sent to ASR, the audio agent received is not the same as the audio we sent to ASR. You understand the ASR received audio is not the same as the agent received audio. Firstly, agent will receive audio from the user and the agent will use VAD to determine the 10 to determine the EOS and SOS. If, if the, if there&apos;s a very small audio and which is not considered as a valid audio input, it will be discarded and it won&apos;t send to ASR. You understand. So these two, they could be different, they could be different. And in this portal we have the TTSTTS. This is this original, this is original TTS response, the TTS response.</content>
+      <key_concepts>
+        <concept>ASR input audio</concept>
+        <concept>VAD markers</concept>
+        <concept>dump files</concept>
+        <concept>two-channel audio</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:46:03" end_timestamp="02:47:32" title="Importing two-channel raw audio" anchor_type="DEMO">
+      <content>So those 32, these three are important. Yeah, TTSAS are in and and this 1-2 channel, this one delay off, especially this one&apos;s super important. Let me open this one. How to open that? You need to import it &apos;cause this one&apos;s a PC and file, You need to import raw data, roll data and choose the file and this 2 channel. You must choose 2 channel and sample it is 16, 000 and you input you can see let&apos;s see can see here. This is VD sign the first the the the left channel is it&apos;s it&apos;s audio itself and and below it. This is VED. This is VED. That means VED sync start of the sentences here and end of sentences here. Understand. And I since I paused along yeah, I post here how long I post here I post almost one second Yeah almost one second.</content>
+      <key_concepts>
+        <concept>16 kHz sampling rate</concept>
+        <concept>VAD signal channel</concept>
+        <concept>raw data import</concept>
+        <concept>two-channel selection</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:47:32" end_timestamp="02:48:57" title="VAD check for pauses" anchor_type="KEY_TAKEAWAY">
+      <content>I paused almost one second so so which is longer than the sentence duration. So it is think I finished the talking at here yeah. But actually as this is a this is a full input, the free input including this those two-part yeah. So this is VED. So we always need to check the VED that if the VED let me see if any, any audio is not recognized as VED. No, I don&apos;t I don&apos;t have an example that audio is not recognized as VED. So, so anyway, so this is a very important we need to check the VED here. So this is the first dump and the last bump dump is ASRE and the TTS? Yeah. So TTS you can import TTS as well. TTS is 1 channel. No it&apos;s not 116 thousand TTS usually is 44K.</content>
+      <key_concepts>
+        <concept>VAD detection</concept>
+        <concept>pause duration</concept>
+        <concept>speech segmentation</concept>
+        <concept>utterance boundaries</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:49:02" end_timestamp="02:50:09" title="Single-file TTS and audio">
+      <content>Hey, you, you sorry, that depends on the vendor too, Yeah, it&apos;s depends on your actually, it&apos;s your settings. I can also coach you as a couple. Oh, no, no, it&apos;s it&apos;s 16,000. Yeah, it&apos;s correct. I can also coach you as a couple. Ready to begin? It sounds you&apos;re checking something. If you need assistance. It including all the TTS response. Yeah, in the single file. In the single file. OK, so this is dumb and yeah and I mentioned that this 2 channel, this file is very important. It will show the VED yeah and and the audio sound to ASR and the TTS. OK, that&apos;s all today. Any question? It&apos;s, it&apos;s, it&apos;s too, it&apos;s too complicated, Three hours.</content>
+      <key_concepts>
+        <concept>16 kHz audio</concept>
+        <concept>TTS responses</concept>
+        <concept>two-channel dump file</concept>
+        <concept>vendor settings</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:50:38" end_timestamp="02:52:06" title="Team meeting coordination">
+      <content>Hello. Hello. Hello. Hello. Hello. Hey, Camille. Yeah. Hey, anyone. Hey. Hey, Sue Rita. Yeah. Do you have any question for Alex? No, no, not right now. OK, Yeah, because in in the morning session when we had a AI project, AI tool sharing a Camille. Hey, Camille, you there? I&apos;m here. Hey. Yeah. Do you do you want Anton to share what he has built or research how long does does he need? Yeah, it&apos;s OK for me. But I think we have maybe we can do that some other time, maybe during our weekly meeting. Yeah, we can do it probably tomorrow or next week. But because we still have to finalize some things, but we can , if, if we will have a session tomorrow or a meeting tomorrow, we can definitely, , discuss it since we already prepared. OK, Maybe next week, because tomorrow it will be yeah. SPL. So yeah, weekly will be cancelled tomorrow. Yes.</content>
+      <key_concepts>
+        <concept>discussion scheduling</concept>
+        <concept>participant questions</concept>
+        <concept>project sharing</concept>
+        <concept>weekly meeting</concept>
+      </key_concepts>
+    </section>
+    <section timestamp="02:52:06" end_timestamp="02:53:14" title="Follow-up sharing plan">
+      <content>Yes, because it might also take some time for us to discuss. I think it&apos;s OK Better. Well, once Anton or you are ready, we can reinitiate the session. Thank you. Sure. Yeah. But I&apos;ll probably also share it with you just in case. Via I&apos;ll just message you and we come, if ever, if you wanted to, for us to have a discussion first because I think it will definitely help you too, especially with the reports and such. OK, no problem. Thank you. Thank you. Come here. All right, So it has been a long, very long session lasting for three hours. So thanks, Alex. And it&apos;s a lot of information. I&apos;m going to share the recording shortly so you can revise review. Yeah, I learned a lot. Thank you. Thank you, guys. A lot of details, your knowledge. OK, Yeah, then have a nice day. Bye.</content>
+      <key_concepts>
+        <concept>discussion planning</concept>
+        <concept>messaging follow-up</concept>
+        <concept>report support</concept>
+        <concept>session reinitiation</concept>
+      </key_concepts>
+    </section>
+  </transcript_sections>
+</knowledge_base>

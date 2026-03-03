@@ -465,10 +465,43 @@ const [formDirty, setFormDirty] = useState(false)
         return `${Date.now()}-${Math.random().toString(16).slice(2)}`
     }
 
+    const getFileExtension = (value?: string | null) => {
+        if (!value) return null
+        const cleanValue = value.split('?')[0]?.split('#')[0] || value
+        const dotIndex = cleanValue.lastIndexOf('.')
+        if (dotIndex === -1 || dotIndex === cleanValue.length - 1) return null
+        return cleanValue.slice(dotIndex + 1).toLowerCase()
+    }
+
+    const isVttFile = (file?: { name?: string; type?: string } | null) => {
+        if (!file) return false
+        const mimeType = (file.type || '').toLowerCase()
+        if (mimeType.includes('vtt')) return true
+        return getFileExtension(file.name || '') === 'vtt'
+    }
+
+    const isVttAsset = (asset?: { mimeType?: string | null; url?: string; title?: string } | null) => {
+        if (!asset) return false
+        const mimeType = (asset.mimeType || '').toLowerCase()
+        if (mimeType.includes('vtt')) return true
+        const urlExt = getFileExtension(asset.url || '')
+        const titleExt = getFileExtension(asset.title || '')
+        return urlExt === 'vtt' || titleExt === 'vtt'
+    }
+
+    const getAssetDisplayType = (asset: { type?: string; mimeType?: string | null; url?: string; title?: string }) => {
+        if (isVttAsset(asset)) return 'VTT'
+        return asset.type || asset.mimeType || 'Unknown'
+    }
+
     // Auto-detect asset type from file
     const detectAssetType = (file: File): 'VIDEO' | 'DOCUMENT' | 'PRESENTATION' | 'TEXT' | 'AUDIO' | 'OTHER' => {
         const mimeType = file.type.toLowerCase()
         const extension = file.name.split('.').pop()?.toLowerCase()
+
+        if (isVttFile(file)) {
+            return 'TEXT'
+        }
 
         // Video detection
         if (mimeType.startsWith('video/') || ['mp4', 'webm', 'mov', 'avi', 'mkv', 'm4v'].includes(extension || '')) {
@@ -913,10 +946,11 @@ const handleDeleteLessonAsset = async (assetId: string) => {
             for (const upload of pendingLessonUploads) {
                 updatePendingLessonUpload(upload.id, { uploading: true, error: null })
                 try {
+                    const uploadType = isVttFile(upload.file) ? 'TEXT' : (assetTypeMap[upload.type] || 'DOCUMENT')
                     const uploadMeta: any = await ApiClient.uploadLessonAsset(id, chapterId, lessonId!, {
                         filename: upload.file.name,
                         contentType: upload.file.type || 'application/octet-stream',
-                        type: assetTypeMap[upload.type] || 'DOCUMENT',
+                        type: uploadType,
                     })
 
                     const s3PutResponse = await fetch(uploadMeta.data.uploadUrl, {
@@ -1642,7 +1676,7 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                                                                                             <div className="flex-1 min-w-0">
                                                                                                 <p className="text-xs font-medium truncate">{asset.title}</p>
                                                                                                 <p className="text-xs text-muted-foreground truncate">
-                                                                                                    {asset.type}
+                                                                                                    {getAssetDisplayType(asset)}
                                                                                                 </p>
                                                                                             </div>
                                                                                             {asset.url && (
@@ -1970,7 +2004,7 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                                                         {asset.title || `Asset ${asset.id.slice(0, 8)}...`}
                                                     </p>
                                                     <p className="text-xs text-muted-foreground">
-                                                        {asset.type || asset.mimeType || 'Unknown type'}
+                                                        {getAssetDisplayType(asset)}
                                                     </p>
                                                 </div>
                                                 {asset.url && (
@@ -1998,9 +2032,13 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                         {/* Transcript & AI Knowledge Base Section */}
                         {(() => {
                             // Find the first VIDEO asset for this lesson (saved assets)
-                            const videoAsset = lessonAttachments.find(asset => asset.type === 'VIDEO')
+                            const videoAsset = lessonAttachments.find(
+                                asset => asset.type === 'VIDEO' && !isVttAsset(asset)
+                            )
                             // Check for pending video uploads
-                            const pendingVideoUpload = pendingLessonUploads.find(upload => upload.type === 'VIDEO')
+                            const pendingVideoUpload = pendingLessonUploads.find(
+                                upload => upload.type === 'VIDEO' && !isVttFile(upload.file)
+                            )
 
                             return (
                                 <div className="space-y-4 border-t pt-4">

@@ -87,6 +87,9 @@ const USE_CASES: { value: Exclude<AIPromptUseCase, 'MISC'>; label: string; scope
     { value: 'AI_ASSISTANT_KNOWLEDGE_CONTEXT_SYSTEM', label: 'AI assistant (Knowledge Context)', scope: 'global' },
 ]
 
+// Hide this use-case in Defaults/Assignments for now since runtime currently uses VTT_TO_XML_ENRICHMENT.
+const DEFAULTS_ASSIGNMENTS_USE_CASES = USE_CASES.filter((u) => u.value !== 'KNOWLEDGE_ANCHORS_GENERATION')
+
 function getAuthHeaders(): Record<string, string> {
     if (typeof window === 'undefined') return {}
     const token = localStorage.getItem('accessToken')
@@ -760,6 +763,11 @@ export default function AdminAIConfigPage() {
                                                 value={editForm.variables}
                                                 onChange={(e) => setEditForm((p) => (p ? { ...p, variables: e.target.value } : p))}
                                             />
+                                            <p className="text-xs text-muted-foreground">
+                                                List variable names used in the prompt (no braces). Example for AI assistant:{' '}
+                                                <span className="font-mono">courseTitle, chapterTitle, lessonTitle, videoTimestampLine</span>. Use in
+                                                prompt as <span className="font-mono">{'{{variable}}'}</span>.
+                                            </p>
                                         </div>
                                         <div className="space-y-2 md:col-span-2">
                                             <Label>System Prompt</Label>
@@ -853,7 +861,7 @@ export default function AdminAIConfigPage() {
                                 <CardDescription>Used when no course/exam override exists.</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4">
-                                {USE_CASES.map((u) => {
+                                {DEFAULTS_ASSIGNMENTS_USE_CASES.map((u) => {
                                     const d = defaultsByUseCase.get(u.value)
                                     const options = buildTemplateOptions(templates, u.value)
                                     const current = d?.templateId || 'none'
@@ -927,7 +935,7 @@ export default function AdminAIConfigPage() {
 
                                 {selectedCourseId !== 'none' && (
                                     <div className="space-y-3">
-                                        {USE_CASES.map((u) => {
+                                        {DEFAULTS_ASSIGNMENTS_USE_CASES.map((u) => {
                                             const row = courseAssignmentByUseCase.get(u.value)
                                             const options = buildTemplateOptions(templates, u.value)
                                             const key = `course:${selectedCourseId}:${u.value}`
@@ -994,7 +1002,7 @@ export default function AdminAIConfigPage() {
 
                                 {selectedExamId !== 'none' && (
                                     <div className="space-y-3">
-                                        {USE_CASES.filter((u) => u.scope === 'exam').map((u) => {
+                                        {DEFAULTS_ASSIGNMENTS_USE_CASES.filter((u) => u.scope === 'exam').map((u) => {
                                             const row = examAssignmentByUseCase.get(u.value)
                                             const options = buildTemplateOptions(templates, u.value)
                                             const key = `exam:${selectedExamId}:${u.value}`

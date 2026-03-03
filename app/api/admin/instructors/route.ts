@@ -5,9 +5,6 @@ import prisma from '@/lib/prisma'
 export const GET = withAdminAuth(async () => {
     try {
         const instructors = await prisma.user.findMany({
-            where: {
-                role: 'ADMIN',
-            },
             select: {
                 id: true,
                 name: true,

@@ -220,7 +220,7 @@ export default function CreateCoursePage() {
                             </Select>
                             {instructors.length === 0 && (
                                 <p className="text-xs text-muted-foreground mt-2">
-                                    No instructors found. Make sure at least one admin/instructor account exists.
+                                    No instructors found. Make sure at least one user account exists.
                                 </p>
                             )}
                         </div>

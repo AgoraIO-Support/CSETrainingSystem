@@ -1,20 +1,16 @@
 # Deployment Guide (Local + AWS EC2)
 
 This project is a **Next.js app (App Router)** with server-side API routes and a PostgreSQL database (Prisma).
-It is deployed as a **single web container** (Next.js standalone output) and uses **AWS S3** for assets (MP4, VTT, XML knowledge contexts).
+It is deployed as **two containers**:
+- **cselearning-web**: Next.js standalone output with all API endpoints
+- **cselearning-worker**: Background worker for transcript/knowledge processing
 
-There is also an optional **Fastify backend** in `backend/` that is currently used for:
-
-- CloudFront signed-cookie endpoint for the course materials page: `GET /api/materials/:courseId/cf-cookie`
-- Admin delete operations (Next.js proxies to the backend for these endpoints):
-  - `DELETE /api/admin/courses/:id`
-  - `DELETE /api/admin/courses/:id/chapters/:chapterId`
+Uses **AWS S3** for assets (MP4, VTT, XML knowledge contexts).
 
 ## Contents
 
 - Local deployment (Podman)
 - AWS EC2 deployment (Podman + systemd)
-- Optional: Fastify backend deployment
 - Database migrations (Prisma)
 - CloudFront + S3 private assets (optional but recommended)
 - Troubleshooting
@@ -48,16 +44,14 @@ podman run -d --name cselearning-postgres --network cselearning \
 
 ```bash
 podman build -t cselearning-web:latest -f Containerfile .
-podman build --target migrator -t cselearning-migrator:latest -f Containerfile . //如果Seed.ts文件更新，需要重新build migrator 镜像
+podman build --target migrator -t cselearning-migrator:latest -f Containerfile .
+podman build --target worker -t cselearning-worker:latest -f Containerfile .
 ```
 
 ### 1.3 Create a local env file (do NOT commit secrets)
 
 Create a single env file `tmp/podman/local.env` (already ignored by `.gitignore`).
-This file can be shared by BOTH containers:
-
-- `cselearning-web` (Next.js)
-- `cselearning-backend` (Fastify, optional)
+This file is shared by all containers (web, worker, migrator).
 
 ```bash
 mkdir -p tmp/podman
@@ -67,10 +61,10 @@ JWT_SECRET=local-dev-secret-change-me
 
 DATABASE_URL=postgresql://postgres:postgres@cselearning-postgres:5432/cselearning-database?schema=public
 
-# Optional: real S3 access for assets/XML (recommended for E2E)
+# AWS S3 access for assets/XML
 AWS_REGION=ap-southeast-1
 AWS_S3_BUCKET_NAME=cse-training-bucket
-AWS_S3_ASSET_PREFIX=CSETraining
+AWS_S3_ASSET_PREFIX=assets
 CSE_ASSET_DELIVERY_MODE=s3_presigned
 CSE_ASSET_URL_TTL_SECONDS=43200
 AWS_ACCESS_KEY_ID=REPLACE_ME
@@ -80,8 +74,11 @@ AWS_SECRET_ACCESS_KEY=REPLACE_ME
 OPENAI_API_KEY=REPLACE_ME
 OPENAI_MODEL=gpt-4o-mini
 
-# Optional: enable Next.js -> backend internal proxy (only needed if you run the Fastify backend)
-BACKEND_INTERNAL_URL=http://cselearning-backend:8080
+# Optional: CloudFront signed cookies for private course materials
+# CLOUDFRONT_DOMAIN=your-cloudfront-domain
+# CLOUDFRONT_KEY_PAIR_ID=your-key-pair-id
+# CLOUDFRONT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+# CLOUDFRONT_SIGNED_COOKIE_TTL_HOURS=12
 EOF
 ```
 
@@ -123,42 +120,16 @@ Open:
     - User: `user@agora.io` / `password123`
     - Admin: `admin@agora.io` / `password123`
 
-### 1.6 Optional: run the Fastify backend locally
+### 1.6 Optional: run the Worker locally
 
-Only needed if you use:
-
-- `/courses/:id/materials` (CloudFront signed cookies)
-- Admin delete actions that proxy to the backend
-
-Build the backend image:
+Required for transcript/knowledge-context background processing:
 
 ```bash
-podman build -t cselearning-backend:latest -f backend/Containerfile .
-```
-
-Run it on `:8080`:
-
-```bash
-podman rm -f cselearning-backend || true
-podman run -d --name cselearning-backend --network cselearning \
-  -p 8080:8080 \
+podman rm -f cselearning-worker || true
+podman run -d --name cselearning-worker --network cselearning \
   --env-file tmp/podman/local.env \
-  -e PORT=8080 \
-  cselearning-backend:latest
+  cselearning-worker:latest
 ```
-
-Notes:
-
-- CloudFront signed-cookie routes are optional; if you want `/api/materials/*/cf-cookie`, set:
-  - `CLOUDFRONT_DOMAIN`
-  - `CLOUDFRONT_KEY_PAIR_ID`
-  - `CLOUDFRONT_PRIVATE_KEY`
-  - `CLOUDFRONT_SIGNED_COOKIE_TTL_HOURS` (optional)
-- For Next.js server-to-server proxies, keep `BACKEND_INTERNAL_URL=http://cselearning-backend:8080` in `tmp/podman/local.env`.
-
-Then set the frontend env (for local dev) so the browser can reach it (only if you have browser-direct calls):
-
-- `BACKEND_INTERNAL_URL=http://127.0.0.1:8080`
 
 ### 1.7 Optional E2E checks
 
@@ -231,11 +202,7 @@ JWT_SECRET=<GENERATE_A_STRONG_RANDOM_SECRET>
 # AWS S3
 AWS_REGION=ap-southeast-1
 AWS_S3_BUCKET_NAME=cse-training-bucket
-AWS_S3_ASSET_PREFIX=CSETraining
-
-# If you deploy the Fastify backend, the browser will call it using this base URL.
-# This is server-only. Keep the backend private and only reachable from the Next.js server.
-BACKEND_INTERNAL_URL=http://127.0.0.1:8080
+AWS_S3_ASSET_PREFIX=assets
 
 # Asset delivery mode:
 # - For production with private assets: cloudfront_signed
@@ -243,12 +210,11 @@ BACKEND_INTERNAL_URL=http://127.0.0.1:8080
 CSE_ASSET_DELIVERY_MODE=cloudfront_signed
 CSE_ASSET_URL_TTL_SECONDS=43200
 
-# CloudFront signed URL (required when cloudfront_signed)
+# CloudFront signed URL & cookies (required when cloudfront_signed)
+CLOUDFRONT_DOMAIN=cselearning.club
 CLOUDFRONT_KEY_PAIR_ID=<YOUR_KEY_PAIR_ID>
 CLOUDFRONT_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----
-
-# Fastify backend CloudFront config (used for signed cookies)
-CLOUDFRONT_DOMAIN=cselearning.club
+CLOUDFRONT_SIGNED_COOKIE_TTL_HOURS=12
 
 # AI
 OPENAI_API_KEY=<YOUR_OPENAI_KEY>
@@ -263,11 +229,12 @@ Important:
 - Do not store AWS access keys on EC2 if you can avoid it. Prefer an **IAM Instance Role** with S3 permissions.
 - If you do use keys temporarily, put them in `/opt/cselearning.env` and lock file permissions.
 
-### 2.5 Build image on EC2
+### 2.5 Build images on EC2
 
 ```bash
 podman build -t cselearning-web:latest -f Containerfile .
 podman build --target migrator -t cselearning-migrator:latest -f Containerfile .
+podman build --target worker -t cselearning-worker:latest -f Containerfile .
 ```
 
 ### 2.6 Run Prisma migrations (one-off)
@@ -307,96 +274,30 @@ systemctl --user status container-cselearning-web.service
 sudo loginctl enable-linger ubuntu
 ```
 
-### 2.9 Optional: deploy the Fastify backend on EC2
+### 2.9 Deploy the Worker on EC2
 
-Build the backend image (context is the repo root):
-
-```bash
-podman build -t cselearning-backend:latest -f backend/Containerfile .
-```
-
-Run it on port `8080`:
+The worker handles background processing for transcripts and knowledge contexts.
 
 ```bash
-podman rm -f cselearning-backend || true
-### Copy env file for ubuntu user
-sudo install -m 600 -o ubuntu -g ubuntu /opt/cselearning.env /home/ubuntu/cselearning.env
-
-podman run -d --name cselearning-backend \
+podman rm -f cselearning-worker || true
+podman run -d --name cselearning-worker \
     --env-file /home/ubuntu/cselearning.env \
-    -p 127.0.0.1:8080:8080 \
-    -e PORT=8080 \
-    cselearning-backend:latest
+    cselearning-worker:latest
 
-podman logs --tail 100 cselearning-backend
-
-Manage the backend container with Podman commands:
-  - 停止：podman stop cselearning-backend
-  - 启动（停止后再启动）：podman start cselearning-backend
-  - 重启：podman restart cselearning-backend
-  - 查看日志：podman logs -f cselearning-backend
-  - 停止并删除容器（下次要重新 podman run）：podman rm -f cselearning-backend
-
+podman logs --tail 100 cselearning-worker
 ```
-
-如果代码有改动，需要重新部署 Fastify 后端，步骤如下：
-  cd /opt/cselearning/app
-  git pull
-
-  # 1) 重新 build 镜像
-  podman build -t cselearning-backend:latest -f backend/Containerfile .
-
-  # 2) 停掉旧容器并用新镜像起一个
-  podman stop cselearning-backend
-  podman rm cselearning-backend
-
-  podman run -d --name cselearning-backend \
-    --env-file /home/ubuntu/cselearning.env \
-    -p 8080:8080 \
-    -e PORT=8080 \
-    cselearning-backend:latest
-
-  # 3) 验证
-  podman ps --filter name=cselearning-backend
-  podman logs --tail 100 cselearning-backend
-
-  如果你是用 systemd 管的（container-cselearning-backend.service），build 完后改为重启 service 即可：
-
-  - rootless（recommended）：systemctl --user restart container-cselearning-backend.service
-
 
 systemd autostart:
 
 ```bash
-podman generate systemd --name cselearning-backend --files --new
+podman generate systemd --name cselearning-worker --files --new
 mkdir -p ~/.config/systemd/user
-mv container-cselearning-backend.service ~/.config/systemd/user/
+mv container-cselearning-worker.service ~/.config/systemd/user/
 
 systemctl --user daemon-reload
-systemctl --user enable --now container-cselearning-backend.service
-systemctl --user status container-cselearning-backend.service
-
-如果你已经按文档做了 systemd 自启动（container-cselearning-backend.service），用 systemd 管：
-
-  - 停止：systemctl --user stop container-cselearning-backend.service
-  - 启动：systemctl --user start container-cselearning-backend.service
-  - 重启：systemctl --user restart container-cselearning-backend.service
-  - 看状态：systemctl --user status container-cselearning-backend.service
-  - 取消开机自启：systemctl --user disable --now container-cselearning-backend.service
-
-  如果你之前误用了 `sudo systemctl enable --now container-*.service`（root systemd），建议先停用它们，避免 root/rootless 两套 Podman “打架”：
-
-  - sudo systemctl disable --now container-cselearning-web.service
-  - sudo systemctl disable --now container-cselearning-backend.service
-
+systemctl --user enable --now container-cselearning-worker.service
+systemctl --user status container-cselearning-worker.service
 ```
-
-Notes:
-
-- With the current frontend refactor, the browser never calls the backend directly. Next.js proxies the backend for:
-  - CloudFront signed cookies: `GET /api/materials/:courseId/cf-cookie`
-  - Admin deletes
-- Recommended: run both containers in the same Podman pod so `BACKEND_INTERNAL_URL=http://127.0.0.1:8080` works and port 8080 is not exposed publicly.
 
 ---
 
@@ -429,15 +330,7 @@ The API returns time-limited signed URLs so the browser can fetch MP4/VTT/XML.
 
 ## 4) Troubleshooting
 
-### EC2: `Cannot find module 'fastify'` during `next build`
-
-Cause: Next.js typecheck scanned `backend/` but backend deps aren’t installed in the web image.
-Fix: pull latest code where:
-
-- `tsconfig.json` excludes `backend`
-- `Containerfile` does not copy `backend/` into the Next build stage
-
-### Local/EC2: `Invalid supabaseUrl` or “Missing Supabase environment variables”
+### Local/EC2: `Invalid supabaseUrl` or "Missing Supabase environment variables"
 
 Use local auth (no Supabase env vars), or ensure Supabase env vars are valid URLs without extra quotes.
 For containers, prefer a dedicated env-file (no surrounding quotes).
@@ -446,12 +339,13 @@ For containers, prefer a dedicated env-file (no surrounding quotes).
 
 Symptoms:
 
-- `/courses/:id/materials` videos don’t play
+- `/courses/:id/materials` videos don't play
 - Browser console shows the `cf-cookie` request failing
 
 Checks:
 
-- Ensure the Fastify backend is running and reachable from the Next.js server via `BACKEND_INTERNAL_URL` (server-only)
+- Ensure CloudFront environment variables are set: `CLOUDFRONT_DOMAIN`, `CLOUDFRONT_KEY_PAIR_ID`, `CLOUDFRONT_PRIVATE_KEY`
+- Check that the user is enrolled in the course
 
 ### Admin MP4/VTT upload fails with S3 CORS error
 
@@ -493,40 +387,27 @@ Notes:
 
 - This does **not** make objects public; it only allows the browser to use valid presigned URLs.
 - Once you switch fully to the domain, you can remove the `http://<EC2_EIP>:3000` origin.
-- Ensure backend has: `CLOUDFRONT_DOMAIN`, `CLOUDFRONT_KEY_PAIR_ID`, `CLOUDFRONT_PRIVATE_KEY`
-- If backend is on a different origin, ensure backend CORS allows `https://cselearning.club`
+- Ensure environment has: `CLOUDFRONT_DOMAIN`, `CLOUDFRONT_KEY_PAIR_ID`, `CLOUDFRONT_PRIVATE_KEY`
 
 
-更新 cselearning.env 这种“运行时配置”不要求重新 podman build，但需要让容器“重新读取 env-file”（env 只在 创建容器 时读取一次），所以你要 重建/重跑容器 或 重启 systemd 单元。
+更新 cselearning.env 这种"运行时配置"不要求重新 podman build，但需要让容器"重新读取 env-file"（env 只在 创建容器 时读取一次），所以你要 重建/重跑容器 或 重启 systemd 单元。
 
   如果你是按 systemd 跑的（推荐）：
 
-  - sudo systemctl restart container-cselearning-backend.service
-  - sudo systemctl restart container-cselearning-web.service
-  - 看日志：sudo journalctl -u container-cselearning-backend.service -n 200 --no-pager
-  - 看日志：sudo journalctl -u container-cselearning-web.service -n 200 --no-pager
+  - systemctl --user restart container-cselearning-web.service
+  - systemctl --user restart container-cselearning-worker.service
+  - 看日志：journalctl --user -u container-cselearning-web.service -n 200 --no-pager
+  - 看日志：journalctl --user -u container-cselearning-worker.service -n 200 --no-pager
 
-  如果你是手动 podman run 跑的（含 pod）：
+  如果你是手动 podman run 跑的：
 
-  - 先停掉并删除旧容器（不会删镜像）：podman rm -f cselearning-web cselearning-backend
-  - 重新启动（示例：同一个 pod，backend 不对外暴露端口）：
-      - podman pod create --name cselearning -p 3000:3000（已存在就跳过）
-      - podman run -d --pod cselearning --name cselearning-backend --env-file /home/ubuntu/cselearning.env -e PORT=8080 cselearning-backend:latest
-      - podman run -d --pod cselearning --name cselearning-web --env-file /home/ubuntu/cselearning.env -e BACKEND_INTERNAL_URL=http://127.0.0.1:8080 cselearning-web:latest
-  - 验证：podman ps、podman logs --tail 200 cselearning-web、podman logs --tail 200 cselearning-backend
-
+  - 先停掉并删除旧容器（不会删镜像）：podman rm -f cselearning-web cselearning-worker
+  - 重新启动：
+      - podman run -d --name cselearning-web --network cselearning -p 3000:3000 --env-file /home/ubuntu/cselearning.env cselearning-web:latest
+      - podman run -d --name cselearning-worker --network cselearning --env-file /home/ubuntu/cselearning.env cselearning-worker:latest
+  - 验证：podman ps、podman logs --tail 200 cselearning-web、podman logs --tail 200 cselearning-worker
 
   只有当你改了代码/依赖/Containerfile 时，才需要重新 podman build。
-• podman pod create --name cselearning -p 3000:3000 是“先创建一个 Pod（共享网络命名空间）”，并把 宿主机 3000 端口 映射到 Pod 内部的 3000 端口。
-
-  然后你用：
-
-  - podman run -d --pod cselearning ... cselearning-web:latest
-
-  为什么要 pod：
-
-  - 同一个 pod 里的容器共享网络，所以前端容器可以用 http://127.0.0.1:8080 访问 backend 容器。
-  - backend 不需要 -p 8080:8080 暴露到宿主机/公网，实现“浏览器不能直接访问 backend”。
 
   常见流程：
 
@@ -619,7 +500,7 @@ Notes:
 
 快速启动：
 podman start cselearning-web
-podman start cselearning-backend
+podman start cselearning-worker
 CSE_SEED_ADMIN_EMAIL=AdminEmail CSE_SEED_ADMIN_PASSWORD='xxxx!' podman run --rm --env-file /home/ubuntu/cselearning.env -e CSE_SEED_ADMIN_EMAIL -e CSE_SEED_ADMIN_PASSWORD cselearning-migrator:latest npx prisma db seed
 
 
@@ -675,24 +556,23 @@ systemctl --user list-unit-files | grep cselearning
   # 3) build + 迁移 + seed + 启动 web
   podman build -t cselearning-web:latest -f Containerfile .
   podman build --target migrator -t cselearning-migrator:latest -f Containerfile .
+  podman build --target worker -t cselearning-worker:latest -f Containerfile .
   podman run --rm --network cselearning --env-file tmp/podman/local.env cselearning-migrator:latest
   podman run --rm --network cselearning --env-file tmp/podman/local.env cselearning-migrator:latest npx tsx prisma/seed.ts
   podman rm -f cselearning-web || true
   podman run -d --name cselearning-web --network cselearning -p 3000:3000 \
     --env-file tmp/podman/local.env cselearning-web:latest
 
-  可选：如果你需要跑 backend（CloudFront cookie / admin delete）：
-
-  podman build -t cselearning-backend:latest -f backend/Containerfile .
-  podman rm -f cselearning-backend || true
-  podman run -d --name cselearning-backend --network cselearning -p 8080:8080 \
-    --env-file tmp/podman/local.env -e PORT=8080 cselearning-backend:latest
+  # 可选：启动 worker（用于 transcript/knowledge processing）
+  podman rm -f cselearning-worker || true
+  podman run -d --name cselearning-worker --network cselearning \
+    --env-file tmp/podman/local.env cselearning-worker:latest
 
 
 
 
 ====================================================================
-• 按“EC2 + Podman 容器在实例里跑 web/backend”的场景，Instance Role（Instance Profile）配置步骤如下：
+• 按"EC2 + Podman 容器在实例里跑 web/worker"的场景，Instance Role（Instance Profile）配置步骤如下：
 
   1. 创建 IAM Policy（最小权限）
 

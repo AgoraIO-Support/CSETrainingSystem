@@ -22,6 +22,7 @@ import {
     X,
     CheckCircle,
     XCircle,
+    Copy,
 } from 'lucide-react'
 import Link from 'next/link'
 import type { Exam, ExamQuestion, ExamQuestionType } from '@/types'
@@ -362,6 +363,59 @@ export default function ExamQuestionsPage({ params }: PageProps) {
     }
 
     const totalPoints = questions.reduce((sum, q) => sum + q.points, 0)
+
+    const formatQuestionAnswer = (question: ExamQuestion) => {
+        if (question.type === 'MULTIPLE_CHOICE') {
+            const idx = Number.parseInt(question.correctAnswer || '', 10)
+            if (!Number.isFinite(idx)) return question.correctAnswer || '(missing)'
+            const optionText = question.options?.[idx]?.trim()
+            const optionLabel = String.fromCharCode(65 + idx)
+            return optionText ? `${optionLabel}. ${optionText}` : `${optionLabel}`
+        }
+
+        if (question.type === 'TRUE_FALSE') {
+            if (question.correctAnswer === 'true') return 'True'
+            if (question.correctAnswer === 'false') return 'False'
+            return question.correctAnswer || '(missing)'
+        }
+
+        if (question.type === 'FILL_IN_BLANK') {
+            return question.correctAnswer || '(missing)'
+        }
+
+        if (question.type === 'ESSAY') {
+            return question.sampleAnswer || '(sample answer missing)'
+        }
+
+        return 'Manual review (exercise recording)'
+    }
+
+    const buildAnswerKeyText = () => {
+        return questions
+            .map((question, index) => {
+                const lines = [
+                    `Q${index + 1}. [${questionTypeLabels[question.type]}] ${question.question}`,
+                    `Answer: ${formatQuestionAnswer(question)}`,
+                ]
+                if (question.type === 'ESSAY' && question.rubric) {
+                    lines.push(`Rubric: ${question.rubric}`)
+                }
+                if (question.explanation) {
+                    lines.push(`Explanation: ${question.explanation}`)
+                }
+                return lines.join('\n')
+            })
+            .join('\n\n')
+    }
+
+    const handleCopyAnswerKey = async () => {
+        try {
+            await navigator.clipboard.writeText(buildAnswerKeyText())
+            showSuccess('Answer key copied')
+        } catch {
+            setError('Failed to copy answer key')
+        }
+    }
 
     return (
         <DashboardLayout>
@@ -962,6 +1016,53 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                         )}
                     </CardContent>
                 </Card>
+
+                {questions.length > 0 && (
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center justify-between gap-2">
+                                <div>
+                                    <CardTitle>Answer Key (Admin Only)</CardTitle>
+                                    <CardDescription>Generated from current question set. This panel is only in Admin.</CardDescription>
+                                </div>
+                                <Button variant="outline" size="sm" onClick={handleCopyAnswerKey}>
+                                    <Copy className="h-4 w-4 mr-2" />
+                                    Copy
+                                </Button>
+                            </div>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="space-y-3">
+                                {questions.map((question, index) => (
+                                    <div key={`answer-key-${question.id}`} className="rounded-lg border p-3">
+                                        <div className="text-sm font-medium">
+                                            Q{index + 1}. {question.question}
+                                        </div>
+                                        <div className="mt-1 text-xs text-muted-foreground">
+                                            {questionTypeLabels[question.type]}
+                                        </div>
+                                        <div className="mt-2 text-sm">
+                                            <span className="font-medium">Answer: </span>
+                                            <span className="whitespace-pre-wrap">{formatQuestionAnswer(question)}</span>
+                                        </div>
+                                        {question.type === 'ESSAY' && question.rubric && (
+                                            <div className="mt-2 text-sm">
+                                                <span className="font-medium">Rubric: </span>
+                                                <span className="whitespace-pre-wrap">{question.rubric}</span>
+                                            </div>
+                                        )}
+                                        {question.explanation && (
+                                            <div className="mt-2 text-sm">
+                                                <span className="font-medium">Explanation: </span>
+                                                <span className="whitespace-pre-wrap">{question.explanation}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
             </div>
             <ConfirmDialog
                 open={confirmDeleteOpen}

@@ -685,19 +685,21 @@ export class ExamGenerationService {
     }
 
     // ESSAY
-    const rubric = typeof raw?.rubric === 'string' ? raw.rubric.trim() : undefined;
-    const sampleAnswer = typeof raw?.sampleAnswer === 'string' ? raw.sampleAnswer.trim() : undefined;
-    if (!rubric && !sampleAnswer) {
-      // Still allow essays without rubric/sampleAnswer, but keep a warning-level validation here
-      // by requiring at least one of them (prevents empty essay questions).
-      throw new Error('INVALID_ESSAY_METADATA');
-    }
+    const rubric = typeof raw?.rubric === 'string' ? raw.rubric.trim() : '';
+    const sampleAnswer = typeof raw?.sampleAnswer === 'string' ? raw.sampleAnswer.trim() : '';
+
+    // Newer models may occasionally omit rubric/sampleAnswer even when prompted.
+    // Keep generation resilient by filling safe defaults instead of failing the entire question.
+    const fallbackRubric =
+      'Scoring guide: Accuracy (40%), Depth of analysis (30%), Practical examples (20%), Clarity and structure (10%).';
+    const fallbackSampleAnswer = explanation || 'Provide a complete answer grounded in the lesson knowledge context.';
+
     return {
       type,
       difficulty,
       question,
-      rubric,
-      sampleAnswer,
+      rubric: rubric || fallbackRubric,
+      sampleAnswer: sampleAnswer || fallbackSampleAnswer,
       explanation,
       topic,
       sourceChunkIds: [],
