@@ -138,6 +138,7 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
     if (attempt.exam.allowReview && reviewUnlocked) {
       result.answers = attempt.answers.map(answer => {
         const questionType = answer.question.type;
+        const questionTypeRaw = String(questionType);
         const options = answer.question.options as string[] | null;
 
         const formatMcOption = (index: number | null | undefined) => {
@@ -147,9 +148,9 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
         };
 
         let userAnswer: string | null = answer.answer;
-        if (questionType === 'SINGLE_CHOICE') {
+        if (questionTypeRaw === 'SINGLE_CHOICE') {
           userAnswer = formatMcOption(answer.selectedOption) ?? null;
-        } else if (questionType === 'MULTIPLE_CHOICE') {
+        } else if (questionTypeRaw === 'MULTIPLE_CHOICE') {
           const selected =
             (answer.answer || '')
               .split(',')
@@ -158,24 +159,24 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
           userAnswer = selected.length
             ? selected.map(idx => formatMcOption(idx)).filter(Boolean).join(', ')
             : formatMcOption(answer.selectedOption) ?? null;
-        } else if (questionType === 'TRUE_FALSE') {
+        } else if (questionTypeRaw === 'TRUE_FALSE') {
           userAnswer =
             answer.answer === 'true' ? 'True' : answer.answer === 'false' ? 'False' : null;
-        } else if (questionType === 'EXERCISE') {
+        } else if (questionTypeRaw === 'EXERCISE') {
           userAnswer = answer.recordingStatus === 'UPLOADED' ? 'Video submitted' : null;
         }
 
         let correctAnswer: string | null = answer.question.correctAnswer;
         if (answer.question.correctAnswer) {
-          if (questionType === 'SINGLE_CHOICE') {
+          if (questionTypeRaw === 'SINGLE_CHOICE') {
             const idx = Number.parseInt(answer.question.correctAnswer, 10);
             correctAnswer = Number.isFinite(idx) ? formatMcOption(idx) : answer.question.correctAnswer;
-          } else if (questionType === 'MULTIPLE_CHOICE') {
+          } else if (questionTypeRaw === 'MULTIPLE_CHOICE') {
             const idxList = answer.question.correctAnswer.split(',').map(v => Number.parseInt(v, 10)).filter(n => Number.isFinite(n));
             correctAnswer = idxList.length
               ? idxList.map(idx => formatMcOption(idx)).filter(Boolean).join(', ')
               : answer.question.correctAnswer;
-          } else if (questionType === 'TRUE_FALSE') {
+          } else if (questionTypeRaw === 'TRUE_FALSE') {
             correctAnswer =
               answer.question.correctAnswer === 'true'
                 ? 'True'
@@ -184,7 +185,7 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
                   : answer.question.correctAnswer;
           }
         }
-        if (questionType === 'EXERCISE') {
+        if (questionTypeRaw === 'EXERCISE') {
           correctAnswer = null;
         }
 

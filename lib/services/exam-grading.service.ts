@@ -219,23 +219,6 @@ export class ExamGradingService {
     let isCorrect = false;
 
     switch (type) {
-      case ExamQuestionType.SINGLE_CHOICE:
-        if (options && selectedOption !== null) {
-          const trimmed = correctAnswer.trim();
-          let correctIndex = Number.parseInt(trimmed, 10);
-          if (!Number.isFinite(correctIndex)) {
-            if (/^[A-Da-d]$/.test(trimmed)) {
-              correctIndex = trimmed.toUpperCase().charCodeAt(0) - 65;
-            } else {
-              correctIndex = options.findIndex((opt) => opt.trim() === trimmed);
-            }
-          }
-          if (Number.isFinite(correctIndex) && correctIndex >= 0 && correctIndex < options.length) {
-            isCorrect = selectedOption === correctIndex;
-          }
-        }
-        break;
-
       case ExamQuestionType.MULTIPLE_CHOICE:
         if (options) {
           const trimmed = correctAnswer.trim();

@@ -51,7 +51,7 @@ export interface GeneratedQuestion {
 
 export interface GenerationResult {
   questions: GeneratedQuestion[];
-  createdQuestions: any[];
+  createdQuestions: Array<{ type: ExamQuestionType }>;
   totalGenerated: number;
   tokensUsed: number;
   warnings: string[];
@@ -125,7 +125,7 @@ export class ExamGenerationService {
     });
 
     const questions: GeneratedQuestion[] = [];
-    const createdQuestions: any[] = [];
+    const createdQuestions: Array<{ type: ExamQuestionType }> = [];
     const warnings: string[] = [];
     let totalTokensUsed = 0;
 
@@ -150,7 +150,7 @@ export class ExamGenerationService {
     const toQuestionType = (key: keyof typeof counts): ExamQuestionType => {
       switch (key) {
         case 'singleChoice':
-          return ExamQuestionType.SINGLE_CHOICE;
+          return ExamQuestionType.MULTIPLE_CHOICE;
         case 'multipleChoice':
           return ExamQuestionType.MULTIPLE_CHOICE;
         case 'trueFalse':
@@ -160,7 +160,7 @@ export class ExamGenerationService {
         case 'essay':
           return ExamQuestionType.ESSAY;
         default:
-          return ExamQuestionType.SINGLE_CHOICE;
+          return ExamQuestionType.MULTIPLE_CHOICE;
       }
     };
 
@@ -251,7 +251,7 @@ export class ExamGenerationService {
 
     // Safety net: ensure we fulfilled the requested counts per type. If any type is under-produced,
     // create deterministic fallback questions so the caller always receives the requested total.
-    const createdByType = createdQuestions.reduce<Record<ExamQuestionType, number>>((acc, q) => {
+    const createdByType = createdQuestions.reduce<Partial<Record<ExamQuestionType, number>>>((acc, q) => {
       acc[q.type] = (acc[q.type] ?? 0) + 1;
       return acc;
     }, {});
@@ -260,7 +260,7 @@ export class ExamGenerationService {
       if (!count || count <= 0) continue;
       const questionType =
         key === 'singleChoice'
-          ? ExamQuestionType.SINGLE_CHOICE
+          ? ExamQuestionType.MULTIPLE_CHOICE
           : key === 'multipleChoice'
             ? ExamQuestionType.MULTIPLE_CHOICE
             : key === 'trueFalse'
@@ -269,7 +269,7 @@ export class ExamGenerationService {
                 ? ExamQuestionType.FILL_IN_BLANK
                 : key === 'essay'
                   ? ExamQuestionType.ESSAY
-                  : ExamQuestionType.SINGLE_CHOICE; // default safety
+                  : ExamQuestionType.MULTIPLE_CHOICE; // default safety
       const have = createdByType[questionType] ?? 0;
       if (have >= count) continue;
 
@@ -306,7 +306,7 @@ export class ExamGenerationService {
       }
     }
 
-    const createdAfterFallback = createdQuestions.reduce<Record<ExamQuestionType, number>>((acc, q) => {
+    const createdAfterFallback = createdQuestions.reduce<Partial<Record<ExamQuestionType, number>>>((acc, q) => {
       acc[q.type] = (acc[q.type] ?? 0) + 1;
       return acc;
     }, {});
@@ -598,7 +598,6 @@ export class ExamGenerationService {
    * Normalize OpenAI output into the canonical DB format.
    *
    * Canonical formats (matches admin UI + schema comment):
-   * - SINGLE_CHOICE: `correctAnswer` is the option index as a string: "0".."3"
    * - MULTIPLE_CHOICE: `correctAnswer` is the option index as a string: "0".."3"
    * - TRUE_FALSE: `correctAnswer` is "true" or "false"
    * - FILL_IN_BLANK: free-form string (not auto-graded)
@@ -613,7 +612,7 @@ export class ExamGenerationService {
         ? Math.max(0, Math.min(raw.confidence, 1))
         : 0.8;
 
-    if (type === ExamQuestionType.MULTIPLE_CHOICE || type === ExamQuestionType.SINGLE_CHOICE) {
+    if (type === ExamQuestionType.MULTIPLE_CHOICE) {
       let options = Array.isArray(raw?.options)
         ? raw.options
             .map((o: any) => String(o).trim())
@@ -631,9 +630,7 @@ export class ExamGenerationService {
         }
       }
 
-      const correctAnswer = type === ExamQuestionType.MULTIPLE_CHOICE
-        ? this.normalizeMultipleChoiceMultiAnswer(raw, options)
-        : this.normalizeMultipleChoiceCorrectAnswer(raw, options);
+      const correctAnswer = this.normalizeMultipleChoiceMultiAnswer(raw, options);
       if (correctAnswer == null) {
         throw new Error('INVALID_MULTIPLE_CHOICE_CORRECT_ANSWER');
       }
@@ -807,17 +804,6 @@ export class ExamGenerationService {
     const options = ['Option A', 'Option B', 'Option C', 'Option D'];
 
     switch (type) {
-      case ExamQuestionType.SINGLE_CHOICE:
-        return {
-          type,
-          difficulty,
-          question: `${baseQuestion} (single choice)`,
-          options,
-          correctAnswer: '0',
-          explanation: 'Fallback generated question.',
-          sourceChunkIds: [],
-          confidence: 0.1,
-        };
       case ExamQuestionType.MULTIPLE_CHOICE:
         return {
           type,
@@ -899,23 +885,6 @@ Output format: JSON object with the following structure based on question type.`
     let typePrompt = '';
 
     switch (type) {
-      case ExamQuestionType.SINGLE_CHOICE:
-        typePrompt = `Generate a SINGLE CHOICE question with:
-- A clear question stem
-- Exactly 4 options labeled A, B, C, D (one correct answer)
-- An explanation of why the correct answer is correct
-
-Output JSON:
-{
-  "question": "The question text",
-  "options": ["Option A", "Option B", "Option C", "Option D"],
-  "correctAnswerIndex": 0,
-  "explanation": "Why the answer is correct",
-  "topic": "Main topic tested",
-  "confidence": 0.9
-}`;
-        break;
-
       case ExamQuestionType.MULTIPLE_CHOICE:
         typePrompt = `Generate a MULTIPLE CHOICE question with:
 - A clear question stem

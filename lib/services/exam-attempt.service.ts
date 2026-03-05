@@ -257,7 +257,7 @@ export class ExamAttemptService {
         if (
           exam.randomizeOptions &&
           options &&
-          (q.type === ExamQuestionType.MULTIPLE_CHOICE || q.type === ExamQuestionType.SINGLE_CHOICE)
+          q.type === ExamQuestionType.MULTIPLE_CHOICE
         ) {
           options = this.shuffleArray([...options]);
         }
