@@ -1,7 +1,7 @@
 # Production Deployment Quick Reference
 Step 1: 先手动 run 一次容器（确认能正常启动） 
 # Web podman rm -f cselearning-web || true 
-podman run -d --name cselearning-web -p 3000:3000 --env-file /home/ubuntu/cselearning.env -e CSE_LOG=api,db,s3,knowledgecontext,openai,worker,transcriptprocessing localhost/cselearning-web:latest
+podman run -d --name cselearning-web -p 3000:3000 --env-file /home/ubuntu/cselearning.env -e CSE_LOG=api,db,s3,knowledgecontext,openai,worker,transcriptprocessing  -e CSE_WECOM_LOG_CONTENT=1 localhost/cselearning-web:latest
 
 # Worker 
 podman rm -f cselearning-worker || true 
@@ -29,6 +29,9 @@ Step 3: 启用服务
 systemctl --user daemon-reload 
 systemctl --user enable --now container-cselearning-web.service 
 systemctl --user enable --now container-cselearning-worker.service 
+# 对应的配置在这个路径
+cat ~/.config/systemd/user/container-cselearning-worker.service
+cat ~/.config/systemd/user/container-cselearning-web.service
 
 Step 4: 允许开机自启（没有 SSH 登录也能运行） 
 
@@ -65,7 +68,7 @@ podman run --rm --env-file /home/ubuntu/cselearning.env cselearning-migrator:lat
 ```
 
 ## Restart Services
-
+systemctl --user daemon-reload
 systemctl --user restart container-cselearning-web.service
 systemctl --user restart container-cselearning-worker.service
 

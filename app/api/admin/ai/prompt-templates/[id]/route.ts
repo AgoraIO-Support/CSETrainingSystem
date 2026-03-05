@@ -5,6 +5,12 @@ import { AIResponseFormat, AIPromptUseCase } from '@prisma/client'
 import { z } from 'zod'
 import { SUPPORTED_OPENAI_MODELS } from '@/lib/services/openai-models'
 
+function getPrismaCode(error: unknown): string | undefined {
+    if (!error || typeof error !== 'object') return undefined
+    const maybeCode = (error as { code?: unknown }).code
+    return typeof maybeCode === 'string' ? maybeCode : undefined
+}
+
 const updateTemplateSchema = z.object({
     name: z.string().min(1).optional(),
     description: z.string().optional().nullable(),
@@ -30,9 +36,9 @@ export const GET = withAdminAuth(async (_req, _user, ctx) => {
             )
         }
         return NextResponse.json({ success: true, data: template })
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Get AI prompt template error:', error)
-        if ((error as any)?.code === 'P2021') {
+        if (getPrismaCode(error) === 'P2021') {
             return NextResponse.json(
                 {
                     success: false,
@@ -87,7 +93,7 @@ export const PATCH = withAdminAuth(async (req, _user, ctx) => {
         })
 
         return NextResponse.json({ success: true, data: updated })
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Update AI prompt template error:', error)
 
         if (error instanceof z.ZodError) {
@@ -96,7 +102,7 @@ export const PATCH = withAdminAuth(async (req, _user, ctx) => {
                 { status: 400 }
             )
         }
-        if ((error as any)?.code === 'P2021') {
+        if (getPrismaCode(error) === 'P2021') {
             return NextResponse.json(
                 {
                     success: false,
@@ -119,11 +125,40 @@ export const PATCH = withAdminAuth(async (req, _user, ctx) => {
 export const DELETE = withAdminAuth(async (_req, _user, ctx) => {
     try {
         const id = ctx?.params?.id as string
+
+        const [defaultsCount, courseAssignmentsCount, examAssignmentsCount] = await Promise.all([
+            prisma.aIPromptDefault.count({ where: { templateId: id } }),
+            prisma.courseAIPromptAssignment.count({ where: { templateId: id } }),
+            prisma.examAIPromptAssignment.count({ where: { templateId: id } }),
+        ])
+
+        const dependency = {
+            defaults: defaultsCount,
+            courseAssignments: courseAssignmentsCount,
+            examAssignments: examAssignmentsCount,
+        }
+        const totalDependencyCount =
+            dependency.defaults + dependency.courseAssignments + dependency.examAssignments
+
+        if (totalDependencyCount > 0) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: {
+                        code: 'AI_PROMPT_409',
+                        message: 'Template is in use and cannot be deleted',
+                        details: dependency,
+                    },
+                },
+                { status: 409 }
+            )
+        }
+
         await prisma.aIPromptTemplate.delete({ where: { id } })
         return NextResponse.json({ success: true })
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Delete AI prompt template error:', error)
-        if (error?.code === 'P2021') {
+        if (getPrismaCode(error) === 'P2021') {
             return NextResponse.json(
                 {
                     success: false,
@@ -136,7 +171,7 @@ export const DELETE = withAdminAuth(async (_req, _user, ctx) => {
             )
         }
         // FK RESTRICT (defaults/assignments) -> 409 conflict
-        if (error?.code === 'P2003') {
+        if (getPrismaCode(error) === 'P2003') {
             return NextResponse.json(
                 { success: false, error: { code: 'AI_PROMPT_409', message: 'Template is in use and cannot be deleted' } },
                 { status: 409 }
