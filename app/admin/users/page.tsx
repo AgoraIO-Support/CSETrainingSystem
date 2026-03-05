@@ -18,6 +18,7 @@ import { formatDate } from '@/lib/utils'
 import {
     Activity,
     Loader2,
+    Pencil,
     RefreshCcw,
     Search as SearchIcon,
     ShieldCheck,
@@ -79,10 +80,22 @@ export default function AdminUsersPage() {
     const [createForm, setCreateForm] = useState({
         name: '',
         email: '',
+        wecomUserId: '',
         department: '',
         title: '',
         password: '',
         confirmPassword: '',
+    })
+    const [editOpen, setEditOpen] = useState(false)
+    const [editingUserId, setEditingUserId] = useState<string | null>(null)
+    const [editError, setEditError] = useState<string | null>(null)
+    const [editForm, setEditForm] = useState({
+        id: '',
+        name: '',
+        email: '',
+        wecomUserId: '',
+        department: '',
+        title: '',
     })
 
     useEffect(() => {
@@ -165,6 +178,7 @@ export default function AdminUsersPage() {
         setCreateForm({
             name: '',
             email: '',
+            wecomUserId: '',
             department: '',
             title: '',
             password: '',
@@ -179,11 +193,12 @@ export default function AdminUsersPage() {
 
         const name = createForm.name.trim()
         const email = createForm.email.trim()
+        const wecomUserId = createForm.wecomUserId.trim()
         const department = createForm.department.trim()
         const title = createForm.title.trim()
 
-        if (!name || !email) {
-            setCreateError('Name and email are required')
+        if (!name || !email || !wecomUserId) {
+            setCreateError('Name, email, and WeCom User ID are required')
             return
         }
 
@@ -202,6 +217,7 @@ export default function AdminUsersPage() {
             await ApiClient.createAdminUser({
                 name,
                 email,
+                wecomUserId,
                 password: createForm.password,
                 department: department ? department : undefined,
                 title: title ? title : undefined,
@@ -213,6 +229,70 @@ export default function AdminUsersPage() {
             setCreateError(err instanceof Error ? err.message : 'Failed to create user')
         } finally {
             setCreatingUser(false)
+        }
+    }
+
+    const handleOpenEditUser = (user: AdminUser) => {
+        setEditForm({
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            wecomUserId: user.wecomUserId || '',
+            department: user.department || '',
+            title: user.title || '',
+        })
+        setEditError(null)
+        setEditOpen(true)
+    }
+
+    const resetEditForm = () => {
+        setEditForm({
+            id: '',
+            name: '',
+            email: '',
+            wecomUserId: '',
+            department: '',
+            title: '',
+        })
+        setEditError(null)
+    }
+
+    const handleEditSubmit = async (event: React.FormEvent) => {
+        event.preventDefault()
+        setEditError(null)
+
+        if (!editForm.id) {
+            setEditError('Invalid user')
+            return
+        }
+
+        const name = editForm.name.trim()
+        const email = editForm.email.trim()
+        const wecomUserId = editForm.wecomUserId.trim()
+        const department = editForm.department.trim()
+        const title = editForm.title.trim()
+
+        if (!name || !email || !wecomUserId) {
+            setEditError('Name, email, and WeCom User ID are required')
+            return
+        }
+
+        setEditingUserId(editForm.id)
+        try {
+            await ApiClient.updateUser(editForm.id, {
+                name,
+                email,
+                wecomUserId,
+                department: department ? department : null,
+                title: title ? title : null,
+            })
+            setEditOpen(false)
+            resetEditForm()
+            refreshData()
+        } catch (err) {
+            setEditError(err instanceof Error ? err.message : 'Failed to update user')
+        } finally {
+            setEditingUserId(null)
         }
     }
 
@@ -345,6 +425,16 @@ export default function AdminUsersPage() {
                                     />
                                 </div>
                                 <div className="space-y-2">
+                                    <Label htmlFor="create-user-wecom-user-id">WeCom User ID</Label>
+                                    <Input
+                                        id="create-user-wecom-user-id"
+                                        value={createForm.wecomUserId}
+                                        onChange={(e) => setCreateForm(prev => ({ ...prev, wecomUserId: e.target.value }))}
+                                        placeholder="zhangsan"
+                                        required
+                                    />
+                                </div>
+                                <div className="space-y-2">
                                     <Label htmlFor="create-user-department">Department (optional)</Label>
                                     <Input
                                         id="create-user-department"
@@ -352,7 +442,7 @@ export default function AdminUsersPage() {
                                         onChange={(e) => setCreateForm(prev => ({ ...prev, department: e.target.value }))}
                                     />
                                 </div>
-                                <div className="space-y-2">
+                                <div className="space-y-2 md:col-span-2">
                                     <Label htmlFor="create-user-title">Title (optional)</Label>
                                     <Input
                                         id="create-user-title"
@@ -389,6 +479,88 @@ export default function AdminUsersPage() {
                                 <Button type="submit" disabled={creatingUser}>
                                     {creatingUser ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
                                     Create
+                                </Button>
+                            </DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
+
+                <Dialog
+                    open={editOpen}
+                    onOpenChange={(open) => {
+                        setEditOpen(open)
+                        if (!open) resetEditForm()
+                    }}
+                >
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Edit user</DialogTitle>
+                            <DialogDescription>
+                                Update user profile details and WeCom mapping.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <form className="space-y-4" onSubmit={handleEditSubmit}>
+                            {editError && (
+                                <Alert variant="destructive">
+                                    <AlertDescription>{editError}</AlertDescription>
+                                </Alert>
+                            )}
+
+                            <div className="grid gap-4 md:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label htmlFor="edit-user-name">Name</Label>
+                                    <Input
+                                        id="edit-user-name"
+                                        value={editForm.name}
+                                        onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                                        required
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="edit-user-email">Email</Label>
+                                    <Input
+                                        id="edit-user-email"
+                                        type="email"
+                                        value={editForm.email}
+                                        onChange={(e) => setEditForm(prev => ({ ...prev, email: e.target.value }))}
+                                        required
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="edit-user-wecom-user-id">WeCom User ID</Label>
+                                    <Input
+                                        id="edit-user-wecom-user-id"
+                                        value={editForm.wecomUserId}
+                                        onChange={(e) => setEditForm(prev => ({ ...prev, wecomUserId: e.target.value }))}
+                                        required
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="edit-user-department">Department (optional)</Label>
+                                    <Input
+                                        id="edit-user-department"
+                                        value={editForm.department}
+                                        onChange={(e) => setEditForm(prev => ({ ...prev, department: e.target.value }))}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="edit-user-title">Title (optional)</Label>
+                                    <Input
+                                        id="edit-user-title"
+                                        value={editForm.title}
+                                        onChange={(e) => setEditForm(prev => ({ ...prev, title: e.target.value }))}
+                                    />
+                                </div>
+                            </div>
+
+                            <DialogFooter>
+                                <Button type="button" variant="ghost" onClick={() => setEditOpen(false)} disabled={Boolean(editingUserId)}>
+                                    Cancel
+                                </Button>
+                                <Button type="submit" disabled={Boolean(editingUserId)}>
+                                    {editingUserId ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                                    Save changes
                                 </Button>
                             </DialogFooter>
                         </form>
@@ -556,6 +728,9 @@ export default function AdminUsersPage() {
                                                                 <p className="font-medium">{user.name}</p>
                                                                 <p className="text-xs text-muted-foreground">{user.email}</p>
                                                                 <p className="text-xs text-muted-foreground">
+                                                                    WeCom ID: {user.wecomUserId || 'Not set'}
+                                                                </p>
+                                                                <p className="text-xs text-muted-foreground">
                                                                     {user.department || 'Department N/A'}
                                                                 </p>
                                                             </div>
@@ -587,6 +762,15 @@ export default function AdminUsersPage() {
                                                     </td>
                                                     <td className="py-3">
                                                         <div className="flex items-center justify-end space-x-2">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => handleOpenEditUser(user)}
+                                                                disabled={actionUserId === user.id || Boolean(editingUserId)}
+                                                            >
+                                                                <Pencil className="h-4 w-4 mr-2" />
+                                                                Edit
+                                                            </Button>
                                                             <Button
                                                                 variant="ghost"
                                                                 size="sm"

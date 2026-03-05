@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAdminAuth } from '@/lib/auth-middleware';
 import { ExamService } from '@/lib/services/exam.service';
-import { EmailService } from '@/lib/services/email.service';
+import { WecomWebhookService } from '@/lib/services/wecom-webhook.service';
 import prisma from '@/lib/prisma';
 import { inviteUsersSchema } from '@/lib/validations';
 import { z } from 'zod';
@@ -62,7 +62,9 @@ export const POST = withAdminAuth(
     try {
       const { examId } = await context.params;
       const body = await req.json();
-      const { userIds, sendEmail } = inviteUsersSchema.parse(body);
+      const parsed = inviteUsersSchema.parse(body);
+      const { userIds } = parsed;
+      const sendNotification = parsed.sendNotification ?? parsed.sendEmail ?? false;
 
       // Verify exam exists
       const exam = await ExamService.getExamById(examId);
@@ -83,8 +85,8 @@ export const POST = withAdminAuth(
       const results = {
         created: 0,
         skipped: 0,
-        emailsSent: 0,
-        emailsFailed: 0,
+        notificationsSent: 0,
+        notificationsFailed: 0,
       };
 
       for (const userId of userIds) {
@@ -112,13 +114,13 @@ export const POST = withAdminAuth(
         });
         results.created++;
 
-        // Send email if requested
-        if (sendEmail) {
-          const emailResult = await EmailService.sendExamInvitation(userId, examId);
-          if (emailResult.success) {
-            results.emailsSent++;
+        // Send WeCom notification if requested
+        if (sendNotification) {
+          const notifyResult = await WecomWebhookService.sendExamInvitation(userId, examId);
+          if (notifyResult.success) {
+            results.notificationsSent++;
           } else {
-            results.emailsFailed++;
+            results.notificationsFailed++;
           }
         }
       }
@@ -128,8 +130,11 @@ export const POST = withAdminAuth(
         data: {
           invited: results.created,
           skipped: results.skipped,
-          emailsSent: results.emailsSent,
-          emailsFailed: results.emailsFailed,
+          notificationsSent: results.notificationsSent,
+          notificationsFailed: results.notificationsFailed,
+          // backward compatibility for older clients
+          emailsSent: results.notificationsSent,
+          emailsFailed: results.notificationsFailed,
         },
       });
     } catch (error) {

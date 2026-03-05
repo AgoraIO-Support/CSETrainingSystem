@@ -28,6 +28,7 @@ enum UserStatus {
 model User {
   id       String     @id @default(uuid())
   email    String     @unique
+  wecomUserId String? @unique
   name     String
   password String? // Hashed password for local auth
   avatar   String?

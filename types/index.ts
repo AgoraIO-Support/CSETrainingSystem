@@ -13,6 +13,7 @@ export interface AdminUser {
     id: string
     name: string
     email: string
+    wecomUserId?: string | null
     avatar?: string | null
     role: 'USER' | 'ADMIN'
     status: 'ACTIVE' | 'SUSPENDED' | 'DELETED'

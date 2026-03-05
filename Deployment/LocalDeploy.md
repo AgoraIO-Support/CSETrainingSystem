@@ -130,6 +130,60 @@ podman run -d --name cselearning-web --network cselearning -p 3000:3000 \
 
 Access: http://127.0.0.1:3000/login
 
+### 6.1) Hot Reload Dev Mode (`cselearning-web-dev`)
+
+Use this when iterating on frontend/backend code without rebuilding `cselearning-web:latest` every time.
+
+1) Install deps into a persistent volume (run once, or after `package-lock.json` changes):
+
+```bash
+podman volume create cselearning-web-node_modules || true
+
+podman run --rm --network cselearning \
+  --env-file tmp/podman/local.env \
+  -v "$PWD:/app" \
+  -v cselearning-web-node_modules:/app/node_modules \
+  -w /app \
+  cselearning-migrator:latest \
+  npm ci --no-audit --no-fund
+```
+
+2) Start dev server with hot reload:
+
+```bash
+podman rm -f cselearning-web-dev || true
+podman run -d --name cselearning-web-dev --network cselearning -p 3000:3000 \
+  --env-file tmp/podman/local.env \
+  -v "$PWD:/app" \
+  -v cselearning-web-node_modules:/app/node_modules \
+  -w /app \
+  -e CSE_LOG=api,db,s3,knowledgecontext,openai,worker,transcriptprocessing \
+  -e CSE_WECOM_LOG_CONTENT=1 \
+  cselearning-migrator:latest \
+  npm run dev
+```
+
+3) Useful commands:
+
+```bash
+# watch logs
+podman logs -f cselearning-web-dev
+
+# stop / remove
+podman rm -f cselearning-web-dev
+
+# verify container env flags
+podman exec cselearning-web-dev sh -lc 'echo "$CSE_LOG"; echo "$CSE_WECOM_LOG_CONTENT"'
+```
+
+If you hit `proxy already running` on macOS Podman:
+
+```bash
+podman machine stop
+podman machine start
+# then retry podman run
+```
+
 ## 7) Start Worker Container (Optional)
 
 Required for VTT-to-knowledge-context processing:
@@ -207,6 +261,7 @@ podman run -d --name cselearning-web --network cselearning -p 3000:3000 \
   --env-file tmp/podman/local.env \
   -v "$HOME/.aws:/root/.aws:ro" \
   -e CSE_LOG=api,db,s3,knowledgecontext,openai,worker,transcriptprocessing \
+  -e CSE_WECOM_LOG_CONTENT=1 \
   -e AWS_PROFILE=default \
   -e AWS_SDK_LOAD_CONFIG=1 \
   localhost/cselearning-web:latest

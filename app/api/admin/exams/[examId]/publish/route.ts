@@ -9,7 +9,7 @@ import prisma from '@/lib/prisma'
 import { publishExamSchema } from '@/lib/validations'
 import { ExamStatus } from '@prisma/client'
 import { z } from 'zod'
-import { EmailService } from '@/lib/services/email.service'
+import { WecomWebhookService } from '@/lib/services/wecom-webhook.service'
 
 type RouteContext = {
     params: Promise<{ examId: string }>
@@ -19,7 +19,9 @@ export const POST = withAdminAuth(async (req: NextRequest, _user, context: Route
     try {
         const { examId } = await context.params
         const body = await req.json().catch(() => ({}))
-        const { userIds, sendEmail } = publishExamSchema.parse(body)
+        const parsed = publishExamSchema.parse(body)
+        const { userIds } = parsed
+        const sendNotification = parsed.sendNotification ?? parsed.sendEmail ?? false
 
         const exam = await prisma.exam.findUnique({
             where: { id: examId },
@@ -126,12 +128,12 @@ export const POST = withAdminAuth(async (req: NextRequest, _user, context: Route
             })
         })
 
-        const emailResults = { sent: 0, failed: 0 }
-        if (sendEmail && toCreate.length > 0) {
+        const notificationResults = { sent: 0, failed: 0 }
+        if (sendNotification && toCreate.length > 0) {
             for (const userId of toCreate) {
-                const res = await EmailService.sendExamInvitation(userId, examId)
-                if (res.success) emailResults.sent++
-                else emailResults.failed++
+                const res = await WecomWebhookService.sendExamInvitation(userId, examId)
+                if (res.success) notificationResults.sent++
+                else notificationResults.failed++
             }
         }
 
@@ -151,8 +153,11 @@ export const POST = withAdminAuth(async (req: NextRequest, _user, context: Route
             meta: {
                 invited: toCreate.length,
                 skipped: userIds.length - toCreate.length,
-                emailsSent: emailResults.sent,
-                emailsFailed: emailResults.failed,
+                notificationsSent: notificationResults.sent,
+                notificationsFailed: notificationResults.failed,
+                // backward compatibility for older clients
+                emailsSent: notificationResults.sent,
+                emailsFailed: notificationResults.failed,
             },
         })
     } catch (error) {
@@ -184,4 +189,3 @@ export const POST = withAdminAuth(async (req: NextRequest, _user, context: Route
         )
     }
 })
-

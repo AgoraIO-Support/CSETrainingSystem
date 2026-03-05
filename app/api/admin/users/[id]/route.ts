@@ -47,6 +47,32 @@ export const PATCH = withAdminAuth(async (req, _user, { params }: { params: Prom
                 )
             }
 
+            if (error.message === 'EMAIL_EXISTS') {
+                return NextResponse.json(
+                    {
+                        success: false,
+                        error: {
+                            code: 'USER_003',
+                            message: 'Email already registered',
+                        },
+                    },
+                    { status: 409 }
+                )
+            }
+
+            if (error.message === 'WECOM_USER_ID_EXISTS') {
+                return NextResponse.json(
+                    {
+                        success: false,
+                        error: {
+                            code: 'USER_004',
+                            message: 'WeCom User ID already exists',
+                        },
+                    },
+                    { status: 409 }
+                )
+            }
+
             if (error.message === 'USER_NOT_FOUND') {
                 return NextResponse.json(
                     {

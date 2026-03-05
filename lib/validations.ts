@@ -26,8 +26,20 @@ export const updateProfileSchema = z.object({
 export const adminUpdateUserSchema = z.object({
     role: z.enum(['USER', 'ADMIN']).optional(),
     status: z.enum(['ACTIVE', 'SUSPENDED', 'DELETED']).optional(),
+    name: z.string().trim().min(1, 'Name is required').max(100, 'Name is too long').optional(),
+    email: z.string().trim().email('Invalid email address').optional(),
+    wecomUserId: z.string().trim().min(1, 'WeCom User ID is required').max(128, 'WeCom User ID is too long').optional(),
+    department: z.string().trim().max(120, 'Department is too long').optional().nullable(),
+    title: z.string().trim().max(120, 'Title is too long').optional().nullable(),
 }).refine(
-    data => data.role !== undefined || data.status !== undefined,
+    data =>
+        data.role !== undefined ||
+        data.status !== undefined ||
+        data.name !== undefined ||
+        data.email !== undefined ||
+        data.wecomUserId !== undefined ||
+        data.department !== undefined ||
+        data.title !== undefined,
     {
         message: 'At least one field must be provided',
         path: ['role'],
@@ -35,11 +47,12 @@ export const adminUpdateUserSchema = z.object({
 )
 
 export const adminCreateUserSchema = z.object({
-    email: z.string().email('Invalid email address'),
+    email: z.string().trim().email('Invalid email address'),
     password: z.string().min(8, 'Password must be at least 8 characters'),
-    name: z.string().min(1, 'Name is required').max(100, 'Name is too long'),
-    department: z.string().max(120, 'Department is too long').optional(),
-    title: z.string().max(120, 'Title is too long').optional(),
+    name: z.string().trim().min(1, 'Name is required').max(100, 'Name is too long'),
+    wecomUserId: z.string().trim().min(1, 'WeCom User ID is required').max(128, 'WeCom User ID is too long'),
+    department: z.string().trim().max(120, 'Department is too long').optional(),
+    title: z.string().trim().max(120, 'Title is too long').optional(),
 })
 
 export const changePasswordSchema = z.object({
@@ -300,13 +313,16 @@ export const generateQuestionsSchema = z.object({
 
 export const inviteUsersSchema = z.object({
     userIds: z.array(z.string().uuid()).nonempty('At least one user is required'),
-    // Invitations are created first; sending can be triggered explicitly.
-    sendEmail: z.boolean().default(false),
+    // Backward compatible: `sendEmail` accepted from older clients.
+    sendEmail: z.boolean().optional(),
+    sendNotification: z.boolean().optional(),
 })
 
 export const publishExamSchema = z.object({
     userIds: z.array(z.string().uuid()).nonempty('Select at least one user to assign this exam'),
-    sendEmail: z.boolean().default(false),
+    // Backward compatible: `sendEmail` accepted from older clients.
+    sendEmail: z.boolean().optional(),
+    sendNotification: z.boolean().optional(),
 })
 
 export const submitExamAnswerSchema = z.object({

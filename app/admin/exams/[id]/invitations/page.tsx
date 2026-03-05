@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, use } from 'react'
+import { useState, useEffect, use, useCallback } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -40,13 +40,9 @@ export default function ExamInvitationsPage({ params }: PageProps) {
     const [selectedUserIds, setSelectedUserIds] = useState<string[]>([])
     const [sending, setSending] = useState(false)
     const [inviting, setInviting] = useState(false)
-    const [publishSendingEmails, setPublishSendingEmails] = useState(false)
+    const [publishSendingNotifications, setPublishSendingNotifications] = useState(true)
 
-    useEffect(() => {
-        loadData()
-    }, [examId])
-
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
         setLoading(true)
         try {
             const [examRes, invitationsRes, usersRes] = await Promise.all([
@@ -62,7 +58,11 @@ export default function ExamInvitationsPage({ params }: PageProps) {
         } finally {
             setLoading(false)
         }
-    }
+    }, [examId])
+
+    useEffect(() => {
+        loadData()
+    }, [loadData])
 
     const invitedUserIds = new Set(invitations.map(inv => inv.userId))
 
@@ -81,8 +81,9 @@ export default function ExamInvitationsPage({ params }: PageProps) {
         setError(null)
 
         try {
-            const response = await ApiClient.createExamInvitations(examId, selectedUserIds, { sendEmail: false })
-            showSuccess(`Invited ${response.data.invited} users`)
+            const response = await ApiClient.createExamInvitations(examId, selectedUserIds, { sendNotification: true })
+            const notified = response.data.notificationsSent ?? response.data.emailsSent ?? 0
+            showSuccess(`Invited ${response.data.invited} users. Notifications sent: ${notified}.`)
             setSelectedUserIds([])
             loadData() // Refresh invitations list
         } catch (err) {
@@ -92,16 +93,16 @@ export default function ExamInvitationsPage({ params }: PageProps) {
         }
     }
 
-    const handleSendEmails = async (userIds?: string[]) => {
+    const handleSendNotifications = async (userIds?: string[]) => {
         setSending(true)
         setError(null)
 
         try {
-            const response = await ApiClient.sendExamInvitationEmails(examId, userIds)
-            showSuccess(`Sent ${response.data.sent} email(s)`)
-            loadData() // Refresh to update email sent status
+            const response = await ApiClient.sendExamInvitationNotifications(examId, userIds)
+            showSuccess(`Sent ${response.data.sent} notification(s)`)
+            loadData() // Refresh to update notification status
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to send emails')
+            setError(err instanceof Error ? err.message : 'Failed to send notifications')
         } finally {
             setSending(false)
         }
@@ -117,12 +118,13 @@ export default function ExamInvitationsPage({ params }: PageProps) {
         try {
             const response = await ApiClient.publishExam(examId, {
                 userIds: selectedUserIds,
-                sendEmail: publishSendingEmails,
+                sendNotification: publishSendingNotifications,
             })
             setExam(response.data)
+            const sent = response.meta?.notificationsSent ?? response.meta?.emailsSent ?? 0
             showSuccess(
                 `Exam published. Assigned ${response.meta?.invited ?? selectedUserIds.length} user(s).` +
-                    (publishSendingEmails ? ` Emails sent: ${response.meta?.emailsSent ?? 0}.` : '')
+                    (publishSendingNotifications ? ` Notifications sent: ${sent}.` : '')
             )
             setSelectedUserIds([])
             loadData()
@@ -187,7 +189,7 @@ export default function ExamInvitationsPage({ params }: PageProps) {
         )
     }
 
-    const pendingEmails = invitations.filter(inv => !inv.emailSentAt)
+    const pendingNotifications = invitations.filter(inv => !inv.emailSentAt)
     const isPublished = exam.status === 'PUBLISHED'
     const isApproved = exam.status === 'APPROVED'
 
@@ -206,14 +208,14 @@ export default function ExamInvitationsPage({ params }: PageProps) {
                             <p className="text-muted-foreground mt-1">{exam.title}</p>
                         </div>
                     </div>
-                    {pendingEmails.length > 0 && (
-                        <Button onClick={() => handleSendEmails()} disabled={sending}>
+                    {pendingNotifications.length > 0 && (
+                        <Button onClick={() => handleSendNotifications()} disabled={sending}>
                             {sending ? (
                                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                             ) : (
                                 <Mail className="h-4 w-4 mr-2" />
                             )}
-                            Send All Pending Emails ({pendingEmails.length})
+                            Send All Pending Notifications ({pendingNotifications.length})
                         </Button>
                     )}
                 </div>
@@ -243,7 +245,7 @@ export default function ExamInvitationsPage({ params }: PageProps) {
                     </Card>
                     <Card>
                         <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium">Emails Sent</CardTitle>
+                            <CardTitle className="text-sm font-medium">Notifications Sent</CardTitle>
                         </CardHeader>
                         <CardContent>
                             <div className="text-2xl font-bold">
@@ -305,11 +307,11 @@ export default function ExamInvitationsPage({ params }: PageProps) {
                                 <label className="flex items-center gap-2 text-sm">
                                     <input
                                         type="checkbox"
-                                        checked={publishSendingEmails}
-                                        onChange={(e) => setPublishSendingEmails(e.target.checked)}
+                                        checked={publishSendingNotifications}
+                                        onChange={(e) => setPublishSendingNotifications(e.target.checked)}
                                         className="h-4 w-4"
                                     />
-                                    Send invitation emails now
+                                    Send WeCom notifications now
                                 </label>
                             </div>
                         )}
@@ -408,12 +410,12 @@ export default function ExamInvitationsPage({ params }: PageProps) {
                                                 {invitation.emailSentAt ? (
                                                     <span className="flex items-center gap-1 text-green-600">
                                                         <Mail className="h-4 w-4" />
-                                                        Sent {formatDate(invitation.emailSentAt)}
+                                                        Notified {formatDate(invitation.emailSentAt)}
                                                     </span>
                                                 ) : (
                                                     <span className="flex items-center gap-1">
                                                         <Clock className="h-4 w-4" />
-                                                        Email pending
+                                                        Notification pending
                                                     </span>
                                                 )}
                                             </div>
@@ -423,20 +425,21 @@ export default function ExamInvitationsPage({ params }: PageProps) {
                                                     Viewed
                                                 </span>
                                             )}
-                                            {!invitation.emailSentAt && (
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => handleSendEmails([invitation.userId])}
-                                                    disabled={sending}
-                                                >
-                                                    {sending ? (
-                                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                                    ) : (
-                                                        <Send className="h-4 w-4" />
-                                                    )}
-                                                </Button>
-                                            )}
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => handleSendNotifications([invitation.userId])}
+                                                disabled={sending}
+                                            >
+                                                {sending ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                    <>
+                                                        <Send className="h-4 w-4 mr-1" />
+                                                        {invitation.emailSentAt ? 'Resend' : 'Send'}
+                                                    </>
+                                                )}
+                                            </Button>
                                         </div>
                                     </div>
                                 ))}

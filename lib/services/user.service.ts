@@ -15,6 +15,7 @@ export class UserService {
         email: string
         password: string
         name: string
+        wecomUserId: string
         department?: string
         title?: string
     }) {
@@ -27,6 +28,15 @@ export class UserService {
             throw new Error('EMAIL_EXISTS')
         }
 
+        const existingWecomUser = await prisma.user.findUnique({
+            where: { wecomUserId: data.wecomUserId },
+            select: { id: true },
+        })
+
+        if (existingWecomUser) {
+            throw new Error('WECOM_USER_ID_EXISTS')
+        }
+
         const hashedPassword = await bcrypt.hash(data.password, 10)
 
         const created = await prisma.user.create({
@@ -34,6 +44,7 @@ export class UserService {
                 email: data.email,
                 name: data.name,
                 password: hashedPassword,
+                wecomUserId: data.wecomUserId,
                 department: data.department?.trim() || null,
                 title: data.title?.trim() || null,
                 role: 'USER',
@@ -43,6 +54,7 @@ export class UserService {
                 id: true,
                 name: true,
                 email: true,
+                wecomUserId: true,
                 avatar: true,
                 role: true,
                 status: true,
@@ -125,6 +137,7 @@ export class UserService {
                 id: user.id,
                 name: user.name,
                 email: user.email,
+                wecomUserId: user.wecomUserId,
                 avatar: user.avatar,
                 role: user.role,
                 status: user.status,
@@ -159,9 +172,22 @@ export class UserService {
         data: {
             role?: UserRole
             status?: UserStatus
+            name?: string
+            email?: string
+            wecomUserId?: string
+            department?: string | null
+            title?: string | null
         }
     ) {
-        const payload: Partial<{ role: UserRole; status: UserStatus }> = {}
+        const payload: Partial<{
+            role: UserRole
+            status: UserStatus
+            name: string
+            email: string
+            wecomUserId: string | null
+            department: string | null
+            title: string | null
+        }> = {}
 
         if (data.role) {
             payload.role = data.role
@@ -169,6 +195,28 @@ export class UserService {
 
         if (data.status) {
             payload.status = data.status
+        }
+
+        if (data.name !== undefined) {
+            payload.name = data.name.trim()
+        }
+
+        if (data.email !== undefined) {
+            payload.email = data.email.trim()
+        }
+
+        if (data.wecomUserId !== undefined) {
+            payload.wecomUserId = data.wecomUserId.trim()
+        }
+
+        if (data.department !== undefined) {
+            const trimmed = data.department?.trim()
+            payload.department = trimmed ? trimmed : null
+        }
+
+        if (data.title !== undefined) {
+            const trimmed = data.title?.trim()
+            payload.title = trimmed ? trimmed : null
         }
 
         if (!Object.keys(payload).length) {
@@ -183,6 +231,7 @@ export class UserService {
                     id: true,
                     name: true,
                     email: true,
+                    wecomUserId: true,
                     role: true,
                     status: true,
                     department: true,
@@ -195,8 +244,19 @@ export class UserService {
 
             return updatedUser
         } catch (error) {
-            if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
-                throw new Error('USER_NOT_FOUND')
+            if (error instanceof Prisma.PrismaClientKnownRequestError) {
+                if (error.code === 'P2025') {
+                    throw new Error('USER_NOT_FOUND')
+                }
+                if (error.code === 'P2002') {
+                    const target = Array.isArray(error.meta?.target) ? error.meta.target.join(',') : String(error.meta?.target ?? '')
+                    if (target.includes('email')) {
+                        throw new Error('EMAIL_EXISTS')
+                    }
+                    if (target.includes('wecomUserId')) {
+                        throw new Error('WECOM_USER_ID_EXISTS')
+                    }
+                }
             }
             throw error
         }

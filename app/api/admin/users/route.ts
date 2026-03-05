@@ -66,6 +66,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
             email: data.email,
             password: data.password,
             name: data.name,
+            wecomUserId: data.wecomUserId,
             department: data.department,
             title: data.title,
         })
@@ -101,6 +102,19 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                     error: {
                         code: 'USER_003',
                         message: 'Email already registered',
+                    },
+                },
+                { status: 409 }
+            )
+        }
+
+        if (error instanceof Error && error.message === 'WECOM_USER_ID_EXISTS') {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: {
+                        code: 'USER_004',
+                        message: 'WeCom User ID already exists',
                     },
                 },
                 { status: 409 }

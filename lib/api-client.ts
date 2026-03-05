@@ -46,6 +46,7 @@ export interface AdminCreateUserPayload {
     email: string
     password: string
     name: string
+    wecomUserId: string
     department?: string
     title?: string
 }
@@ -416,6 +417,11 @@ export class ApiClient {
         payload: {
             role?: 'USER' | 'ADMIN'
             status?: 'ACTIVE' | 'SUSPENDED' | 'DELETED'
+            name?: string
+            email?: string
+            wecomUserId?: string
+            department?: string | null
+            title?: string | null
         }
     ) {
         return this.request(`/admin/users/${userId}`, {
@@ -599,7 +605,7 @@ export class ApiClient {
         })
     }
 
-    static async publishExam(examId: string, payload: { userIds: string[]; sendEmail?: boolean }): Promise<{ success: boolean; data: Exam; meta?: { invited: number; skipped: number; emailsSent: number; emailsFailed: number } }> {
+    static async publishExam(examId: string, payload: { userIds: string[]; sendNotification?: boolean; sendEmail?: boolean }): Promise<{ success: boolean; data: Exam; meta?: { invited: number; skipped: number; notificationsSent?: number; notificationsFailed?: number; emailsSent?: number; emailsFailed?: number } }> {
         return this.request(`/admin/exams/${examId}/publish`, {
             method: 'POST',
             body: JSON.stringify(payload),
@@ -751,18 +757,27 @@ export class ApiClient {
         return this.request(`/admin/exams/${examId}/invitations`)
     }
 
-    static async createExamInvitations(examId: string, userIds: string[], opts?: { sendEmail?: boolean }): Promise<{ success: boolean; data: { invited: number; skipped: number } }> {
+    static async createExamInvitations(examId: string, userIds: string[], opts?: { sendNotification?: boolean; sendEmail?: boolean }): Promise<{ success: boolean; data: { invited: number; skipped: number; notificationsSent?: number; notificationsFailed?: number; emailsSent?: number; emailsFailed?: number } }> {
         return this.request(`/admin/exams/${examId}/invitations`, {
             method: 'POST',
-            body: JSON.stringify({ userIds, sendEmail: opts?.sendEmail ?? false }),
+            body: JSON.stringify({
+                userIds,
+                sendNotification: opts?.sendNotification,
+                sendEmail: opts?.sendEmail,
+            }),
         })
     }
 
-    static async sendExamInvitationEmails(examId: string, userIds?: string[]): Promise<{ success: boolean; data: { sent: number; failed: number } }> {
+    static async sendExamInvitationNotifications(examId: string, userIds?: string[]): Promise<{ success: boolean; data: { sent: number; failed: number } }> {
         return this.request(`/admin/exams/${examId}/invitations/send`, {
             method: 'POST',
             body: JSON.stringify({ userIds }),
         })
+    }
+
+    // Backward-compatible alias
+    static async sendExamInvitationEmails(examId: string, userIds?: string[]): Promise<{ success: boolean; data: { sent: number; failed: number } }> {
+        return this.sendExamInvitationNotifications(examId, userIds)
     }
 
     // Exam Attempts (Admin)
