@@ -133,13 +133,6 @@ export function KnowledgeAnchors({
         onSeekToTimestamp?.(anchor.timestampStr)
     }
 
-    const normalizeTitleForDisplay = (value: string) => {
-        const raw = (value || '').trim()
-        const withoutPrefix = raw.replace(/^Section\\s+\\d+\\s*:\\s*/i, '')
-        const withoutTrailingEllipsis = withoutPrefix.replace(/\\s*(…|\\.\\.\\.)\\s*$/g, '').trim()
-        return withoutTrailingEllipsis
-    }
-
     return (
         <Card>
             <CardHeader className="pb-3">
@@ -194,7 +187,7 @@ export function KnowledgeAnchors({
                                 const config = anchorTypeConfig[anchor.anchorType]
                                 const Icon = config.icon
                                 const isCurrent = index === currentAnchorIndex
-                                const safeTitle = normalizeTitleForDisplay(anchor.title)
+                                const safeTitle = (anchor.title || '').trim()
                                 const tooltip = [
                                     anchor.title,
                                     anchor.keyTerms?.length ? `Key terms: ${anchor.keyTerms.join(', ')}` : null,

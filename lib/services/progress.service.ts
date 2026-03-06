@@ -54,8 +54,10 @@ export class ProgressService {
             update: {
                 watchedDuration: data.watchedDuration,
                 lastTimestamp: data.lastTimestamp,
-                completed: data.completed ?? false,
-                completedAt: data.completed ? new Date() : null,
+                ...(data.completed !== undefined && {
+                    completed: data.completed,
+                    completedAt: data.completed ? new Date() : null,
+                }),
             },
             create: {
                 userId,
@@ -86,23 +88,40 @@ export class ProgressService {
             },
             select: {
                 id: true,
+                duration: true,
+                progress: {
+                    where: { userId },
+                    select: {
+                        completed: true,
+                        watchedDuration: true,
+                    },
+                    take: 1,
+                },
             },
         })
 
         const totalLessons = lessons.length
 
-        // Get completed lessons count
-        const completedLessons = await prisma.lessonProgress.count({
-            where: {
-                userId,
-                lessonId: {
-                    in: lessons.map(l => l.id),
-                },
-                completed: true,
-            },
-        })
+        const completedLessons = lessons.reduce((count, lesson) => {
+            return count + (lesson.progress[0]?.completed ? 1 : 0)
+        }, 0)
 
-        const progress = totalLessons > 0 ? (completedLessons / totalLessons) * 100 : 0
+        // Blended progress:
+        // - completed lesson => 100% for that lesson
+        // - otherwise partial credit by watchedDuration / lesson.duration
+        const lessonCompletionUnits = lessons.reduce((sum, lesson) => {
+            const lessonProgress = lesson.progress[0]
+            if (!lessonProgress) return sum
+            if (lessonProgress.completed) return sum + 1
+
+            const lessonDuration = Math.max(0, lesson.duration || 0)
+            if (lessonDuration <= 0) return sum
+
+            const watchedRatio = lessonProgress.watchedDuration / lessonDuration
+            return sum + Math.max(0, Math.min(1, watchedRatio))
+        }, 0)
+
+        const progress = totalLessons > 0 ? (lessonCompletionUnits / totalLessons) * 100 : 0
         const isCompleted = completedLessons === totalLessons && totalLessons > 0
 
         // Update enrollment

@@ -9,7 +9,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { ApiClient } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
-import { Bot, Send, Sparkles, User, Mic, Play } from 'lucide-react'
+import { Bot, Send, Sparkles, User, Play } from 'lucide-react'
 import { MessageSources, type MessageSource } from './message-sources'
 
 /**
@@ -440,15 +440,6 @@ export function AIChatPanel({ courseId, lessonId, lessonTitle, currentTime = 0, 
                             className="flex-1"
                             disabled={chatDisabled}
                         />
-                        <Button
-                            size="icon"
-                            variant="outline"
-                            className="flex-shrink-0"
-                            disabled
-                            title="Coming soon"
-                        >
-                            <Mic className="h-4 w-4" />
-                        </Button>
                         <Button
                             size="icon"
                             onClick={handleSend}

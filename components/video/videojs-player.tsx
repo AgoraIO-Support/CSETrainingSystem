@@ -5,6 +5,52 @@ import videojs from 'video.js'
 import type Player from 'video.js/dist/types/player'
 import 'video.js/dist/video-js.css'
 
+let seekButtonsRegistered = false
+
+const registerSeekButtons = () => {
+    if (seekButtonsRegistered) return
+
+    const VjsButton = videojs.getComponent('Button') as any
+    if (!VjsButton) return
+
+    class SeekBackwardFiveButton extends VjsButton {
+        constructor(player: Player, options: any) {
+            super(player, options)
+            this.controlText('Back 5 seconds')
+            this.addClass('vjs-seek-backward-5')
+        }
+
+        handleClick() {
+            const player = this.player_ as Player
+            const current = Number(player.currentTime()) || 0
+            player.currentTime(Math.max(0, current - 5))
+        }
+    }
+
+    class SeekForwardFiveButton extends VjsButton {
+        constructor(player: Player, options: any) {
+            super(player, options)
+            this.controlText('Forward 5 seconds')
+            this.addClass('vjs-seek-forward-5')
+        }
+
+        handleClick() {
+            const player = this.player_ as Player
+            const current = Number(player.currentTime()) || 0
+            const duration = Number(player.duration())
+            if (Number.isFinite(duration) && duration > 0) {
+                player.currentTime(Math.min(duration, current + 5))
+                return
+            }
+            player.currentTime(current + 5)
+        }
+    }
+
+    videojs.registerComponent('SeekBackwardFiveButton', SeekBackwardFiveButton as any)
+    videojs.registerComponent('SeekForwardFiveButton', SeekForwardFiveButton as any)
+    seekButtonsRegistered = true
+}
+
 interface VideoJSPlayerProps {
     videoUrl: string
     subtitleUrl?: string
@@ -72,6 +118,8 @@ export function VideoJSPlayer({
             return
         }
 
+        registerSeekButtons()
+
         const videoElement = document.createElement('video-js')
         videoElement.classList.add('vjs-big-play-centered', 'vjs-theme-cse')
         videoRef.current.appendChild(videoElement)
@@ -106,6 +154,8 @@ export function VideoJSPlayer({
             controlBar: {
                 children: [
                     'playToggle',
+                    'SeekBackwardFiveButton',
+                    'SeekForwardFiveButton',
                     'volumePanel',
                     'currentTimeDisplay',
                     'timeDivider',

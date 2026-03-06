@@ -25,14 +25,14 @@ export interface VTTToXMLConfig {
   targetParagraphTokens: number; // Default: 500 tokens
 
   // Anchor extraction
-  maxAnchorsPerLesson: number; // Default: 15
+  maxAnchorsPerLesson: number; // Default: 25
 }
 
 const DEFAULT_CONFIG: VTTToXMLConfig = {
   minParagraphDuration: 45,
   maxParagraphDuration: 90,
   targetParagraphTokens: 500,
-  maxAnchorsPerLesson: 15,
+  maxAnchorsPerLesson: 25,
 };
 
 export interface AggregatedParagraph {
@@ -613,34 +613,45 @@ Respond with JSON array:
     sections: EnrichedSection[],
     maxAnchors: number
   ): KnowledgeAnchorData[] {
-    // Filter sections marked as anchors
-    const anchorSections = sections.filter((s) => s.isAnchor);
-
-    // If no AI-identified anchors, select evenly distributed sections
-    if (anchorSections.length === 0) {
-      const step = Math.max(1, Math.floor(sections.length / maxAnchors));
-      for (let i = 0; i < sections.length && anchorSections.length < maxAnchors; i += step) {
-        anchorSections.push(sections[i]);
-      }
+    if (sections.length === 0 || maxAnchors <= 0) {
+      return [];
     }
 
-    // Limit to max anchors
-    const finalAnchors = anchorSections.slice(0, maxAnchors);
+    // Ensure timeline coverage: pick at most one section per bucket across the
+    // full lesson duration. Inside each bucket, prefer AI-marked key moments.
+    const bucketCount = Math.min(maxAnchors, sections.length);
+    const finalAnchors: EnrichedSection[] = [];
+    const used = new Set<number>();
 
-    const normalizeAnchorTitle = (value: string, maxChars: number) => {
+    for (let i = 0; i < bucketCount; i++) {
+      const startIdx = Math.floor((i * sections.length) / bucketCount);
+      const endExclusive = Math.floor(((i + 1) * sections.length) / bucketCount);
+      const bucket = sections.slice(startIdx, Math.max(startIdx + 1, endExclusive));
+      const withOriginalIndex = bucket.map((section, offset) => ({
+        section,
+        index: startIdx + offset,
+      }));
+
+      const preferred = withOriginalIndex.find((item) => item.section.isAnchor && !used.has(item.index));
+      const fallback = withOriginalIndex[Math.floor(withOriginalIndex.length / 2)];
+      const chosen = preferred ?? fallback;
+
+      if (!chosen || used.has(chosen.index)) continue;
+      used.add(chosen.index);
+      finalAnchors.push(chosen.section);
+    }
+
+    const normalizeAnchorTitle = (value: string) => {
       const raw = (value || '').trim();
       const withoutPrefix = raw.replace(/^Section\s+\d+\s*:\s*/i, '');
       const withoutTrailingEllipsis = withoutPrefix.replace(/\s*(…|\.\.\.)\s*$/g, '').trim();
-      const chars = Array.from(withoutTrailingEllipsis);
-      return chars.slice(0, maxChars).join('');
+      return withoutTrailingEllipsis;
     };
-
-    const MAX_ANCHOR_TITLE_CHARS = 30;
 
     return finalAnchors.map((section, idx) => ({
       timestamp: section.timestampSeconds,
       timestampStr: section.timestamp,
-      title: normalizeAnchorTitle(section.title, MAX_ANCHOR_TITLE_CHARS),
+      title: normalizeAnchorTitle(section.title),
       summary: section.anchorSummary || section.content.substring(0, 200) + '...',
       keyTerms: section.keyConcepts,
       anchorType: section.anchorType || 'CONCEPT',

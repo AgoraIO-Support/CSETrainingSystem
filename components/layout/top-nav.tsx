@@ -1,6 +1,6 @@
 'use client'
 
-import { Bell, LogOut } from 'lucide-react'
+import { LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import type { AuthUser } from '@/lib/auth-middleware'
@@ -17,11 +17,6 @@ export function TopNav({ user, onLogout }: TopNavProps) {
     return (
         <div className="flex h-16 items-center justify-end border-b bg-card px-6">
             <div className="flex items-center space-x-4">
-                <Button variant="ghost" size="icon" className="relative">
-                    <Bell className="h-5 w-5" />
-                    <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500" />
-                </Button>
-
                 <div className="flex items-center space-x-3">
                     <Avatar>
                         {(user as any)?.avatar ? (

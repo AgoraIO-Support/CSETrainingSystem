@@ -119,6 +119,26 @@
   font-size: 14px;
 }
 
+.video-js.vjs-theme-cse .vjs-seek-backward-5,
+.video-js.vjs-theme-cse .vjs-seek-forward-5 {
+  min-width: 3.2em;
+}
+
+.video-js.vjs-theme-cse .vjs-seek-backward-5 .vjs-icon-placeholder::before,
+.video-js.vjs-theme-cse .vjs-seek-forward-5 .vjs-icon-placeholder::before {
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.video-js.vjs-theme-cse .vjs-seek-backward-5 .vjs-icon-placeholder::before {
+  content: '-5s';
+}
+
+.video-js.vjs-theme-cse .vjs-seek-forward-5 .vjs-icon-placeholder::before {
+  content: '+5s';
+}
+
 .video-js.vjs-theme-cse .vjs-playback-rate .vjs-playback-rate-value {
   font-size: 14px;
   line-height: 40px;
