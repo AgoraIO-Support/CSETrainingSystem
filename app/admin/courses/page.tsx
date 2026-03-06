@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ApiClient } from '@/lib/api-client'
-import { Search, Plus, Edit, Trash2, Eye, Loader2 } from 'lucide-react'
+import { Search, Plus, Edit, Trash2, Eye, Loader2, Send } from 'lucide-react'
 import Link from 'next/link'
 import type { Course } from '@/types'
 
@@ -182,6 +182,22 @@ export default function AdminCoursesPage() {
                                                     <Eye className="h-4 w-4" />
                                                 </Button>
                                             </Link>
+                                            {course.status === 'PUBLISHED' ? (
+                                                <Link href={`/admin/courses/${course.id}/invitations`}>
+                                                    <Button variant="ghost" size="icon" title="Manage Invitations">
+                                                        <Send className="h-4 w-4" />
+                                                    </Button>
+                                                </Link>
+                                            ) : (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    title="Publish course first"
+                                                    disabled
+                                                >
+                                                    <Send className="h-4 w-4" />
+                                                </Button>
+                                            )}
                                             <Link href={`/admin/courses/${course.id}/edit`}>
                                                 <Button variant="ghost" size="icon">
                                                     <Edit className="h-4 w-4" />

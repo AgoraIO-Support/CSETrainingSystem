@@ -81,11 +81,12 @@ export class CertificateService {
         userId,
         passed: true,
         status: 'GRADED',
-        exam: {
-          certificateTemplate: {
-            isEnabled: true,
-          },
-        },
+        OR: [
+          // No template configured: treat as enabled with defaults.
+          { exam: { certificateTemplate: { is: null } } },
+          // Template exists and is enabled.
+          { exam: { certificateTemplate: { is: { isEnabled: true } } } },
+        ],
       },
       include: {
         user: { select: { name: true, email: true } },
@@ -148,9 +149,18 @@ export class CertificateService {
       if (existingExamIds.has(attempt.examId)) continue;
 
       const template = attempt.exam.certificateTemplate;
-      if (!template || !template.isEnabled) continue;
+      if (template && !template.isEnabled) continue;
 
-      const badge = this.normalizeBadgeTemplate(template as any);
+      const effectiveTemplate = template
+        ? (template as any)
+        : {
+            title: `${attempt.exam.title} Certificate`,
+            badgeMode: CertificateBadgeMode.AUTO,
+            badgeS3Key: null,
+            badgeMimeType: null,
+            badgeStyle: { theme: 'blue', variant: 'default' },
+          };
+      const badge = this.normalizeBadgeTemplate(effectiveTemplate as any);
 
       // Best-effort "record-only" backfill: do not generate/upload PDF here.
       await prisma.certificate.create({
@@ -166,7 +176,7 @@ export class CertificateService {
           examTitle: attempt.exam.title,
           courseTitle: attempt.exam.course?.title ?? null,
           score: attempt.rawScore || 0,
-          certificateTitle: (template as any).title,
+          certificateTitle: effectiveTemplate.title,
           badgeMode: badge.badgeMode,
           badgeS3Key: badge.badgeS3Key,
           badgeMimeType: badge.badgeMimeType,
@@ -269,10 +279,20 @@ export class CertificateService {
       where: { examId: attempt.examId },
     });
 
-    if (!template || !template.isEnabled) {
+    if (template && !template.isEnabled) {
       if (opts.silentIfNotEnabled) return null;
       throw new Error('CERTIFICATE_NOT_ENABLED');
     }
+
+    const effectiveTemplate =
+      template ??
+      ({
+        title: `${attempt.exam.title} Certificate`,
+        badgeMode: CertificateBadgeMode.AUTO,
+        badgeS3Key: null,
+        badgeMimeType: null,
+        badgeStyle: { theme: 'blue', variant: 'default' },
+      } as const);
 
     const existingCert = await prisma.certificate.findFirst({
       where: {
@@ -320,10 +340,10 @@ export class CertificateService {
     const certificateNumber = existingCert?.certificateNumber || this.generateCertificateNumber();
     const issueDate = new Date();
 
-    let badgeMode: CertificateBadgeMode = template.badgeMode;
-    let badgeS3Key: string | null = template.badgeS3Key ?? null;
-    let badgeMimeType: string | null = template.badgeMimeType ?? null;
-    let badgeStyle: any | null = template.badgeStyle ?? null;
+    let badgeMode: CertificateBadgeMode = effectiveTemplate.badgeMode;
+    let badgeS3Key: string | null = effectiveTemplate.badgeS3Key ?? null;
+    let badgeMimeType: string | null = effectiveTemplate.badgeMimeType ?? null;
+    let badgeStyle: any | null = effectiveTemplate.badgeStyle ?? null;
 
     if (badgeMode === CertificateBadgeMode.UPLOADED) {
       if (!badgeS3Key || !badgeMimeType) {
@@ -352,7 +372,7 @@ export class CertificateService {
             recipientName: attempt.user.name || attempt.user.email,
             examTitle: attempt.exam.title,
             score: attempt.rawScore || 0,
-            certificateTitle: template.title,
+            certificateTitle: effectiveTemplate.title,
             badgeMode,
             badgeS3Key: badgeMode === CertificateBadgeMode.UPLOADED ? badgeS3Key : null,
             badgeMimeType: badgeMode === CertificateBadgeMode.UPLOADED ? badgeMimeType : null,
@@ -372,7 +392,7 @@ export class CertificateService {
             recipientName: attempt.user.name || attempt.user.email,
             examTitle: attempt.exam.title,
             score: attempt.rawScore || 0,
-            certificateTitle: template.title,
+            certificateTitle: effectiveTemplate.title,
             badgeMode,
             badgeS3Key: badgeMode === CertificateBadgeMode.UPLOADED ? badgeS3Key : null,
             badgeMimeType: badgeMode === CertificateBadgeMode.UPLOADED ? badgeMimeType : null,

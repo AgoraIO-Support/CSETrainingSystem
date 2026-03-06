@@ -634,12 +634,13 @@ export class ExamGenerationService {
       if (correctAnswer == null) {
         throw new Error('INVALID_MULTIPLE_CHOICE_CORRECT_ANSWER');
       }
+      const rebalanced = this.rebalanceMultipleChoiceOptionOrder(options, correctAnswer);
       return {
         type,
         difficulty,
         question,
-        options,
-        correctAnswer,
+        options: rebalanced.options,
+        correctAnswer: rebalanced.correctAnswer,
         explanation,
         topic,
         sourceChunkIds: [],
@@ -787,6 +788,55 @@ export class ExamGenerationService {
     return indexes.join(',');
   }
 
+  /**
+   * Rebalance answer-position distribution by shuffling options and remapping correct indexes.
+   * This reduces model bias toward early options (A/B).
+   */
+  private rebalanceMultipleChoiceOptionOrder(
+    options: string[],
+    correctAnswer: string
+  ): { options: string[]; correctAnswer: string } {
+    if (!Array.isArray(options) || options.length < 2) {
+      return { options, correctAnswer };
+    }
+
+    const correctIndexes = correctAnswer
+      .split(',')
+      .map((t) => Number.parseInt(t.trim(), 10))
+      .filter((n) => Number.isFinite(n) && n >= 0 && n < options.length);
+    if (correctIndexes.length === 0) {
+      return { options, correctAnswer };
+    }
+
+    const shuffled = options.map((text, originalIndex) => ({ text, originalIndex }));
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+
+    const oldToNewIndex = new Map<number, number>();
+    shuffled.forEach((entry, newIndex) => {
+      oldToNewIndex.set(entry.originalIndex, newIndex);
+    });
+
+    const remappedCorrect = Array.from(
+      new Set(
+        correctIndexes
+          .map((oldIdx) => oldToNewIndex.get(oldIdx))
+          .filter((idx): idx is number => idx !== undefined)
+      )
+    ).sort((a, b) => a - b);
+
+    if (remappedCorrect.length === 0) {
+      return { options, correctAnswer };
+    }
+
+    return {
+      options: shuffled.map((entry) => entry.text),
+      correctAnswer: remappedCorrect.join(','),
+    };
+  }
+
   private normalizeTrueFalseCorrectAnswer(value: unknown): 'true' | 'false' | null {
     if (typeof value === 'boolean') return value ? 'true' : 'false';
     if (typeof value !== 'string') return null;
@@ -891,12 +941,13 @@ Output format: JSON object with the following structure based on question type.`
 - Exactly 4 options labeled A, B, C, D (one or more correct answers)
 - Return all correct answers in an array (indexes 0-3)
 - An explanation of why the correct answer(s) are correct
+- Do NOT systematically place correct answers in A/B; distribute answer positions across 0,1,2,3 over multiple questions
 
 Output JSON:
 {
   "question": "The question text",
   "options": ["Option A", "Option B", "Option C", "Option D"],
-  "correctAnswerIndexes": [0,1],
+  "correctAnswerIndexes": [2],
   "explanation": "Why the answer(s) are correct",
   "topic": "Main topic tested",
   "confidence": 0.9

@@ -133,12 +133,11 @@ export function KnowledgeAnchors({
         onSeekToTimestamp?.(anchor.timestampStr)
     }
 
-    const normalizeTitleForDisplay = (value: string, maxChars: number) => {
+    const normalizeTitleForDisplay = (value: string) => {
         const raw = (value || '').trim()
         const withoutPrefix = raw.replace(/^Section\\s+\\d+\\s*:\\s*/i, '')
         const withoutTrailingEllipsis = withoutPrefix.replace(/\\s*(…|\\.\\.\\.)\\s*$/g, '').trim()
-        const chars = Array.from(withoutTrailingEllipsis)
-        return chars.slice(0, maxChars).join('')
+        return withoutTrailingEllipsis
     }
 
     return (
@@ -195,7 +194,7 @@ export function KnowledgeAnchors({
                                 const config = anchorTypeConfig[anchor.anchorType]
                                 const Icon = config.icon
                                 const isCurrent = index === currentAnchorIndex
-                                const safeTitle = normalizeTitleForDisplay(anchor.title, 30)
+                                const safeTitle = normalizeTitleForDisplay(anchor.title)
                                 const tooltip = [
                                     anchor.title,
                                     anchor.keyTerms?.length ? `Key terms: ${anchor.keyTerms.join(', ')}` : null,
@@ -214,7 +213,7 @@ export function KnowledgeAnchors({
                                             isCurrent && 'bg-muted/50 ring-1 ring-ring/30'
                                         )}
                                     >
-                                        <div className="flex items-center gap-2 min-w-0">
+                                        <div className="flex items-start gap-2 min-w-0">
                                             <Badge
                                                 variant="outline"
                                                 className={cn('shrink-0 text-[10px] px-1.5 py-0.5', config.color)}
@@ -232,7 +231,7 @@ export function KnowledgeAnchors({
                                                 </span>
                                             </span>
 
-                                            <span className="min-w-0 flex-1 whitespace-nowrap text-sm font-medium">
+                                            <span className="min-w-0 flex-1 whitespace-normal break-words text-sm font-medium leading-5">
                                                 {safeTitle}
                                             </span>
 

@@ -186,4 +186,258 @@ export class WecomWebhookService {
       };
     }
   }
+
+  static async sendCoursePublished(userId: string, courseId: string): Promise<SendWecomResult> {
+    try {
+      if (!this.isConfigured()) {
+        log('API', 'warn', 'wecom webhook is not configured', {
+          courseId,
+          userId,
+        });
+        return { success: false, error: 'WECOM_WEBHOOK_URL is not configured' };
+      }
+
+      const [user, course] = await Promise.all([
+        prisma.user.findUnique({
+          where: { id: userId },
+          select: { id: true, name: true, email: true, wecomUserId: true },
+        }),
+        prisma.course.findUnique({
+          where: { id: courseId },
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+            description: true,
+            status: true,
+          },
+        }),
+      ]);
+
+      if (!user || !course) {
+        return { success: false, error: 'User or course not found' };
+      }
+
+      const mentionTarget = (user.wecomUserId?.trim() || user.email || '').trim();
+      const courseUrl = `${APP_URL}/courses/${course.slug || course.id}`;
+      const content = [
+        `## ${escapeMarkdown(APP_NAME)} - Course Published`,
+        `> Course is now available`,
+        '',
+        mentionTarget ? `<@${mentionTarget}>` : null,
+        '',
+        `**User**: ${escapeMarkdown(user.name || user.email)} (${escapeMarkdown(user.email)})`,
+        `**Course**: ${escapeMarkdown(course.title)}`,
+        `**Status**: ${escapeMarkdown(course.status)}`,
+        course.description ? `**Description**: ${escapeMarkdown(course.description)}` : null,
+        `[Open Course](${courseUrl})`,
+      ]
+        .filter((line): line is string => line !== null)
+        .join('\n');
+      const payload = {
+        msgtype: 'markdown',
+        markdown: { content },
+      };
+
+      if (!user.wecomUserId) {
+        log('API', 'warn', 'wecom user id missing for mention', {
+          courseId,
+          userId,
+          email: user.email,
+          fallbackToEmailMention: Boolean(user.email),
+        });
+      }
+
+      log('API', 'info', 'wecom webhook request', {
+        courseId,
+        userId,
+        url: redactWebhookUrl(WECOM_WEBHOOK_URL),
+        ...(WECOM_LOG_CONTENT
+          ? { requestBody: payload }
+          : {
+              requestSummary: {
+                msgtype: payload.msgtype,
+                contentLength: content.length,
+                mentionTarget: mentionTarget || null,
+              },
+            }),
+      });
+
+      const response = await fetch(WECOM_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const json = await response.json().catch(() => null);
+      log('API', 'info', 'wecom webhook response', {
+        courseId,
+        userId,
+        status: response.status,
+        ok: response.ok,
+        ...(WECOM_LOG_CONTENT
+          ? { responseBody: json }
+          : { responseSummary: { errcode: json?.errcode, hasBody: Boolean(json) } }),
+      });
+
+      if (!response.ok) {
+        log('API', 'warn', 'wecom webhook non-200 response', {
+          courseId,
+          userId,
+          status: response.status,
+          errcode: json?.errcode,
+          errmsg: json?.errmsg,
+        });
+        return { success: false, error: `WeCom webhook HTTP ${response.status}` };
+      }
+      if (!json || json.errcode !== 0) {
+        log('API', 'warn', 'wecom webhook business error', {
+          courseId,
+          userId,
+          errcode: json?.errcode,
+          errmsg: json?.errmsg,
+        });
+        return { success: false, error: `WeCom webhook errcode=${json?.errcode ?? 'unknown'}` };
+      }
+
+      return { success: true };
+    } catch (error) {
+      log('API', 'error', 'wecom webhook send failed', {
+        courseId,
+        userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  static async sendCourseInvitation(userId: string, courseId: string): Promise<SendWecomResult> {
+    try {
+      if (!this.isConfigured()) {
+        log('API', 'warn', 'wecom webhook is not configured', {
+          courseId,
+          userId,
+        });
+        return { success: false, error: 'WECOM_WEBHOOK_URL is not configured' };
+      }
+
+      const [user, course] = await Promise.all([
+        prisma.user.findUnique({
+          where: { id: userId },
+          select: { id: true, name: true, email: true, wecomUserId: true },
+        }),
+        prisma.course.findUnique({
+          where: { id: courseId },
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+            description: true,
+            status: true,
+          },
+        }),
+      ]);
+
+      if (!user || !course) {
+        return { success: false, error: 'User or course not found' };
+      }
+
+      const mentionTarget = (user.wecomUserId?.trim() || user.email || '').trim();
+      const courseUrl = `${APP_URL}/courses/${course.slug || course.id}`;
+      const content = [
+        `## ${escapeMarkdown(APP_NAME)} - Course Invitation`,
+        `> User selected by admin for this course`,
+        '',
+        mentionTarget ? `<@${mentionTarget}>` : null,
+        '',
+        `**User**: ${escapeMarkdown(user.name || user.email)} (${escapeMarkdown(user.email)})`,
+        `**Course**: ${escapeMarkdown(course.title)}`,
+        `**Status**: ${escapeMarkdown(course.status)}`,
+        course.description ? `**Description**: ${escapeMarkdown(course.description)}` : null,
+        `[Open Course](${courseUrl})`,
+      ]
+        .filter((line): line is string => line !== null)
+        .join('\n');
+      const payload = {
+        msgtype: 'markdown',
+        markdown: { content },
+      };
+
+      if (!user.wecomUserId) {
+        log('API', 'warn', 'wecom user id missing for mention', {
+          courseId,
+          userId,
+          email: user.email,
+          fallbackToEmailMention: Boolean(user.email),
+        });
+      }
+
+      log('API', 'info', 'wecom webhook request', {
+        courseId,
+        userId,
+        url: redactWebhookUrl(WECOM_WEBHOOK_URL),
+        ...(WECOM_LOG_CONTENT
+          ? { requestBody: payload }
+          : {
+              requestSummary: {
+                msgtype: payload.msgtype,
+                contentLength: content.length,
+                mentionTarget: mentionTarget || null,
+              },
+            }),
+      });
+
+      const response = await fetch(WECOM_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const json = await response.json().catch(() => null);
+      log('API', 'info', 'wecom webhook response', {
+        courseId,
+        userId,
+        status: response.status,
+        ok: response.ok,
+        ...(WECOM_LOG_CONTENT
+          ? { responseBody: json }
+          : { responseSummary: { errcode: json?.errcode, hasBody: Boolean(json) } }),
+      });
+
+      if (!response.ok) {
+        log('API', 'warn', 'wecom webhook non-200 response', {
+          courseId,
+          userId,
+          status: response.status,
+          errcode: json?.errcode,
+          errmsg: json?.errmsg,
+        });
+        return { success: false, error: `WeCom webhook HTTP ${response.status}` };
+      }
+      if (!json || json.errcode !== 0) {
+        log('API', 'warn', 'wecom webhook business error', {
+          courseId,
+          userId,
+          errcode: json?.errcode,
+          errmsg: json?.errmsg,
+        });
+        return { success: false, error: `WeCom webhook errcode=${json?.errcode ?? 'unknown'}` };
+      }
+
+      return { success: true };
+    } catch (error) {
+      log('API', 'error', 'wecom webhook send failed', {
+        courseId,
+        userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
 }

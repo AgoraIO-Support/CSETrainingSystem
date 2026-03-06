@@ -218,26 +218,58 @@ export class ExamGradingService {
 
     let isCorrect = false;
 
-    switch (type) {
-      case ExamQuestionType.MULTIPLE_CHOICE:
-        if (options) {
-          const trimmed = correctAnswer.trim();
-          const correctIndexes = trimmed
-            .split(',')
-            .map((t) => Number.parseInt(t, 10))
-            .filter((n) => Number.isFinite(n) && n >= 0 && n < options.length);
+    const parseOptionToken = (token: string, opts: string[]): number | null => {
+      const trimmed = token.trim();
+      if (!trimmed) return null;
 
-          const userSelections =
-            answer && answer.includes(',')
-              ? answer
-                  .split(',')
-                  .map((t) => Number.parseInt(t, 10))
-                  .filter((n) => Number.isFinite(n) && n >= 0 && n < options.length)
-              : selectedOption !== null && selectedOption !== undefined
-                  ? [selectedOption]
-                  : [];
+      // Numeric index: "0", "1", ...
+      if (/^\d+$/.test(trimmed)) {
+        const idx = Number.parseInt(trimmed, 10);
+        return Number.isFinite(idx) && idx >= 0 && idx < opts.length ? idx : null;
+      }
 
-          if (correctIndexes.length > 0 && userSelections.length > 0) {
+      // Letter index: "A", "B", ...
+      if (/^[A-Za-z]$/.test(trimmed)) {
+        const idx = trimmed.toUpperCase().charCodeAt(0) - 65;
+        return idx >= 0 && idx < opts.length ? idx : null;
+      }
+
+      // Exact text match as fallback.
+      const matchIdx = opts.findIndex((o) => o.trim() === trimmed);
+      return matchIdx >= 0 ? matchIdx : null;
+    };
+
+    const parseSelections = (raw: string | null, fallbackSelected: number | null, opts: string[]): number[] => {
+      const fromRaw =
+        typeof raw === 'string' && raw.trim().length > 0
+          ? raw
+              .split(',')
+              .map((part) => parseOptionToken(part, opts))
+              .filter((idx): idx is number => idx !== null)
+          : [];
+
+      if (fromRaw.length > 0) {
+        return Array.from(new Set(fromRaw));
+      }
+
+      if (fallbackSelected !== null && fallbackSelected !== undefined) {
+        return [fallbackSelected];
+      }
+
+      return [];
+    };
+
+    const typeRaw = String(type);
+    if (typeRaw === 'SINGLE_CHOICE' || type === ExamQuestionType.MULTIPLE_CHOICE) {
+      const isSingleChoice = typeRaw === 'SINGLE_CHOICE';
+      if (options) {
+        const correctIndexes = parseSelections(correctAnswer, null, options);
+        const userSelections = parseSelections(answer, selectedOption, options);
+
+        if (correctIndexes.length > 0 && userSelections.length > 0) {
+          if (isSingleChoice) {
+            isCorrect = userSelections[0] === correctIndexes[0];
+          } else {
             const correctSet = new Set(correctIndexes);
             const userSet = new Set(userSelections);
             if (correctSet.size === userSet.size) {
@@ -245,17 +277,19 @@ export class ExamGradingService {
             }
           }
         }
-        break;
-
-      case ExamQuestionType.TRUE_FALSE:
-        // Compare boolean answer
-        const userAnswer = answer?.toLowerCase().trim();
-        const correct = correctAnswer.toLowerCase().trim();
-        isCorrect = userAnswer === correct;
-        break;
-
-      default:
-        isCorrect = false;
+      } else if (isSingleChoice) {
+        // Fallback for malformed data without options.
+        const user = (answer ?? '').trim();
+        const correct = correctAnswer.trim();
+        isCorrect = user.length > 0 && user === correct;
+      }
+    } else if (type === ExamQuestionType.TRUE_FALSE) {
+      // Compare boolean answer
+      const userAnswer = answer?.toLowerCase().trim();
+      const correct = correctAnswer.toLowerCase().trim();
+      isCorrect = userAnswer === correct;
+    } else {
+      isCorrect = false;
     }
 
     return {

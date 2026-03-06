@@ -13,6 +13,7 @@ import type {
     ExamQuestion,
     ExamAttempt,
     ExamInvitation,
+    CourseInvitation,
     ExamAnalytics,
     ExamStatus,
     ExamType,
@@ -77,6 +78,7 @@ type CreateCoursePayload = {
 
 type UpdateCoursePayload = Partial<CreateCoursePayload> & {
     status?: CourseStatus
+    sendNotification?: boolean
 }
 
 export class ApiClient {
@@ -746,6 +748,8 @@ export class ApiClient {
                 anchorCount: number
                 processedAt: string | null
                 hasTranscript: boolean
+                transcriptId: string | null
+                transcriptFilename: string | null
             }>
         }
     }> {
@@ -778,6 +782,29 @@ export class ApiClient {
     // Backward-compatible alias
     static async sendExamInvitationEmails(examId: string, userIds?: string[]): Promise<{ success: boolean; data: { sent: number; failed: number } }> {
         return this.sendExamInvitationNotifications(examId, userIds)
+    }
+
+    // Course Invitations
+    static async getCourseInvitations(courseId: string): Promise<{ success: boolean; data: CourseInvitation[] }> {
+        return this.request(`/admin/courses/${courseId}/invitations`)
+    }
+
+    static async createCourseInvitations(courseId: string, userIds: string[], opts?: { sendNotification?: boolean; sendEmail?: boolean }): Promise<{ success: boolean; data: { invited: number; skipped: number; notificationsSent?: number; notificationsFailed?: number; emailsSent?: number; emailsFailed?: number } }> {
+        return this.request(`/admin/courses/${courseId}/invitations`, {
+            method: 'POST',
+            body: JSON.stringify({
+                userIds,
+                sendNotification: opts?.sendNotification,
+                sendEmail: opts?.sendEmail,
+            }),
+        })
+    }
+
+    static async sendCourseInvitationNotifications(courseId: string, userIds?: string[]): Promise<{ success: boolean; data: { sent: number; failed: number } }> {
+        return this.request(`/admin/courses/${courseId}/invitations/send`, {
+            method: 'POST',
+            body: JSON.stringify({ userIds }),
+        })
     }
 
     // Exam Attempts (Admin)

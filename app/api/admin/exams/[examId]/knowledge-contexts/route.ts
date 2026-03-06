@@ -92,6 +92,8 @@ export const GET = withAdminAuth(async (_req: NextRequest, _user, context: Route
                     anchorCount: lesson.knowledgeContext?.anchorCount ?? 0,
                     processedAt: lesson.knowledgeContext?.processedAt?.toISOString() ?? null,
                     hasTranscript: Boolean(lesson.transcripts?.[0]?.s3Key),
+                    transcriptId: lesson.transcripts?.[0]?.id ?? null,
+                    transcriptFilename: lesson.transcripts?.[0]?.filename ?? null,
                 }))
 
             const rank = (s: string) =>
@@ -124,14 +126,16 @@ export const GET = withAdminAuth(async (_req: NextRequest, _user, context: Route
             chapter.lessons.map((lesson) => ({
                 lessonId: lesson.id,
                 lessonTitle: lesson.title,
-                chapterTitle: chapter.title,
-                chapterOrder: chapter.order,
-                lessonOrder: lesson.order,
-                knowledgeStatus: lesson.knowledgeContext?.status ?? 'MISSING',
-                anchorCount: lesson.knowledgeContext?.anchorCount ?? 0,
-                processedAt: lesson.knowledgeContext?.processedAt?.toISOString() ?? null,
-                hasTranscript: Boolean(lesson.transcripts?.[0]?.s3Key),
-            }))
+            chapterTitle: chapter.title,
+            chapterOrder: chapter.order,
+            lessonOrder: lesson.order,
+            knowledgeStatus: lesson.knowledgeContext?.status ?? 'MISSING',
+            anchorCount: lesson.knowledgeContext?.anchorCount ?? 0,
+            processedAt: lesson.knowledgeContext?.processedAt?.toISOString() ?? null,
+            hasTranscript: Boolean(lesson.transcripts?.[0]?.s3Key),
+            transcriptId: lesson.transcripts?.[0]?.id ?? null,
+            transcriptFilename: lesson.transcripts?.[0]?.filename ?? null,
+        }))
         )
 
         return NextResponse.json({

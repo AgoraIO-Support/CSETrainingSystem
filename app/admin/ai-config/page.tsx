@@ -96,12 +96,26 @@ function getAuthHeaders(): Record<string, string> {
     return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
+class ApiRequestError extends Error {
+    status: number
+    code?: string
+    details?: unknown
+
+    constructor(message: string, status: number, code?: string, details?: unknown) {
+        super(message)
+        this.name = 'ApiRequestError'
+        this.status = status
+        this.code = code
+        this.details = details
+    }
+}
+
 async function api<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
     const res = await fetch(input, init)
     const json = await res.json().catch(() => null)
     if (!res.ok || !json?.success) {
         const message = json?.error?.message || `Request failed: ${res.status}`
-        throw new Error(message)
+        throw new ApiRequestError(message, res.status, json?.error?.code, json?.error?.details)
     }
     return json.data as T
 }
@@ -476,8 +490,29 @@ export default function AdminAIConfigPage() {
                 headers: getAuthHeaders(),
             })
             await reloadAll()
-        } catch (e: any) {
-            setError(e?.message || 'Failed to delete template')
+        } catch (e: unknown) {
+            if (e instanceof ApiRequestError && e.status === 409 && e.details && typeof e.details === 'object') {
+                const details = e.details as {
+                    defaults?: number
+                    courseAssignments?: number
+                    examAssignments?: number
+                    courseDetails?: Array<{ courseTitle?: string; url?: string }>
+                    examDetails?: Array<{ examTitle?: string; url?: string }>
+                }
+                const parts = [
+                    `Defaults: ${details.defaults ?? 0}`,
+                    `Course assignments: ${details.courseAssignments ?? 0}`,
+                    `Exam assignments: ${details.examAssignments ?? 0}`,
+                ]
+                const courseRefs = (details.courseDetails ?? [])
+                    .map((item) => `${item.courseTitle || 'Unknown course'} (${item.url || '-'})`)
+                const examRefs = (details.examDetails ?? [])
+                    .map((item) => `${item.examTitle || 'Unknown exam'} (${item.url || '-'})`)
+                const refs = [...courseRefs, ...examRefs]
+                setError(`${e.message}. In use by -> ${parts.join(', ')}${refs.length ? `. References: ${refs.join('; ')}` : ''}`)
+                return
+            }
+            setError(e instanceof Error ? e.message : 'Failed to delete template')
         }
     }
 

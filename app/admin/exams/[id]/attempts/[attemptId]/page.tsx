@@ -103,6 +103,7 @@ export default function AttemptDetailPage({ params }: PageProps) {
     const [error, setError] = useState<string | null>(null)
     const [successMessage, setSuccessMessage] = useState<string | null>(null)
     const [certificateActionLoading, setCertificateActionLoading] = useState(false)
+    const [autoGrading, setAutoGrading] = useState(false)
 
     // Grading state for each manually-graded answer (essay + fill-in-blank)
     const [gradingForms, setGradingForms] = useState<Record<string, { score: string; feedback: string }>>({})
@@ -187,6 +188,20 @@ export default function AttemptDetailPage({ params }: PageProps) {
             setError(err instanceof Error ? err.message : 'Failed to reissue certificate')
         } finally {
             setCertificateActionLoading(false)
+        }
+    }
+
+    const handleReRunAutoGrade = async () => {
+        setAutoGrading(true)
+        setError(null)
+        try {
+            await ApiClient.triggerAutoGrade(examId, attemptId)
+            showSuccess('Auto-grading re-run successfully')
+            await loadData()
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to re-run auto-grading')
+        } finally {
+            setAutoGrading(false)
         }
     }
 
@@ -306,6 +321,14 @@ export default function AttemptDetailPage({ params }: PageProps) {
                             <p className="text-muted-foreground mt-1">{attempt.exam?.title}</p>
                         </div>
                     </div>
+                    <Button variant="outline" onClick={handleReRunAutoGrade} disabled={autoGrading}>
+                        {autoGrading ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                            <Sparkles className="h-4 w-4 mr-2" />
+                        )}
+                        Re-run Auto Grade
+                    </Button>
                 </div>
 
                 {successMessage && (

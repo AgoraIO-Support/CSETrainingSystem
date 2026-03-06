@@ -43,7 +43,7 @@ export default function EditExamPage({ params }: PageProps) {
     const [badgeFile, setBadgeFile] = useState<File | null>(null)
     const [badgePreviewUrl, setBadgePreviewUrl] = useState<string | null>(null)
     const [certificateForm, setCertificateForm] = useState({
-        isEnabled: false,
+        isEnabled: true,
         title: '',
         badgeMode: 'AUTO' as 'AUTO' | 'UPLOADED',
         badgeS3Key: null as string | null,
@@ -120,7 +120,7 @@ export default function EditExamPage({ params }: PageProps) {
                         badgeMimeType: res.data.badgeMimeType ?? null,
                     })
                 } else {
-                    setCertificateForm(prev => ({ ...prev, isEnabled: false }))
+                    setCertificateForm(prev => ({ ...prev, isEnabled: true, title: exam?.title || prev.title }))
                 }
             } catch (err) {
                 if (!cancelled) setCertificateError(err instanceof Error ? err.message : 'Failed to load certificate settings')

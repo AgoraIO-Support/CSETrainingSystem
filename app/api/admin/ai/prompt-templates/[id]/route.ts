@@ -126,16 +126,50 @@ export const DELETE = withAdminAuth(async (_req, _user, ctx) => {
     try {
         const id = ctx?.params?.id as string
 
-        const [defaultsCount, courseAssignmentsCount, examAssignmentsCount] = await Promise.all([
-            prisma.aIPromptDefault.count({ where: { templateId: id } }),
-            prisma.courseAIPromptAssignment.count({ where: { templateId: id } }),
-            prisma.examAIPromptAssignment.count({ where: { templateId: id } }),
+        const [defaultsRows, courseAssignmentRows, examAssignmentRows] = await Promise.all([
+            prisma.aIPromptDefault.findMany({
+                where: { templateId: id },
+                select: { useCase: true },
+            }),
+            prisma.courseAIPromptAssignment.findMany({
+                where: { templateId: id },
+                select: {
+                    useCase: true,
+                    course: { select: { id: true, title: true } },
+                },
+            }),
+            prisma.examAIPromptAssignment.findMany({
+                where: { templateId: id },
+                select: {
+                    useCase: true,
+                    exam: { select: { id: true, title: true } },
+                },
+            }),
         ])
 
+        const defaultsCount = defaultsRows.length
+        const courseAssignmentsCount = courseAssignmentRows.length
+        const examAssignmentsCount = examAssignmentRows.length
         const dependency = {
             defaults: defaultsCount,
             courseAssignments: courseAssignmentsCount,
             examAssignments: examAssignmentsCount,
+            defaultsDetails: defaultsRows.map((row) => ({
+                useCase: row.useCase,
+                url: '/admin/ai-config',
+            })),
+            courseDetails: courseAssignmentRows.map((row) => ({
+                courseId: row.course.id,
+                courseTitle: row.course.title,
+                useCase: row.useCase,
+                url: `/admin/courses/${row.course.id}/edit`,
+            })),
+            examDetails: examAssignmentRows.map((row) => ({
+                examId: row.exam.id,
+                examTitle: row.exam.title,
+                useCase: row.useCase,
+                url: `/admin/exams/${row.exam.id}/edit`,
+            })),
         }
         const totalDependencyCount =
             dependency.defaults + dependency.courseAssignments + dependency.examAssignments

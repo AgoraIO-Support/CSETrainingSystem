@@ -95,13 +95,14 @@ export default function CreateExamPage() {
             const examId = response.data.id
 
             try {
+                let badgeS3Key: string | null = null
+                let badgeMimeType: string | null = null
+                let templateTitle = form.certificateTitle.trim()
+
                 if (form.certificateEnabled) {
-                    if (!form.certificateTitle.trim()) {
+                    if (!templateTitle) {
                         throw new Error('Certificate name is required')
                     }
-
-                    let badgeS3Key: string | null = null
-                    let badgeMimeType: string | null = null
 
                     if (form.certificateBadgeMode === 'UPLOADED') {
                         if (!badgeFile) {
@@ -135,16 +136,18 @@ export default function CreateExamPage() {
                         setBadgePreviewUrl(upload.data.accessUrl || upload.data.publicUrl)
                         setBadgeFile(null)
                     }
-
-                    await ApiClient.upsertAdminExamCertificateTemplate(examId, {
-                        isEnabled: true,
-                        title: form.certificateTitle.trim(),
-                        badgeMode: form.certificateBadgeMode,
-                        badgeS3Key,
-                        badgeMimeType,
-                        badgeStyle: null,
-                    })
+                } else if (!templateTitle) {
+                    templateTitle = `${form.title.trim()} Certificate` || 'Certificate'
                 }
+
+                await ApiClient.upsertAdminExamCertificateTemplate(examId, {
+                    isEnabled: form.certificateEnabled,
+                    title: templateTitle,
+                    badgeMode: form.certificateEnabled ? form.certificateBadgeMode : 'AUTO',
+                    badgeS3Key: form.certificateEnabled ? badgeS3Key : null,
+                    badgeMimeType: form.certificateEnabled ? badgeMimeType : null,
+                    badgeStyle: null,
+                })
             } catch (templateErr) {
                 try { await ApiClient.deleteExamForce(examId) } catch { /* ignore */ }
                 throw templateErr

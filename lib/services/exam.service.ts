@@ -372,12 +372,28 @@ export class ExamService {
       existing.status === ExamStatus.PUBLISHED ||
       existing.status === ExamStatus.CLOSED
     ) {
-      // Only allow updating deadline and availability
-      const allowedFields = ['deadline', 'availableFrom'];
-      const updateKeys = Object.keys(data);
-      const disallowedFields = updateKeys.filter(
-        k => !allowedFields.includes(k) && data[k as keyof UpdateExamInput] !== undefined
-      );
+      // Only allow updating deadline and availability. Ignore unchanged fields because
+      // admin UI submits the full form payload.
+      const immutableFields: (keyof UpdateExamInput)[] = [
+        'title',
+        'description',
+        'instructions',
+        'timeLimit',
+        'totalScore',
+        'passingScore',
+        'randomizeQuestions',
+        'randomizeOptions',
+        'showResultsImmediately',
+        'allowReview',
+        'maxAttempts',
+      ];
+
+      const disallowedFields = immutableFields.filter((field) => {
+        const nextValue = data[field];
+        if (nextValue === undefined) return false;
+        const currentValue = existing[field as keyof typeof existing];
+        return !this.areExamFieldValuesEqual(nextValue, currentValue);
+      });
 
       if (disallowedFields.length > 0) {
         throw new Error('EXAM_PUBLISHED_IMMUTABLE');
@@ -578,8 +594,13 @@ export class ExamService {
 
     // Set publish date
     if (status === ExamStatus.PUBLISHED) {
-      // Publishing must be done via the explicit publish+assign flow (requires user selection).
-      throw new Error('PUBLISH_REQUIRES_ASSIGNMENT');
+      // First-time publishing must be done via the explicit publish+assign flow.
+      // Reopening a previously closed exam is allowed from the status endpoint.
+      if (existing.status !== ExamStatus.CLOSED) {
+        throw new Error('PUBLISH_REQUIRES_ASSIGNMENT');
+      }
+
+      updateData.closedAt = null;
     }
 
     // Set close date
@@ -638,13 +659,26 @@ export class ExamService {
       [ExamStatus.PENDING_REVIEW]: [ExamStatus.DRAFT, ExamStatus.APPROVED, ExamStatus.ARCHIVED],
       [ExamStatus.APPROVED]: [ExamStatus.PENDING_REVIEW, ExamStatus.PUBLISHED, ExamStatus.ARCHIVED],
       [ExamStatus.PUBLISHED]: [ExamStatus.CLOSED],
-      [ExamStatus.CLOSED]: [ExamStatus.ARCHIVED],
+      [ExamStatus.CLOSED]: [ExamStatus.PUBLISHED, ExamStatus.ARCHIVED],
       [ExamStatus.ARCHIVED]: [],
     };
 
     if (!validTransitions[currentStatus].includes(targetStatus)) {
       throw new Error('INVALID_STATUS_TRANSITION');
     }
+  }
+
+  private static areExamFieldValuesEqual(nextValue: unknown, currentValue: unknown): boolean {
+    if (nextValue == null && currentValue == null) {
+      return true;
+    }
+
+    if (nextValue instanceof Date) {
+      if (!(currentValue instanceof Date)) return false;
+      return nextValue.getTime() === currentValue.getTime();
+    }
+
+    return nextValue === currentValue;
   }
 
   /**

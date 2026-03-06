@@ -56,6 +56,8 @@ type ExamKnowledgeLesson = {
     anchorCount: number
     processedAt: string | null
     hasTranscript: boolean
+    transcriptId: string | null
+    transcriptFilename: string | null
 }
 
 interface QuestionForm {
@@ -93,6 +95,9 @@ export default function ExamQuestionsPage({ params }: PageProps) {
     const [successMessage, setSuccessMessage] = useState<string | null>(null)
     const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
     const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+    const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>([])
+    const [confirmBulkDeleteOpen, setConfirmBulkDeleteOpen] = useState(false)
+    const [bulkDeleting, setBulkDeleting] = useState(false)
 
     // Form state
     const [showForm, setShowForm] = useState(false)
@@ -107,6 +112,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
     const [knowledgeLessonsLoading, setKnowledgeLessonsLoading] = useState(false)
     const [knowledgeLessonsError, setKnowledgeLessonsError] = useState<string | null>(null)
     const [selectedLessonIds, setSelectedLessonIds] = useState<string[]>([])
+    const [sourceMode, setSourceMode] = useState<'single' | 'multiple'>('single')
     const [generateConfig, setGenerateConfig] = useState({
         singleChoice: 3,
         multipleChoice: 5,
@@ -119,6 +125,10 @@ export default function ExamQuestionsPage({ params }: PageProps) {
     useEffect(() => {
         loadData()
     }, [examId])
+
+    useEffect(() => {
+        setSelectedQuestionIds((prev) => prev.filter((id) => questions.some((q) => q.id === id)))
+    }, [questions])
 
     useEffect(() => {
         if (!showGenerateDialog) return
@@ -135,9 +145,8 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                     return a.lessonOrder - b.lessonOrder
                 })
                 setKnowledgeLessons(lessons)
-                setSelectedLessonIds(
-                    lessons.filter((l) => l.knowledgeStatus === 'READY').map((l) => l.lessonId)
-                )
+                const readyLessons = lessons.filter((l) => l.knowledgeStatus === 'READY')
+                setSelectedLessonIds(readyLessons[0] ? [readyLessons[0].lessonId] : [])
             } catch (err) {
                 if (!cancelled) {
                     setKnowledgeLessonsError(err instanceof Error ? err.message : 'Failed to load knowledge contexts')
@@ -208,6 +217,21 @@ export default function ExamQuestionsPage({ params }: PageProps) {
         setConfirmDeleteOpen(true)
     }
 
+    const toggleQuestionSelection = (questionId: string, checked: boolean) => {
+        setSelectedQuestionIds((prev) => {
+            if (checked) return Array.from(new Set([...prev, questionId]))
+            return prev.filter((id) => id !== questionId)
+        })
+    }
+
+    const handleSelectAllQuestions = (checked: boolean) => {
+        if (checked) {
+            setSelectedQuestionIds(questions.map((q) => q.id))
+            return
+        }
+        setSelectedQuestionIds([])
+    }
+
     const confirmDeleteQuestion = async () => {
         const questionId = pendingDeleteId
         if (!questionId) {
@@ -223,6 +247,40 @@ export default function ExamQuestionsPage({ params }: PageProps) {
             showSuccess('Question deleted successfully')
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to delete question')
+        }
+    }
+
+    const confirmBulkDeleteQuestions = async () => {
+        const toDelete = selectedQuestionIds.slice()
+        if (toDelete.length === 0) {
+            setConfirmBulkDeleteOpen(false)
+            return
+        }
+
+        setBulkDeleting(true)
+        setConfirmBulkDeleteOpen(false)
+        setError(null)
+
+        try {
+            const results = await Promise.allSettled(
+                toDelete.map((questionId) => ApiClient.deleteExamQuestion(examId, questionId))
+            )
+            const failed = results.filter((r) => r.status === 'rejected').length
+            const deletedIds = toDelete.filter((_, idx) => results[idx]?.status === 'fulfilled')
+
+            if (deletedIds.length > 0) {
+                setQuestions((prev) => prev.filter((q) => !deletedIds.includes(q.id)))
+            }
+            setSelectedQuestionIds((prev) => prev.filter((id) => !deletedIds.includes(id)))
+
+            if (failed > 0) {
+                setError(`Bulk delete completed with ${failed} failure(s).`)
+            }
+            showSuccess(`Deleted ${deletedIds.length} question(s)`)
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to bulk delete questions')
+        } finally {
+            setBulkDeleting(false)
         }
     }
 
@@ -291,6 +349,10 @@ export default function ExamQuestionsPage({ params }: PageProps) {
     }
 
     const handleGenerateQuestions = async () => {
+        if (sourceMode === 'single' && selectedLessonIds.length !== 1) {
+            setError('Single VTT mode requires selecting exactly one lesson transcript source.')
+            return
+        }
         if (selectedLessonIds.length === 0) {
             setError('Select at least one lesson knowledge context to generate questions.')
             return
@@ -363,6 +425,8 @@ export default function ExamQuestionsPage({ params }: PageProps) {
     }
 
     const totalPoints = questions.reduce((sum, q) => sum + q.points, 0)
+    const allSelected = questions.length > 0 && selectedQuestionIds.length === questions.length
+    const hasSelection = selectedQuestionIds.length > 0
 
     const formatQuestionAnswer = (question: ExamQuestion) => {
         if (question.type === 'MULTIPLE_CHOICE') {
@@ -433,6 +497,18 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
+                        <Button
+                            variant="destructive"
+                            disabled={!hasSelection || bulkDeleting}
+                            onClick={() => setConfirmBulkDeleteOpen(true)}
+                        >
+                            {bulkDeleting ? (
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            ) : (
+                                <Trash2 className="h-4 w-4 mr-2" />
+                            )}
+                            Delete Selected ({selectedQuestionIds.length})
+                        </Button>
                         <Button variant="outline" onClick={() => setShowGenerateDialog(true)}>
                             <Sparkles className="h-4 w-4 mr-2" />
                             Generate with AI
@@ -796,23 +872,55 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                             </div>
 
                             <div className="space-y-2">
+                                <Label>Source Mode</Label>
+                                <select
+                                    className="w-full h-10 px-3 border rounded-md bg-background"
+                                    value={sourceMode}
+                                    onChange={(e) => {
+                                        const nextMode = e.target.value as 'single' | 'multiple'
+                                        setSourceMode(nextMode)
+                                        if (nextMode === 'single') {
+                                            setSelectedLessonIds((prev) => (prev[0] ? [prev[0]] : []))
+                                        }
+                                    }}
+                                >
+                                    <option value="single">Single VTT (one lesson only)</option>
+                                    <option value="multiple">Multiple VTTs (combine lessons)</option>
+                                </select>
+                            </div>
+
+                            <div className="space-y-2">
                                 <div className="flex items-center justify-between gap-2">
-                                    <Label>Lesson knowledge contexts</Label>
+                                    <Label>Lesson VTT / knowledge contexts</Label>
                                     <div className="flex items-center gap-2">
                                         <Button
                                             type="button"
                                             size="sm"
                                             variant="outline"
                                             onClick={() =>
-                                                setSelectedLessonIds(
-                                                    knowledgeLessons
+                                                setSelectedLessonIds(() => {
+                                                    const readyIds = knowledgeLessons
                                                         .filter((l) => l.knowledgeStatus === 'READY')
                                                         .map((l) => l.lessonId)
-                                                )
+                                                    return sourceMode === 'single' ? (readyIds[0] ? [readyIds[0]] : []) : readyIds
+                                                })
                                             }
                                             disabled={knowledgeLessonsLoading || knowledgeLessons.length === 0}
                                         >
                                             Select READY
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => {
+                                                const firstReady = knowledgeLessons.find((l) => l.knowledgeStatus === 'READY')
+                                                setSelectedLessonIds(firstReady ? [firstReady.lessonId] : [])
+                                                setSourceMode('single')
+                                            }}
+                                            disabled={knowledgeLessonsLoading || knowledgeLessons.length === 0}
+                                        >
+                                            Single READY
                                         </Button>
                                         <Button
                                             type="button"
@@ -882,6 +990,9 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                                         onChange={(e) => {
                                                             const nextChecked = e.target.checked
                                                             setSelectedLessonIds((prev) => {
+                                                                if (sourceMode === 'single') {
+                                                                    return nextChecked ? [lesson.lessonId] : prev.filter((id) => id !== lesson.lessonId)
+                                                                }
                                                                 if (nextChecked) return Array.from(new Set([...prev, lesson.lessonId]))
                                                                 return prev.filter((id) => id !== lesson.lessonId)
                                                             })
@@ -894,6 +1005,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                                                     {lesson.chapterTitle} · {lesson.lessonTitle}
                                                                 </div>
                                                                 <div className="text-xs text-muted-foreground truncate">
+                                                                    VTT: {lesson.transcriptFilename || 'N/A'} ·{' '}
                                                                     Anchors: {lesson.anchorCount} · Transcript:{' '}
                                                                     {lesson.hasTranscript ? 'Yes' : 'No'}
                                                                     {lesson.processedAt ? ` · Updated: ${lesson.processedAt}` : null}
@@ -910,8 +1022,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
 
                                 {!knowledgeLessonsLoading && knowledgeLessons.length > 0 && (
                                     <div className="text-xs text-muted-foreground">
-                                        Selected lessons: {selectedLessonIds.length}. Lessons without READY knowledge may take longer (or fail) if
-                                        the VTT transcript/XML context is missing.
+                                        Selected lessons: {selectedLessonIds.length}. {sourceMode === 'single' ? 'Single VTT mode uses exactly one lesson source.' : 'Multiple mode combines selected VTT sources.'} Lessons without READY knowledge may take longer (or fail) if the VTT transcript/XML context is missing.
                                     </div>
                                 )}
                             </div>
@@ -941,8 +1052,23 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                 {/* Questions List */}
                 <Card>
                     <CardHeader>
-                        <CardTitle>Questions ({questions.length})</CardTitle>
-                        <CardDescription>Manage exam questions</CardDescription>
+                        <div className="flex items-center justify-between gap-2">
+                            <div>
+                                <CardTitle>Questions ({questions.length})</CardTitle>
+                                <CardDescription>Manage exam questions</CardDescription>
+                            </div>
+                            {questions.length > 0 && (
+                                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        className="h-4 w-4"
+                                        checked={allSelected}
+                                        onChange={(e) => handleSelectAllQuestions(e.target.checked)}
+                                    />
+                                    Select All
+                                </label>
+                            )}
+                        </div>
                     </CardHeader>
                     <CardContent>
                         {questions.length === 0 ? (
@@ -968,6 +1094,12 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                         key={question.id}
                                         className="flex items-start gap-4 p-4 border rounded-lg hover:bg-accent/50 transition-colors"
                                     >
+                                        <input
+                                            type="checkbox"
+                                            className="mt-1 h-4 w-4"
+                                            checked={selectedQuestionIds.includes(question.id)}
+                                            onChange={(e) => toggleQuestionSelection(question.id, e.target.checked)}
+                                        />
                                         <div className="flex items-center gap-2 text-muted-foreground">
                                             <GripVertical className="h-4 w-4" />
                                             <span className="font-mono text-sm">{index + 1}</span>
@@ -1075,6 +1207,15 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                 confirmLabel="Delete"
                 confirmVariant="destructive"
                 onConfirm={confirmDeleteQuestion}
+            />
+            <ConfirmDialog
+                open={confirmBulkDeleteOpen}
+                onOpenChange={setConfirmBulkDeleteOpen}
+                title="Delete selected questions?"
+                description={`This will delete ${selectedQuestionIds.length} question(s). This action cannot be undone.`}
+                confirmLabel="Delete All"
+                confirmVariant="destructive"
+                onConfirm={confirmBulkDeleteQuestions}
             />
         </DashboardLayout>
     )

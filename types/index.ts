@@ -425,6 +425,22 @@ export interface ExamInvitation {
     }
 }
 
+export interface CourseInvitation {
+    id: string
+    courseId: string
+    userId: string
+    status: 'ACTIVE' | 'COMPLETED' | 'DROPPED'
+    progress: number
+    enrolledAt: string | Date
+    lastAccessedAt?: string | Date | null
+    completedAt?: string | Date | null
+    user?: {
+        id: string
+        name: string
+        email: string
+    }
+}
+
 export interface ExamAnalytics {
     examId: string
     totalAttempts: number
