@@ -23,6 +23,8 @@ import {
     AlertTriangle,
     MessageSquare,
     X,
+    List,
+    LogOut,
     PanelLeftClose,
     PanelLeft,
 } from 'lucide-react'
@@ -51,6 +53,7 @@ export default function LessonPage({
     const [progressLoading, setProgressLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [progressError, setProgressError] = useState<string | null>(null)
+    const [userId, setUserId] = useState<string | null>(null)
 
     // New state for asset viewing
     const [selectedAsset, setSelectedAsset] = useState<CourseAsset | null>(null)
@@ -66,6 +69,20 @@ export default function LessonPage({
     const [aiPanelWidth, setAiPanelWidth] = useState(DEFAULT_AI_PANEL_WIDTH)
     const [isResizingAiPanel, setIsResizingAiPanel] = useState(false)
     const aiPanelResizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null)
+
+    useEffect(() => {
+        let cancelled = false
+        ApiClient.getMe()
+            .then(res => {
+                if (!cancelled) setUserId(res.data?.id ?? null)
+            })
+            .catch(() => {
+                if (!cancelled) setUserId(null)
+            })
+        return () => {
+            cancelled = true
+        }
+    }, [])
 
     useEffect(() => {
         try {
@@ -130,6 +147,12 @@ export default function LessonPage({
             try {
                 const response = await ApiClient.getCourse(courseId)
                 if (cancelled) return
+                if (response.data?.isEnrolled === false) {
+                    setCourse(response.data)
+                    setLesson(null)
+                    setError('You are not enrolled in this course')
+                    return
+                }
                 setCourse(response.data)
                 const locatedLesson = response.data.chapters
                     ?.flatMap(chapter => chapter.lessons)
@@ -162,6 +185,26 @@ export default function LessonPage({
             cancelled = true
         }
     }, [courseId, lessonId])
+
+    useEffect(() => {
+        if (!course || !lesson || course.isEnrolled === false) return
+        try {
+            const chapterTitle = course.chapters?.find(ch => ch.lessons.some(l => l.id === lesson.id))?.title
+            const payload = {
+                courseId: course.id,
+                courseTitle: course.title,
+                courseSlug: course.slug,
+                lessonId: lesson.id,
+                lessonTitle: lesson.title,
+                chapterTitle,
+                updatedAt: new Date().toISOString(),
+            }
+            const key = `cse:lastLesson:${userId ?? 'anon'}`
+            localStorage.setItem(key, JSON.stringify(payload))
+        } catch {
+            // no-op: localStorage may be unavailable
+        }
+    }, [course, lesson, userId])
 
     useEffect(() => {
         if (course?.aiAssistantEnabled === false) {
@@ -218,6 +261,18 @@ export default function LessonPage({
                 .map(([lessonId]) => lessonId)
         )
     }, [lessonProgressMap])
+
+    const totalLessons = useMemo(() => {
+        if (!course?.chapters) return 0
+        return course.chapters.reduce((sum, chapter) => sum + (chapter.lessons?.length ?? 0), 0)
+    }, [course?.chapters])
+
+    const progressPercent = useMemo(() => {
+        if (totalLessons > 0) {
+            return (completedLessons.size / totalLessons) * 100
+        }
+        return course?.progress ?? 0
+    }, [completedLessons.size, course?.progress, totalLessons])
 
     const findAdjacentLessons = useCallback(() => {
         if (!course?.chapters || !lesson) return { prevLesson: null, nextLesson: null }
@@ -359,7 +414,7 @@ export default function LessonPage({
             <div className="flex h-screen flex-col items-center justify-center space-y-4 text-center">
                 <AlertTriangle className="h-10 w-10 text-destructive" />
                 <p className="text-lg font-semibold">{error ?? 'Lesson not found'}</p>
-                <Button variant="outline" onClick={() => router.push(`/courses/${courseId}`)}>
+                <Button variant="outline" onClick={() => router.push(`/courses/${course?.slug ?? courseId}`)}>
                     Back to Course
                 </Button>
             </div>
@@ -382,6 +437,15 @@ export default function LessonPage({
 
     const handleMarkComplete = async () => {
         setLessonCompleted(true)
+        setLessonProgressMap(prev => ({
+            ...prev,
+            [lesson.id]: {
+                lessonId: lesson.id,
+                watchedDuration: Math.round(maxWatchedRef.current),
+                lastTimestamp: Math.round(currentTime),
+                completed: true,
+            },
+        }))
         await syncProgress(lesson.duration || currentTime, { force: true, completed: true })
     }
 
@@ -459,6 +523,12 @@ export default function LessonPage({
                                 <Home className="h-5 w-5" />
                             </Button>
                         </Link>
+                        <Link href={`/courses/${course?.slug ?? courseId}`}>
+                            <Button variant="ghost" size="sm">
+                                <List className="h-4 w-4 mr-2" />
+                                Course Home
+                            </Button>
+                        </Link>
                         <div className="hidden sm:block">
                             <h1 className="font-semibold text-sm line-clamp-1">{lesson.title}</h1>
                             <p className="text-xs text-muted-foreground line-clamp-1">{course.title}</p>
@@ -466,9 +536,21 @@ export default function LessonPage({
                     </div>
                     <div className="flex items-center space-x-3">
                         <div className="hidden md:flex items-center space-x-2">
-                            <Progress value={course.progress} className="w-24" />
-                            <span className="text-xs font-medium">{Math.round(course.progress)}%</span>
+                            <Progress value={progressPercent} className="w-24" />
+                            <span className="text-xs font-medium">{Math.round(progressPercent)}%</span>
                         </div>
+
+                        {/* AI Chat toggle */}
+                        {course?.aiAssistantEnabled !== false && (
+                            <Button
+                                variant={showAIChat ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => setShowAIChat(!showAIChat)}
+                            >
+                                <MessageSquare className="h-4 w-4" />
+                                <span className="hidden sm:inline ml-1">AI Assistant</span>
+                            </Button>
+                        )}
 
                         {/* Lesson completion status */}
                         {lessonCompleted ? (
@@ -483,17 +565,10 @@ export default function LessonPage({
                             </Button>
                         )}
 
-                        {/* AI Chat toggle */}
-                        {course?.aiAssistantEnabled !== false && (
-                            <Button
-                                variant={showAIChat ? "default" : "outline"}
-                                size="sm"
-                                onClick={() => setShowAIChat(!showAIChat)}
-                            >
-                                <MessageSquare className="h-4 w-4" />
-                                <span className="hidden sm:inline ml-1">AI Assistant</span>
-                            </Button>
-                        )}
+                        <Button variant="outline" size="sm" onClick={() => ApiClient.logout()}>
+                            <LogOut className="h-4 w-4 mr-1" />
+                            <span className="hidden sm:inline">Logout</span>
+                        </Button>
                     </div>
                 </div>
             </div>
@@ -528,6 +603,30 @@ export default function LessonPage({
                                 </Alert>
                             )}
 
+                            {/* Navigation */}
+                            <div className="flex items-center justify-between">
+                                {prevLesson ? (
+                                    <Link href={`/learn/${courseId}/${prevLesson.id}`}>
+                                        <Button variant="outline" size="sm">
+                                            <ChevronLeft className="h-4 w-4 mr-1" />
+                                            <span className="hidden sm:inline">Previous</span>
+                                        </Button>
+                                    </Link>
+                                ) : (
+                                    <span />
+                                )}
+                                {nextLesson ? (
+                                    <Link href={`/learn/${courseId}/${nextLesson.id}`}>
+                                        <Button variant="outline" size="sm">
+                                            <span className="hidden sm:inline">Next</span>
+                                            <ChevronRight className="h-4 w-4 ml-1" />
+                                        </Button>
+                                    </Link>
+                                ) : (
+                                    <span />
+                                )}
+                            </div>
+
                             {/* Main Content (Video/Asset Viewer) */}
                             <div className="rounded-lg overflow-hidden">
                                 {renderMainContent()}
@@ -560,29 +659,6 @@ export default function LessonPage({
                                 )}
                             </div>
 
-                            {/* Navigation */}
-                            <div className="flex items-center justify-between pt-4 border-t">
-                                {prevLesson ? (
-                                    <Link href={`/learn/${courseId}/${prevLesson.id}`}>
-                                        <Button variant="outline" size="sm">
-                                            <ChevronLeft className="h-4 w-4 mr-1" />
-                                            <span className="hidden sm:inline">Previous</span>
-                                        </Button>
-                                    </Link>
-                                ) : (
-                                    <span />
-                                )}
-                                {nextLesson ? (
-                                    <Link href={`/learn/${courseId}/${nextLesson.id}`}>
-                                        <Button variant="outline" size="sm">
-                                            <span className="hidden sm:inline">Next</span>
-                                            <ChevronRight className="h-4 w-4 ml-1" />
-                                        </Button>
-                                    </Link>
-                                ) : (
-                                    <span />
-                                )}
-                            </div>
                         </div>
                     </div>
                 </div>

@@ -1090,6 +1090,7 @@ const handleDeleteLessonAsset = async (assetId: string) => {
         instructors.find(instr => instr.id === form.instructorId)?.name ||
         course?.instructor?.name ||
         'Unassigned'
+    const currentStatus = course?.status || form.status
     const displayTags =
         course?.tags ??
         form.tags
@@ -1146,55 +1147,53 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                             )}
                         </div>
                     </div>
-                    <div
-                        className="flex w-full flex-wrap items-center gap-3 rounded-lg border border-primary/20 border-b border-solid bg-primary/5 px-3 py-2"
-                        style={{ marginTop: 8, marginBottom: 8 }}
-                    >
-                        <div className="flex items-center gap-2">
-                            <p className="text-sm uppercase tracking-wider text-primary font-semibold">Course status</p>
-                            <p className="text-xs text-muted-foreground">Control visibility</p>
-                        </div>
-                        <div className="flex flex-1 items-center justify-between gap-3">
-                            <Select
-                                value={form.status}
-                                onValueChange={(value) => handleChange('status', value)}
-                            >
-                                <SelectTrigger className="w-32">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="DRAFT">Draft</SelectItem>
-                                    <SelectItem value="PUBLISHED">Published</SelectItem>
-                                    <SelectItem value="ARCHIVED">Archived</SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <Button
-                                disabled={submitting}
-                                onClick={async () => {
-                                    const prev = course?.status || form.status
-                                    const payloadStatus = form.status
-                                    const saved = await saveCourseInfo({ silent: false, validateStep: 'all' })
-                                    if (saved) {
-                                        if (payloadStatus === 'PUBLISHED') {
-                                            setStatusDialogMessage('Course published')
-                                        } else if (payloadStatus === 'DRAFT') {
-                                            setStatusDialogMessage('Course set to Draft')
-                                        } else if (payloadStatus === 'ARCHIVED') {
-                                            setStatusDialogMessage('Course archived')
+                    <Card className="border-primary/20 bg-primary/5">
+                        <CardContent className="flex flex-wrap items-center gap-3 py-3">
+                            <div className="flex items-center gap-2">
+                                <p className="text-sm uppercase tracking-wider text-primary font-semibold">Course status</p>
+                                <p className="text-xs text-muted-foreground">Control visibility</p>
+                            </div>
+                            <div className="flex flex-1 items-center justify-between gap-3">
+                                <Select
+                                    value={form.status}
+                                    onValueChange={(value) => handleChange('status', value)}
+                                >
+                                    <SelectTrigger className="w-32">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="DRAFT" disabled={currentStatus === 'DRAFT'}>Draft</SelectItem>
+                                        <SelectItem value="PUBLISHED" disabled={currentStatus === 'PUBLISHED'}>Published</SelectItem>
+                                        <SelectItem value="ARCHIVED" disabled={currentStatus === 'ARCHIVED'}>Archived</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <Button
+                                    disabled={submitting}
+                                    onClick={async () => {
+                                        const prev = course?.status || form.status
+                                        const payloadStatus = form.status
+                                        const saved = await saveCourseInfo({ silent: false, validateStep: 'all' })
+                                        if (saved) {
+                                            if (payloadStatus === 'PUBLISHED') {
+                                                setStatusDialogMessage('Course published')
+                                            } else if (payloadStatus === 'DRAFT') {
+                                                setStatusDialogMessage('Course set to Draft')
+                                            } else if (payloadStatus === 'ARCHIVED') {
+                                                setStatusDialogMessage('Course archived')
+                                            }
+                                            setStatusDialogFrom(prev)
+                                            setStatusDialogTo(payloadStatus)
+                                            setStatusDialogOpen(true)
+                                        } else {
+                                            handleChange('status', prev)
                                         }
-                                        setStatusDialogFrom(prev)
-                                        setStatusDialogTo(payloadStatus)
-                                        setStatusDialogOpen(true)
-                                    } else {
-                                        handleChange('status', prev)
-                                    }
-                                }}
-                            >
-                                {submitting ? 'Saving…' : 'Apply status'}
-                            </Button>
-                        </div>
-                    </div>
-                    <div className="h-px w-full bg-border" />
+                                    }}
+                                >
+                                    {submitting ? 'Saving…' : 'Apply status'}
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
                 </div>
                 {(error) && (
                     <div className="space-y-3">

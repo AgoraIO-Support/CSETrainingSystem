@@ -17,6 +17,16 @@ export default function HomePage() {
     const [courses, setCourses] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
     const [redirecting, setRedirecting] = useState(false)
+    const [continueLoading, setContinueLoading] = useState(false)
+    const [continueCard, setContinueCard] = useState<null | {
+        courseId: string
+        courseTitle: string
+        courseSlug?: string
+        lessonId: string
+        lessonTitle: string
+        chapterTitle?: string
+        nextLesson?: { id: string; title: string; chapterTitle?: string }
+    }>(null)
 
     useEffect(() => {
         const fetchData = async () => {
@@ -42,6 +52,81 @@ export default function HomePage() {
 
         fetchData()
     }, [router])
+
+    useEffect(() => {
+        if (!user) return
+        const stored = (() => {
+            try {
+                const key = `cse:lastLesson:${user?.id ?? 'anon'}`
+                return localStorage.getItem(key)
+            } catch {
+                return null
+            }
+        })()
+        if (!stored) return
+        let parsed: any = null
+        try {
+            parsed = JSON.parse(stored)
+        } catch {
+            return
+        }
+        if (!parsed?.courseId || !parsed?.lessonId) return
+
+        const loadContinueCard = async () => {
+            setContinueLoading(true)
+            try {
+                const courseRes = await ApiClient.getCourse(parsed.courseId)
+                const course = courseRes.data
+                if (course?.isEnrolled === false) {
+                    setContinueCard(null)
+                    return
+                }
+                const chapters = course.chapters || []
+                let nextLesson: { id: string; title: string; chapterTitle?: string } | undefined
+
+                for (let c = 0; c < chapters.length; c++) {
+                    const lessons = chapters[c].lessons || []
+                    for (let l = 0; l < lessons.length; l++) {
+                        if (lessons[l].id === parsed.lessonId) {
+                            if (l < lessons.length - 1) {
+                                nextLesson = {
+                                    id: lessons[l + 1].id,
+                                    title: lessons[l + 1].title,
+                                    chapterTitle: chapters[c].title,
+                                }
+                            } else if (c < chapters.length - 1) {
+                                const firstNext = chapters[c + 1].lessons?.[0]
+                                if (firstNext) {
+                                    nextLesson = {
+                                        id: firstNext.id,
+                                        title: firstNext.title,
+                                        chapterTitle: chapters[c + 1].title,
+                                    }
+                                }
+                            }
+                            break
+                        }
+                    }
+                }
+
+                setContinueCard({
+                    courseId: course.id,
+                    courseTitle: course.title,
+                    courseSlug: course.slug,
+                    lessonId: parsed.lessonId,
+                    lessonTitle: parsed.lessonTitle || 'Last lesson',
+                    chapterTitle: parsed.chapterTitle,
+                    nextLesson,
+                })
+            } catch (error) {
+                console.error('Failed to load continue card:', error)
+            } finally {
+                setContinueLoading(false)
+            }
+        }
+
+        loadContinueCard()
+    }, [user])
 
     if (loading || redirecting) {
         return (
@@ -70,6 +155,73 @@ export default function HomePage() {
                         Continue your learning journey and master new skills
                     </p>
                 </div>
+
+                {/* Continue Learning */}
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                        <div>
+                            <CardTitle className="text-lg">Continue Learning</CardTitle>
+                            <CardDescription>Pick up where you left off</CardDescription>
+                        </div>
+                        {continueLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                        {continueCard ? (
+                            <>
+                                <div className="space-y-1">
+                                    <p className="text-sm text-muted-foreground">Last watched</p>
+                                    <p className="font-semibold">{continueCard.lessonTitle}</p>
+                                    {continueCard.chapterTitle && (
+                                        <p className="text-xs text-muted-foreground">
+                                            {continueCard.courseTitle} · {continueCard.chapterTitle}
+                                        </p>
+                                    )}
+                                </div>
+                                {continueCard.nextLesson ? (
+                                    <div className="space-y-1">
+                                        <p className="text-sm text-muted-foreground">Next lesson</p>
+                                        <p className="font-semibold">{continueCard.nextLesson.title}</p>
+                                        {continueCard.nextLesson.chapterTitle && (
+                                            <p className="text-xs text-muted-foreground">
+                                                {continueCard.nextLesson.chapterTitle}
+                                            </p>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-muted-foreground">
+                                        You’re at the end of this course.
+                                    </p>
+                                )}
+                                <div className="flex flex-wrap gap-2">
+                                    <Link href={`/learn/${continueCard.courseId}/${continueCard.lessonId}`}>
+                                        <Button size="sm">
+                                            Continue lesson
+                                        </Button>
+                                    </Link>
+                                    <Link href={`/courses/${continueCard.courseSlug ?? continueCard.courseId}`}>
+                                        <Button size="sm" variant="outline">
+                                            Course home
+                                        </Button>
+                                    </Link>
+                                    {continueCard.nextLesson && (
+                                        <Link href={`/learn/${continueCard.courseId}/${continueCard.nextLesson.id}`}>
+                                            <Button size="sm" variant="ghost">
+                                                Go to next lesson
+                                            </Button>
+                                        </Link>
+                                    )}
+                                </div>
+                            </>
+                        ) : (
+                            <div className="flex items-center justify-between flex-wrap gap-3">
+                                <p className="text-sm text-muted-foreground">No recent lesson found.</p>
+                                <Link href="/courses">
+                                    <Button size="sm" variant="outline">Browse courses</Button>
+                                </Link>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
 
                 {/* Stats Overview */}
                 <div className="grid gap-4 md:grid-cols-3">
