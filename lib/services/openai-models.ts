@@ -97,3 +97,114 @@ export function extractChatCompletionsText(data: any): ExtractedChatCompletionTe
 
     return { text: null, source: 'missing' }
 }
+
+export type ChatModelPricing = {
+    inputPer1M: number
+    cachedInputPer1M: number
+    outputPer1M: number
+}
+
+export type ChatUsageForCost = {
+    promptTokens?: number
+    completionTokens?: number
+    cachedTokens?: number
+}
+
+const DEFAULT_CHAT_PRICING: Record<string, ChatModelPricing> = {
+    // Keep only broadly stable defaults; override with CSE_OPENAI_CHAT_PRICING_JSON when needed.
+    'gpt-4o': { inputPer1M: 2.5, cachedInputPer1M: 1.25, outputPer1M: 10 },
+    'gpt-4o-mini': { inputPer1M: 0.15, cachedInputPer1M: 0.075, outputPer1M: 0.6 },
+}
+
+let cachedParsedPricingEnvRaw: string | null = null
+let cachedParsedPricingEnvValue: Record<string, ChatModelPricing> | null = null
+
+function parsePricingEnv(): Record<string, ChatModelPricing> {
+    const raw = (process.env.CSE_OPENAI_CHAT_PRICING_JSON || '').trim()
+    if (!raw) return {}
+    if (cachedParsedPricingEnvRaw === raw && cachedParsedPricingEnvValue) {
+        return cachedParsedPricingEnvValue
+    }
+
+    try {
+        const parsed = JSON.parse(raw)
+        const normalized: Record<string, ChatModelPricing> = {}
+        if (parsed && typeof parsed === 'object') {
+            for (const [k, v] of Object.entries(parsed as Record<string, any>)) {
+                const inputPer1M = Number(v?.inputPer1M)
+                const cachedInputPer1M = Number(v?.cachedInputPer1M)
+                const outputPer1M = Number(v?.outputPer1M)
+                if (
+                    Number.isFinite(inputPer1M) &&
+                    Number.isFinite(cachedInputPer1M) &&
+                    Number.isFinite(outputPer1M) &&
+                    inputPer1M >= 0 &&
+                    cachedInputPer1M >= 0 &&
+                    outputPer1M >= 0
+                ) {
+                    normalized[k.toLowerCase()] = { inputPer1M, cachedInputPer1M, outputPer1M }
+                }
+            }
+        }
+        cachedParsedPricingEnvRaw = raw
+        cachedParsedPricingEnvValue = normalized
+        return normalized
+    } catch {
+        return {}
+    }
+}
+
+export function resolveChatModelPricing(model: string): ChatModelPricing | null {
+    const normalizedModel = model.trim().toLowerCase()
+    const envPricing = parsePricingEnv()
+    const pricingTable = { ...DEFAULT_CHAT_PRICING, ...envPricing }
+
+    if (pricingTable[normalizedModel]) return pricingTable[normalizedModel]
+
+    // Match versioned model names (e.g. gpt-5.2-2025-12-11).
+    let bestMatch: string | null = null
+    for (const key of Object.keys(pricingTable)) {
+        if (normalizedModel === key || normalizedModel.startsWith(`${key}-`)) {
+            if (!bestMatch || key.length > bestMatch.length) bestMatch = key
+        }
+    }
+    return bestMatch ? pricingTable[bestMatch] : null
+}
+
+export function estimateChatCompletionsCostUsd(
+    model: string,
+    usage: ChatUsageForCost
+): {
+    estimatedCostUsd: number | null
+    pricingApplied: ChatModelPricing | null
+    uncachedPromptTokens: number
+    cachedPromptTokens: number
+} {
+    const promptTokens = Number.isFinite(usage.promptTokens) ? Math.max(0, Number(usage.promptTokens)) : 0
+    const completionTokens = Number.isFinite(usage.completionTokens) ? Math.max(0, Number(usage.completionTokens)) : 0
+    const cachedPromptTokens = Number.isFinite(usage.cachedTokens)
+        ? Math.min(promptTokens, Math.max(0, Number(usage.cachedTokens)))
+        : 0
+    const uncachedPromptTokens = Math.max(0, promptTokens - cachedPromptTokens)
+
+    const pricing = resolveChatModelPricing(model)
+    if (!pricing) {
+        return {
+            estimatedCostUsd: null,
+            pricingApplied: null,
+            uncachedPromptTokens,
+            cachedPromptTokens,
+        }
+    }
+
+    const inputCost = (uncachedPromptTokens / 1_000_000) * pricing.inputPer1M
+    const cachedInputCost = (cachedPromptTokens / 1_000_000) * pricing.cachedInputPer1M
+    const outputCost = (completionTokens / 1_000_000) * pricing.outputPer1M
+
+    return {
+        estimatedCostUsd: inputCost + cachedInputCost + outputCost,
+        pricingApplied: pricing,
+        uncachedPromptTokens,
+        cachedPromptTokens,
+    }
+}

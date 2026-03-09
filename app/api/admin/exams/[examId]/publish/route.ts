@@ -25,8 +25,10 @@ export const POST = withAdminAuth(async (req: NextRequest, _user, context: Route
 
         const exam = await prisma.exam.findUnique({
             where: { id: examId },
-            include: {
-                _count: { select: { questions: true } },
+            select: {
+                id: true,
+                status: true,
+                totalScore: true,
             },
         })
 
@@ -50,7 +52,10 @@ export const POST = withAdminAuth(async (req: NextRequest, _user, context: Route
             )
         }
 
-        if (exam._count.questions === 0) {
+        const activeQuestionCount = await prisma.examQuestion.count({
+            where: { examId, archivedAt: null },
+        })
+        if (activeQuestionCount === 0) {
             return NextResponse.json(
                 {
                     success: false,
@@ -64,7 +69,7 @@ export const POST = withAdminAuth(async (req: NextRequest, _user, context: Route
         }
 
         const sum = await prisma.examQuestion.aggregate({
-            where: { examId },
+            where: { examId, archivedAt: null },
             _sum: { points: true },
         })
         const totalPoints = sum._sum.points ?? 0

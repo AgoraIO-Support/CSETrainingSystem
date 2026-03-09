@@ -1253,6 +1253,7 @@ model Exam {
 
   // AI Generation Config
   aiGenerationConfig Json? // Stores generation parameters
+  version Int @default(1)
 
   // Metadata
   createdById  String
@@ -1281,6 +1282,7 @@ model Exam {
   @@index([courseId])
   @@index([examType])
   @@index([createdById])
+  @@index([version])
   @@map("exams")
 }
 
@@ -1319,6 +1321,7 @@ model ExamQuestion {
   // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  archivedAt DateTime?
 
   // Relations
   answers ExamAnswer[]
@@ -1327,6 +1330,7 @@ model ExamQuestion {
   @@index([examId])
   @@index([type])
   @@index([order])
+  @@index([archivedAt])
   @@map("exam_questions")
 }
 
@@ -1355,6 +1359,7 @@ model ExamAttempt {
 
   attemptNumber Int               @default(1)
   status        ExamAttemptStatus @default(IN_PROGRESS)
+  examVersion   Int               @default(1)
 
   // Timing
   startedAt   DateTime  @default(now())
@@ -1382,12 +1387,48 @@ model ExamAttempt {
   updatedAt DateTime @updatedAt
 
   answers ExamAnswer[]
+  questionSnapshots ExamAttemptQuestionSnapshot[]
   certificates Certificate[]
 
   @@index([userId])
   @@index([examId])
   @@index([status])
+  @@index([examVersion])
   @@map("exam_attempts")
+}
+
+model ExamAttemptQuestionSnapshot {
+  id String @id @default(uuid())
+
+  attemptId String
+  attempt   ExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  examId String
+  examVersion Int
+  questionId String
+
+  type       ExamQuestionType
+  difficulty DifficultyLevel  @default(MEDIUM)
+
+  question      String  @db.Text
+  options       Json?
+  correctAnswer String? @db.Text
+  rubric       String? @db.Text
+  sampleAnswer String? @db.Text
+  maxWords     Int?
+  points      Int     @default(10)
+  explanation String? @db.Text
+  topic String?
+  tags  String[] @default([])
+
+  order Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@unique([attemptId, questionId])
+  @@index([attemptId, order])
+  @@index([examId, examVersion])
+  @@map("exam_attempt_question_snapshots")
 }
 
 // Individual answer to a question

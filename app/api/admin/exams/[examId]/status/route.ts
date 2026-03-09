@@ -58,13 +58,14 @@ export const POST = withAdminAuth(
           );
         }
 
-        if (error.message === 'INVALID_STATUS_TRANSITION') {
+        if (error.message.startsWith('INVALID_STATUS_TRANSITION')) {
           return NextResponse.json(
             {
               success: false,
               error: {
                 code: 'EXAM_005',
                 message: 'Invalid status transition',
+                details: error.message,
               },
             },
             { status: 400 }
@@ -103,7 +104,7 @@ export const POST = withAdminAuth(
               success: false,
               error: {
                 code: 'EXAM_010',
-                message: 'Cannot approve exam: total question points must match the exam total score.',
+                message: 'Cannot change status: total question points must match the exam total score.',
               },
             },
             { status: 400 }

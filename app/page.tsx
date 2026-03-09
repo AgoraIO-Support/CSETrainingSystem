@@ -15,6 +15,7 @@ export default function HomePage() {
     const router = useRouter()
     const [user, setUser] = useState<any>(null)
     const [courses, setCourses] = useState<any[]>([])
+    const [enrolledCourseCount, setEnrolledCourseCount] = useState(0)
     const [loading, setLoading] = useState(true)
     const [redirecting, setRedirecting] = useState(false)
     const [continueLoading, setContinueLoading] = useState(false)
@@ -42,6 +43,9 @@ export default function HomePage() {
                     router.replace('/admin')
                     return
                 }
+
+                const progressOverviewRes = await ApiClient.getProgressOverview()
+                setEnrolledCourseCount(progressOverviewRes.data.stats.totalEnrolled || 0)
             } catch (error) {
                 console.error('Failed to fetch data:', error)
                 router.push('/login')
@@ -138,11 +142,6 @@ export default function HomePage() {
 
     if (!user) return null
 
-    // Filter courses (mock logic for now since backend doesn't return enrollment status fully yet)
-    // In a real app, the backend would return "enrolledCourses" specifically
-    const enrolledCourses = courses.slice(0, 2)
-    const recommendedCourses = courses.slice(2, 5)
-
     return (
         <DashboardLayout initialUser={user}>
             <div className="space-y-6">
@@ -231,7 +230,7 @@ export default function HomePage() {
                             <BookOpen className="h-4 w-4 text-muted-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">{enrolledCourses.length}</div>
+                            <div className="text-2xl font-bold">{enrolledCourseCount}</div>
                             <p className="text-xs text-muted-foreground mt-1">
                                 Active courses
                             </p>

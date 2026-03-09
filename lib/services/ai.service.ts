@@ -5,7 +5,11 @@ import { log, timeAsync } from '@/lib/logger'
 import { ChunkingService } from './_legacy_chunking.service'
 import { AIPromptResolverService } from '@/lib/services/ai-prompt-resolver.service'
 import { AIPromptUseCase } from '@prisma/client'
-import { extractChatCompletionsText, getChatCompletionsTokenBudget } from '@/lib/services/openai-models'
+import {
+    estimateChatCompletionsCostUsd,
+    extractChatCompletionsText,
+    getChatCompletionsTokenBudget,
+} from '@/lib/services/openai-models'
 
 interface AIMessage {
     role: 'user' | 'assistant'
@@ -485,6 +489,11 @@ The "quiz" field is optional - only include when testing understanding would be 
         context?: any
     }) {
         // Get conversation with context
+        const historyLimitRaw = Number.parseInt(process.env.AI_ASSISTANT_HISTORY_MESSAGES || '10', 10)
+        const historyLimit = Number.isFinite(historyLimitRaw)
+            ? Math.min(30, Math.max(0, historyLimitRaw))
+            : 10
+
         const conversation = await prisma.aIConversation.findUnique({
             where: { id: params.conversationId },
             include: {
@@ -495,7 +504,7 @@ The "quiz" field is optional - only include when testing understanding would be 
                 },
                 messages: {
                     orderBy: { createdAt: 'desc' },
-                    take: 10, // Last 10 messages for context
+                    take: historyLimit, // Recent messages for context
                 },
             },
         })
@@ -564,18 +573,20 @@ The "quiz" field is optional - only include when testing understanding would be 
             courseId: conversation.courseId ?? null,
         })
 
-        const videoTimestampLine =
-            params.videoTimestamp !== undefined ? `\nCurrent video position: ${Math.floor(params.videoTimestamp)}s` : ''
-
         const renderedInstructions = AIPromptResolverService.render(promptConfig.systemPrompt, {
             courseTitle: fullContext.courseInfo.courseName,
             chapterTitle: fullContext.courseInfo.chapterTitle,
             lessonTitle: fullContext.courseInfo.lessonTitle,
-            videoTimestampLine,
+            // Keep system prompt deterministic so OpenAI prompt caching can reuse the XML prefix.
+            videoTimestampLine: '',
         })
 
         const lessonContext = `${fullContext.xml}\n\n${renderedInstructions}`
         const contextMode = 'full' as const
+        const modelUserMessage =
+            params.videoTimestamp !== undefined
+                ? `${params.message}\n\n[Current video position: ${Math.floor(params.videoTimestamp)}s]`
+                : params.message
 
         log('AIService', 'info', 'Using knowledge context assistant', {
             lessonId: conversation.lessonId,
@@ -583,6 +594,7 @@ The "quiz" field is optional - only include when testing understanding would be 
             templateName: promptConfig.templateName ?? null,
             source: promptConfig.source,
             contextLength: lessonContext.length,
+            historyLimit,
         })
 
         // Build conversation history
@@ -603,7 +615,7 @@ The "quiz" field is optional - only include when testing understanding would be 
         }
 
         const aiResponse = await this.callAIModel({
-            userMessage: params.message,
+            userMessage: modelUserMessage,
             history: messageHistory,
             context: lessonContext,
             config: aiConfig,
@@ -754,11 +766,24 @@ The "quiz" field is optional - only include when testing understanding would be 
                 if (logOpenAiContent) {
                     log('OpenAI', 'debug', 'chat.completions raw response', { response: data })
                 }
+                const usageModel = data.model || config.model
+                const usagePromptTokens = data.usage?.prompt_tokens
+                const usageCompletionTokens = data.usage?.completion_tokens
+                const usageCachedTokens = data.usage?.prompt_tokens_details?.cached_tokens
+                const costEstimate = estimateChatCompletionsCostUsd(usageModel, {
+                    promptTokens: usagePromptTokens,
+                    completionTokens: usageCompletionTokens,
+                    cachedTokens: usageCachedTokens,
+                })
                 log('OpenAI', 'info', 'chat.completions usage', {
-                    model: data.model || config.model,
+                    model: usageModel,
                     totalTokens: data.usage?.total_tokens,
-                    promptTokens: data.usage?.prompt_tokens,
-                    completionTokens: data.usage?.completion_tokens,
+                    promptTokens: usagePromptTokens,
+                    completionTokens: usageCompletionTokens,
+                    cachedTokens: usageCachedTokens,
+                    uncachedPromptTokens: costEstimate.uncachedPromptTokens,
+                    estimatedCostUsd: costEstimate.estimatedCostUsd,
+                    pricingApplied: costEstimate.pricingApplied,
                 })
 
                 let extracted = extractChatCompletionsText(data)
@@ -790,11 +815,24 @@ The "quiz" field is optional - only include when testing understanding would be 
                         if (logOpenAiContent) {
                             log('OpenAI', 'debug', 'chat.completions retry raw response', { response: data })
                         }
+                        const retryUsageModel = data.model || config.model
+                        const retryUsagePromptTokens = data.usage?.prompt_tokens
+                        const retryUsageCompletionTokens = data.usage?.completion_tokens
+                        const retryUsageCachedTokens = data.usage?.prompt_tokens_details?.cached_tokens
+                        const retryCostEstimate = estimateChatCompletionsCostUsd(retryUsageModel, {
+                            promptTokens: retryUsagePromptTokens,
+                            completionTokens: retryUsageCompletionTokens,
+                            cachedTokens: retryUsageCachedTokens,
+                        })
                         log('OpenAI', 'info', 'chat.completions retry usage', {
-                            model: data.model || config.model,
+                            model: retryUsageModel,
                             totalTokens: data.usage?.total_tokens,
-                            promptTokens: data.usage?.prompt_tokens,
-                            completionTokens: data.usage?.completion_tokens,
+                            promptTokens: retryUsagePromptTokens,
+                            completionTokens: retryUsageCompletionTokens,
+                            cachedTokens: retryUsageCachedTokens,
+                            uncachedPromptTokens: retryCostEstimate.uncachedPromptTokens,
+                            estimatedCostUsd: retryCostEstimate.estimatedCostUsd,
+                            pricingApplied: retryCostEstimate.pricingApplied,
                         })
 
                         extracted = extractChatCompletionsText(data)

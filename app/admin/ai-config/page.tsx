@@ -800,7 +800,7 @@ export default function AdminAIConfigPage() {
                                             />
                                             <p className="text-xs text-muted-foreground">
                                                 List variable names used in the prompt (no braces). Example for AI assistant:{' '}
-                                                <span className="font-mono">courseTitle, chapterTitle, lessonTitle, videoTimestampLine</span>. Use in
+                                                <span className="font-mono">courseTitle, chapterTitle, lessonTitle</span>. Use in
                                                 prompt as <span className="font-mono">{'{{variable}}'}</span>.
                                             </p>
                                         </div>

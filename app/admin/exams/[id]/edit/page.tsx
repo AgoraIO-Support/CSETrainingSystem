@@ -132,7 +132,7 @@ export default function EditExamPage({ params }: PageProps) {
 
     useEffect(() => {
         if (!exam) return
-        if (exam.status !== 'PENDING_REVIEW') {
+        if (exam.status !== 'DRAFT' && exam.status !== 'PENDING_REVIEW') {
             setQuestionPointsSum(null)
             return
         }
@@ -298,8 +298,13 @@ export default function EditExamPage({ params }: PageProps) {
         )
     }
 
-    const isPublished = exam.status === 'PUBLISHED'
+    const canEditExam = exam.status === 'DRAFT'
     const canPublish = exam.status === 'APPROVED' && (exam._count?.questions ?? 0) > 0
+    const canSubmitForReview =
+        exam.status === 'DRAFT' &&
+        !questionPointsLoading &&
+        questionPointsSum != null &&
+        questionPointsSum === exam.totalScore
     const canApprove = exam.status === 'PENDING_REVIEW' && questionPointsSum === exam.totalScore
 
     return (
@@ -366,11 +371,23 @@ export default function EditExamPage({ params }: PageProps) {
                                 )}
                             </div>
                         )}
+                        {exam.status === 'DRAFT' && (
+                            <div className="mb-3 text-sm text-muted-foreground">
+                                Total question points:{' '}
+                                {questionPointsLoading ? 'Loading…' : questionPointsSum ?? '—'} / {exam.totalScore}
+                                {!questionPointsLoading && questionPointsSum != null && questionPointsSum !== exam.totalScore && (
+                                    <span className="ml-2 text-amber-600">
+                                        (Must match before submit for review)
+                                    </span>
+                                )}
+                            </div>
+                        )}
                         <div className="flex items-center gap-2">
                             {exam.status === 'DRAFT' && (
                                 <Button
                                     variant="outline"
                                     onClick={() => handleStatusChange('PENDING_REVIEW')}
+                                    disabled={!canSubmitForReview}
                                 >
                                     Submit for Review
                                 </Button>
@@ -401,20 +418,36 @@ export default function EditExamPage({ params }: PageProps) {
                                 </Button>
                             )}
                             {exam.status === 'PUBLISHED' && (
-                                <Button
-                                    variant="outline"
-                                    onClick={() => handleStatusChange('CLOSED')}
-                                >
-                                    Close Exam
-                                </Button>
+                                <>
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => handleStatusChange('DRAFT')}
+                                    >
+                                        Return to Draft
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => handleStatusChange('CLOSED')}
+                                    >
+                                        Close Exam
+                                    </Button>
+                                </>
                             )}
                             {exam.status === 'CLOSED' && (
-                                <Button
-                                    variant="outline"
-                                    onClick={() => handleStatusChange('PUBLISHED')}
-                                >
-                                    Reopen Exam
-                                </Button>
+                                <>
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => handleStatusChange('DRAFT')}
+                                    >
+                                        Return to Draft
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => handleStatusChange('PUBLISHED')}
+                                    >
+                                        Reopen Exam
+                                    </Button>
+                                </>
                             )}
                         </div>
                     </CardContent>
@@ -425,9 +458,9 @@ export default function EditExamPage({ params }: PageProps) {
                         <CardHeader>
                             <CardTitle>Basic Information</CardTitle>
                             <CardDescription>
-                                {isPublished
-                                    ? 'Some fields cannot be modified after publishing'
-                                    : 'Update the basic details for your exam'}
+                                {canEditExam
+                                    ? 'Update the basic details for your exam'
+                                    : 'This exam is read-only. Return to Draft to edit.'}
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
@@ -437,7 +470,7 @@ export default function EditExamPage({ params }: PageProps) {
                                     id="title"
                                     value={form.title}
                                     onChange={(e) => updateForm('title', e.target.value)}
-                                    disabled={isPublished}
+                                    disabled={!canEditExam}
                                     required
                                 />
                             </div>
@@ -448,7 +481,7 @@ export default function EditExamPage({ params }: PageProps) {
                                     id="description"
                                     value={form.description}
                                     onChange={(e) => updateForm('description', e.target.value)}
-                                    disabled={isPublished}
+                                    disabled={!canEditExam}
                                     rows={3}
                                 />
                             </div>
@@ -459,7 +492,7 @@ export default function EditExamPage({ params }: PageProps) {
                                     id="instructions"
                                     value={form.instructions}
                                     onChange={(e) => updateForm('instructions', e.target.value)}
-                                    disabled={isPublished}
+                                    disabled={!canEditExam}
                                     rows={3}
                                 />
                             </div>
@@ -497,7 +530,7 @@ export default function EditExamPage({ params }: PageProps) {
                                         min={1}
                                         value={form.totalScore}
                                         onChange={(e) => updateForm('totalScore', e.target.value)}
-                                        disabled={isPublished}
+                                        disabled={!canEditExam}
                                         required
                                     />
                                 </div>
@@ -510,7 +543,7 @@ export default function EditExamPage({ params }: PageProps) {
                                         min={0}
                                         value={form.passingScore}
                                         onChange={(e) => updateForm('passingScore', e.target.value)}
-                                        disabled={isPublished}
+                                        disabled={!canEditExam}
                                         required
                                     />
                                 </div>
@@ -523,7 +556,7 @@ export default function EditExamPage({ params }: PageProps) {
                                         min={1}
                                         value={form.maxAttempts}
                                         onChange={(e) => updateForm('maxAttempts', e.target.value)}
-                                        disabled={isPublished}
+                                        disabled={!canEditExam}
                                         required
                                     />
                                 </div>
@@ -633,7 +666,7 @@ export default function EditExamPage({ params }: PageProps) {
                     <Card>
                         <CardHeader>
                             <CardTitle>Time & Availability</CardTitle>
-                            <CardDescription>These can be modified even after publishing</CardDescription>
+                            <CardDescription>Availability settings for this exam</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="grid gap-4 md:grid-cols-3">
@@ -646,6 +679,7 @@ export default function EditExamPage({ params }: PageProps) {
                                         value={form.timeLimit}
                                         onChange={(e) => updateForm('timeLimit', e.target.value)}
                                         placeholder="No limit"
+                                        disabled={!canEditExam}
                                     />
                                 </div>
 
@@ -656,6 +690,7 @@ export default function EditExamPage({ params }: PageProps) {
                                         type="datetime-local"
                                         value={form.availableFrom}
                                         onChange={(e) => updateForm('availableFrom', e.target.value)}
+                                        disabled={!canEditExam}
                                     />
                                 </div>
 
@@ -666,6 +701,7 @@ export default function EditExamPage({ params }: PageProps) {
                                         type="datetime-local"
                                         value={form.deadline}
                                         onChange={(e) => updateForm('deadline', e.target.value)}
+                                        disabled={!canEditExam}
                                     />
                                 </div>
                             </div>
@@ -688,7 +724,7 @@ export default function EditExamPage({ params }: PageProps) {
                                 <Switch
                                     checked={form.randomizeQuestions}
                                     onCheckedChange={(checked: boolean) => updateForm('randomizeQuestions', checked)}
-                                    disabled={isPublished}
+                                    disabled={!canEditExam}
                                 />
                             </div>
 
@@ -702,7 +738,7 @@ export default function EditExamPage({ params }: PageProps) {
                                 <Switch
                                     checked={form.randomizeOptions}
                                     onCheckedChange={(checked: boolean) => updateForm('randomizeOptions', checked)}
-                                    disabled={isPublished}
+                                    disabled={!canEditExam}
                                 />
                             </div>
 
@@ -716,6 +752,7 @@ export default function EditExamPage({ params }: PageProps) {
                                 <Switch
                                     checked={form.showResultsImmediately}
                                     onCheckedChange={(checked: boolean) => updateForm('showResultsImmediately', checked)}
+                                    disabled={!canEditExam}
                                 />
                             </div>
 
@@ -729,6 +766,7 @@ export default function EditExamPage({ params }: PageProps) {
                                 <Switch
                                     checked={form.allowReview}
                                     onCheckedChange={(checked: boolean) => updateForm('allowReview', checked)}
+                                    disabled={!canEditExam}
                                 />
                             </div>
                         </CardContent>
@@ -740,7 +778,7 @@ export default function EditExamPage({ params }: PageProps) {
                                 Cancel
                             </Button>
                         </Link>
-                        <Button type="submit" disabled={saving}>
+                        <Button type="submit" disabled={saving || !canEditExam}>
                             {saving ? (
                                 <>
                                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />

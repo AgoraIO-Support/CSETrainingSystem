@@ -258,10 +258,14 @@ export default function TakeExamPage({ params }: PageProps) {
 
     const currentQuestion = attemptData.questions[currentQuestionIndex]
     const currentAnswer = answers[currentQuestion.id]
-    const isAnswered = (value?: AnswerState) =>
-        Boolean(value?.answer) ||
-        value?.selectedOption !== undefined ||
-        value?.recordingStatus === 'UPLOADED'
+    const isAnswered = (value?: AnswerState) => {
+        const hasTextAnswer = typeof value?.answer === 'string' && value.answer.trim().length > 0
+        const hasSingleChoice = typeof value?.selectedOption === 'number'
+        const hasMultipleChoice = Array.isArray(value?.selectedOptions) && value.selectedOptions.length > 0
+        const hasExerciseUpload = value?.recordingStatus === 'UPLOADED'
+
+        return hasTextAnswer || hasSingleChoice || hasMultipleChoice || hasExerciseUpload
+    }
 
     const answeredCount = Object.keys(answers).filter(qId => isAnswered(answers[qId])).length
     const progress = (answeredCount / attemptData.totalQuestions) * 100

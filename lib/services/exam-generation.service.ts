@@ -57,6 +57,21 @@ export interface GenerationResult {
   warnings: string[];
 }
 
+type CoverageTopic = {
+  title: string;
+  anchorType?: string;
+  timestamp?: string;
+};
+
+type QuestionCoverageHints = {
+  questionIndex: number;
+  totalQuestions: number;
+  preferredTopics: string[];
+  alreadyCoveredTopics: string[];
+  avoidTopics: string[];
+  recentQuestionStems: string[];
+};
+
 export class ExamGenerationService {
   private openai: OpenAI;
   private knowledgeService: KnowledgeContextService;
@@ -184,10 +199,30 @@ export class ExamGenerationService {
     // Build a stable knowledge prefix so repeated calls benefit from OpenAI context caching.
     const knowledgePrefix = await this.buildKnowledgePrefixOrThrow(exam, config.lessonIds);
 
-    for (const job of questionJobs) {
+    const coverageTopics = this.extractCoverageTopicsFromKnowledgePrefix(knowledgePrefix);
+    const coveredTopicKeys = new Set<string>();
+    const coveredTopicTitles: string[] = [];
+
+    for (let i = 0; i < questionJobs.length; i++) {
+      const job = questionJobs[i];
       const difficulty = config.difficulty === 'mixed'
         ? this.getRandomDifficulty()
         : config.difficulty;
+
+      const preferredTopics = this.selectPreferredCoverageTopics(
+        coverageTopics,
+        coveredTopicKeys,
+        config.topics,
+        config.focusAreas
+      );
+      const coverageHints: QuestionCoverageHints = {
+        questionIndex: i + 1,
+        totalQuestions: questionJobs.length,
+        preferredTopics,
+        alreadyCoveredTopics: coveredTopicTitles.slice(-12),
+        avoidTopics: coveredTopicTitles.slice(-8),
+        recentQuestionStems: questions.slice(-4).map((q) => q.question),
+      };
 
       try {
         const result = await this.generateSingleQuestion(
@@ -196,11 +231,20 @@ export class ExamGenerationService {
           knowledgePrefix,
           config.topics,
           config.focusAreas,
-          promptConfig
+          promptConfig,
+          coverageHints
         );
 
         questions.push(result.question);
         totalTokensUsed += result.tokensUsed;
+
+        this.trackCoveredTopic(
+          coveredTopicKeys,
+          coveredTopicTitles,
+          coverageTopics,
+          result.question.topic,
+          preferredTopics[0]
+        );
 
         const created = await ExamService.addQuestion(examId, {
           type: job.type,
@@ -220,6 +264,14 @@ export class ExamGenerationService {
       } catch (error) {
         console.error(`Failed to generate ${job.key} question:`, error);
         warnings.push(`Failed to generate ${job.key} question ${job.index}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+
+        this.trackCoveredTopic(
+          coveredTopicKeys,
+          coveredTopicTitles,
+          coverageTopics,
+          undefined,
+          preferredTopics[0]
+        );
 
         // Fallback: generate a placeholder question so the request still yields output.
         const fallback = this.buildFallbackQuestion(job.type, difficulty);
@@ -516,10 +568,18 @@ export class ExamGenerationService {
     knowledgePrefix: string,
     topics?: string[],
     focusAreas?: string[],
-    promptConfig?: ResolvedAIPrompt
+    promptConfig?: ResolvedAIPrompt,
+    coverageHints?: QuestionCoverageHints
   ): Promise<{ question: GeneratedQuestion; tokensUsed: number; generationPrompt: string }> {
     const knowledgePrefixHash = createHash('sha256').update(knowledgePrefix).digest('hex');
-    const taskPrompt = this.buildGenerationTaskPrompt(type, difficulty, topics, focusAreas, knowledgePrefixHash);
+    const taskPrompt = this.buildGenerationTaskPrompt(
+      type,
+      difficulty,
+      topics,
+      focusAreas,
+      knowledgePrefixHash,
+      coverageHints
+    );
     const effectivePromptConfig =
       promptConfig ??
       (await AIPromptResolverService.resolve({
@@ -924,7 +984,8 @@ Output format: JSON object with the following structure based on question type.`
     difficulty: DifficultyLevel,
     topics?: string[],
     focusAreas?: string[],
-    knowledgePrefixHash?: string
+    knowledgePrefixHash?: string,
+    coverageHints?: QuestionCoverageHints
   ): string {
     const difficultyDesc = {
       [DifficultyLevel.EASY]: 'basic understanding, straightforward questions',
@@ -1005,6 +1066,18 @@ Output JSON:
 
     const topicStr = topics?.length ? `Focus on these topics: ${topics.join(', ')}\n` : '';
     const focusStr = focusAreas?.length ? `Emphasize these areas: ${focusAreas.join(', ')}\n` : '';
+    const coverageStr = coverageHints
+      ? `Coverage requirements (critical):
+- This is question ${coverageHints.questionIndex} of ${coverageHints.totalQuestions}
+- Preferred topic(s) for THIS question: ${coverageHints.preferredTopics.length ? coverageHints.preferredTopics.join(' | ') : 'Pick an important uncovered topic from the XML'}
+- Already covered topics: ${coverageHints.alreadyCoveredTopics.length ? coverageHints.alreadyCoveredTopics.join(' | ') : 'None yet'}
+- Avoid repeating these topics: ${coverageHints.avoidTopics.length ? coverageHints.avoidTopics.join(' | ') : 'N/A'}
+- Avoid near-duplicate stems of recent questions:
+${coverageHints.recentQuestionStems.length ? coverageHints.recentQuestionStems.map((q) => `  - ${q}`).join('\n') : '  - None yet'}
+- Do not generate another question that tests the same micro-topic unless unavoidable.
+- Prioritize broad coverage of the full XML (beginning/middle/end and major sections), with extra weight on key takeaways and core concepts.
+`
+      : '';
 
     return `KnowledgePrefixHash: ${knowledgePrefixHash ?? 'unknown'}
 
@@ -1012,6 +1085,7 @@ Based on the COURSE_KNOWLEDGE_XML above, generate a ${difficulty.toLowerCase()} 
 
 Difficulty level: ${difficultyDesc[difficulty]}
 ${topicStr}${focusStr}
+${coverageStr}
 
 ${typePrompt}`;
   }
@@ -1054,6 +1128,128 @@ ${typePrompt}`;
     }
 
     return DifficultyLevel.MEDIUM;
+  }
+
+  private normalizeTopicKey(topic: string): string {
+    return topic
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private extractCoverageTopicsFromKnowledgePrefix(knowledgePrefix: string): CoverageTopic[] {
+    const results: CoverageTopic[] = [];
+    const seen = new Set<string>();
+    const anchorIndexRegex = /<anchor_index>([\s\S]*?)<\/anchor_index>/g;
+    let match: RegExpExecArray | null = null;
+
+    while ((match = anchorIndexRegex.exec(knowledgePrefix)) !== null) {
+      const raw = this.unescapeXml(match[1] ?? '').trim();
+      if (!raw) continue;
+      try {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) continue;
+        for (const item of parsed) {
+          if (!item || typeof item !== 'object') continue;
+          const title = typeof item.title === 'string' ? item.title.trim() : '';
+          if (!title) continue;
+          const key = this.normalizeTopicKey(title);
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          results.push({
+            title,
+            anchorType: typeof item.type === 'string' ? item.type : undefined,
+            timestamp: typeof item.timestamp === 'string' ? item.timestamp : undefined,
+          });
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    const weightedTypeOrder = ['KEY_TAKEAWAY', 'CONCEPT', 'EXAMPLE', 'DEMO'];
+    const parseTimestamp = (ts?: string): number => {
+      if (!ts) return Number.MAX_SAFE_INTEGER;
+      const parts = ts.split(':').map((p) => Number.parseInt(p, 10));
+      if (parts.some((n) => !Number.isFinite(n) || n < 0)) return Number.MAX_SAFE_INTEGER;
+      if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+      if (parts.length === 2) return parts[0] * 60 + parts[1];
+      return Number.MAX_SAFE_INTEGER;
+    };
+    return results.sort((a, b) => {
+      const aRank = weightedTypeOrder.indexOf((a.anchorType || '').toUpperCase());
+      const bRank = weightedTypeOrder.indexOf((b.anchorType || '').toUpperCase());
+      const aScore = aRank === -1 ? 999 : aRank;
+      const bScore = bRank === -1 ? 999 : bRank;
+      if (aScore !== bScore) return aScore - bScore;
+      const aTs = parseTimestamp(a.timestamp);
+      const bTs = parseTimestamp(b.timestamp);
+      if (aTs !== bTs) return aTs - bTs;
+      return a.title.localeCompare(b.title);
+    });
+  }
+
+  private selectPreferredCoverageTopics(
+    coverageTopics: CoverageTopic[],
+    coveredTopicKeys: Set<string>,
+    topics?: string[],
+    focusAreas?: string[]
+  ): string[] {
+    const uncoveredFromAnchors = coverageTopics
+      .filter((t) => !coveredTopicKeys.has(this.normalizeTopicKey(t.title)))
+      .map((t) => t.title);
+    if (uncoveredFromAnchors.length > 0) {
+      return uncoveredFromAnchors.slice(0, 6);
+    }
+
+    const fromInputs = [...(focusAreas || []), ...(topics || [])]
+      .map((t) => String(t).trim())
+      .filter(Boolean);
+    return Array.from(new Set(fromInputs)).slice(0, 6);
+  }
+
+  private trackCoveredTopic(
+    coveredTopicKeys: Set<string>,
+    coveredTopicTitles: string[],
+    coverageTopics: CoverageTopic[],
+    generatedTopic?: string,
+    fallbackTopic?: string
+  ): void {
+    const register = (topic: string) => {
+      const key = this.normalizeTopicKey(topic);
+      if (!key || coveredTopicKeys.has(key)) return;
+      coveredTopicKeys.add(key);
+      coveredTopicTitles.push(topic);
+    };
+
+    const generated = generatedTopic?.trim();
+    if (generated) {
+      register(generated);
+
+      const generatedKey = this.normalizeTopicKey(generated);
+      const matched = coverageTopics.find((t) => {
+        const topicKey = this.normalizeTopicKey(t.title);
+        return (
+          generatedKey === topicKey ||
+          generatedKey.includes(topicKey) ||
+          topicKey.includes(generatedKey)
+        );
+      });
+      if (matched) register(matched.title);
+      return;
+    }
+
+    if (fallbackTopic?.trim()) {
+      register(fallbackTopic.trim());
+    }
+  }
+
+  private unescapeXml(text: string): string {
+    return text
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&amp;', '&');
   }
 
   /**

@@ -39,6 +39,11 @@ export const POST = withAuth(async (req: NextRequest, user, context: RouteContex
             )
         }
 
+        const snapshotQuestion = await prisma.examAttemptQuestionSnapshot.findFirst({
+            where: { attemptId, questionId, examId },
+            select: { type: true },
+        })
+
         const answer = await prisma.examAnswer.findUnique({
             where: { attemptId_questionId: { attemptId, questionId } },
             include: { question: { select: { type: true, examId: true } } },
@@ -51,7 +56,8 @@ export const POST = withAuth(async (req: NextRequest, user, context: RouteContex
             )
         }
 
-        if (answer.question.type !== 'EXERCISE') {
+        const questionType = snapshotQuestion?.type ?? answer.question.type
+        if (questionType !== 'EXERCISE') {
             return NextResponse.json(
                 { success: false, error: { code: 'NOT_EXERCISE_QUESTION', message: 'Question is not an exercise' } },
                 { status: 400 }

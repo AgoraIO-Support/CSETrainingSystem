@@ -46,10 +46,16 @@ export const POST = withAuth(async (req: NextRequest, user, context: RouteContex
             )
         }
 
-        const question = await prisma.examQuestion.findFirst({
-            where: { id: questionId, examId },
-            select: { id: true, type: true },
+        const snapshotQuestion = await prisma.examAttemptQuestionSnapshot.findFirst({
+            where: { attemptId, questionId, examId },
+            select: { questionId: true, type: true },
         })
+        const question =
+            snapshotQuestion ??
+            (await prisma.examQuestion.findFirst({
+                where: { id: questionId, examId },
+                select: { id: true, type: true },
+            }))
         if (!question) {
             return NextResponse.json(
                 { success: false, error: { code: 'QUESTION_NOT_FOUND', message: 'Question not found' } },

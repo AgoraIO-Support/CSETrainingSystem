@@ -34,7 +34,6 @@ export const GET = withAdminAuth(
           { status: 404 }
         );
       }
-
       const questions = await ExamService.getQuestions(examId);
 
       return NextResponse.json({
@@ -77,6 +76,18 @@ export const POST = withAdminAuth(
             },
           },
           { status: 404 }
+        );
+      }
+      if (exam.status !== 'DRAFT') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'EXAM_004',
+              message: 'Exam can only be modified in DRAFT status.',
+            },
+          },
+          { status: 400 }
         );
       }
 
@@ -127,6 +138,32 @@ export const PUT = withAdminAuth(
       const { examId } = await context.params;
       const body = await req.json();
       const { questionIds } = reorderExamQuestionsSchema.parse(body);
+
+      const exam = await ExamService.getExamById(examId);
+      if (!exam) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'EXAM_NOT_FOUND',
+              message: 'Exam not found',
+            },
+          },
+          { status: 404 }
+        );
+      }
+      if (exam.status !== 'DRAFT') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'EXAM_004',
+              message: 'Exam can only be modified in DRAFT status.',
+            },
+          },
+          { status: 400 }
+        );
+      }
 
       await ExamService.reorderQuestions(examId, questionIds);
 

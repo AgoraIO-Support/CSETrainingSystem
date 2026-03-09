@@ -101,6 +101,7 @@ export interface ExamWithDetails {
   showResultsImmediately: boolean;
   allowReview: boolean;
   maxAttempts: number;
+  version: number;
   createdBy: {
     id: string;
     name: string;
@@ -125,6 +126,18 @@ export interface ExamWithDetails {
 }
 
 export class ExamService {
+  private static async assertExamIsDraft(examId: string): Promise<void> {
+    const exam = await prisma.exam.findUnique({
+      where: { id: examId },
+      select: { id: true, status: true },
+    });
+    if (!exam) {
+      throw new Error('EXAM_NOT_FOUND');
+    }
+    if (exam.status !== ExamStatus.DRAFT) {
+      throw new Error('EXAM_NOT_DRAFT');
+    }
+  }
   /**
    * Get list of exams with pagination and filters
    */
@@ -366,39 +379,11 @@ export class ExamService {
     if (!existing) {
       throw new Error('EXAM_NOT_FOUND');
     }
-
-    // Cannot update certain fields once published
-    if (
-      existing.status === ExamStatus.PUBLISHED ||
-      existing.status === ExamStatus.CLOSED
-    ) {
-      // Only allow updating deadline and availability. Ignore unchanged fields because
-      // admin UI submits the full form payload.
-      const immutableFields: (keyof UpdateExamInput)[] = [
-        'title',
-        'description',
-        'instructions',
-        'timeLimit',
-        'totalScore',
-        'passingScore',
-        'randomizeQuestions',
-        'randomizeOptions',
-        'showResultsImmediately',
-        'allowReview',
-        'maxAttempts',
-      ];
-
-      const disallowedFields = immutableFields.filter((field) => {
-        const nextValue = data[field];
-        if (nextValue === undefined) return false;
-        const currentValue = existing[field as keyof typeof existing];
-        return !this.areExamFieldValuesEqual(nextValue, currentValue);
-      });
-
-      if (disallowedFields.length > 0) {
-        throw new Error('EXAM_PUBLISHED_IMMUTABLE');
-      }
+    if (existing.status !== ExamStatus.DRAFT) {
+      throw new Error('EXAM_NOT_DRAFT');
     }
+
+    const hasAnyChange = Object.values(data).some((v) => v !== undefined);
 
     const exam = await prisma.exam.update({
       where: { id },
@@ -416,6 +401,7 @@ export class ExamService {
         ...(data.showResultsImmediately !== undefined && { showResultsImmediately: data.showResultsImmediately }),
         ...(data.allowReview !== undefined && { allowReview: data.allowReview }),
         ...(data.maxAttempts !== undefined && { maxAttempts: data.maxAttempts }),
+        ...(hasAnyChange && { version: { increment: 1 } }),
       },
       include: {
         course: {
@@ -561,8 +547,21 @@ export class ExamService {
     // Additional validations based on target status
     if (status === ExamStatus.PENDING_REVIEW) {
       // Must have at least one question
-      if (existing._count.questions === 0) {
+      const activeQuestionCount = await prisma.examQuestion.count({
+        where: { examId: id, archivedAt: null },
+      });
+      if (activeQuestionCount === 0) {
         throw new Error('EXAM_NO_QUESTIONS');
+      }
+
+      // Must have a consistent scoring configuration before review.
+      const sum = await prisma.examQuestion.aggregate({
+        where: { examId: id, archivedAt: null },
+        _sum: { points: true },
+      });
+      const totalPoints = sum._sum.points ?? 0;
+      if (totalPoints !== existing.totalScore) {
+        throw new Error('EXAM_POINTS_MISMATCH');
       }
     }
 
@@ -573,7 +572,7 @@ export class ExamService {
 
       // Must have a consistent scoring configuration before approval.
       const sum = await prisma.examQuestion.aggregate({
-        where: { examId: id },
+        where: { examId: id, archivedAt: null },
         _sum: { points: true },
       });
       const totalPoints = sum._sum.points ?? 0;
@@ -657,28 +656,18 @@ export class ExamService {
     const validTransitions: Record<ExamStatus, ExamStatus[]> = {
       [ExamStatus.DRAFT]: [ExamStatus.PENDING_REVIEW, ExamStatus.ARCHIVED],
       [ExamStatus.PENDING_REVIEW]: [ExamStatus.DRAFT, ExamStatus.APPROVED, ExamStatus.ARCHIVED],
-      [ExamStatus.APPROVED]: [ExamStatus.PENDING_REVIEW, ExamStatus.PUBLISHED, ExamStatus.ARCHIVED],
-      [ExamStatus.PUBLISHED]: [ExamStatus.CLOSED],
-      [ExamStatus.CLOSED]: [ExamStatus.PUBLISHED, ExamStatus.ARCHIVED],
+      [ExamStatus.APPROVED]: [ExamStatus.DRAFT, ExamStatus.PENDING_REVIEW, ExamStatus.PUBLISHED, ExamStatus.ARCHIVED],
+      [ExamStatus.PUBLISHED]: [ExamStatus.DRAFT, ExamStatus.CLOSED],
+      [ExamStatus.CLOSED]: [ExamStatus.PUBLISHED, ExamStatus.DRAFT, ExamStatus.ARCHIVED],
       [ExamStatus.ARCHIVED]: [],
     };
 
     if (!validTransitions[currentStatus].includes(targetStatus)) {
-      throw new Error('INVALID_STATUS_TRANSITION');
+      const allowed = validTransitions[currentStatus].join(',');
+      throw new Error(
+        `INVALID_STATUS_TRANSITION:${currentStatus}->${targetStatus}:allowed=${allowed}`
+      );
     }
-  }
-
-  private static areExamFieldValuesEqual(nextValue: unknown, currentValue: unknown): boolean {
-    if (nextValue == null && currentValue == null) {
-      return true;
-    }
-
-    if (nextValue instanceof Date) {
-      if (!(currentValue instanceof Date)) return false;
-      return nextValue.getTime() === currentValue.getTime();
-    }
-
-    return nextValue === currentValue;
   }
 
   /**
@@ -686,7 +675,7 @@ export class ExamService {
    */
   static async getQuestions(examId: string): Promise<any[]> {
     const questions = await prisma.examQuestion.findMany({
-      where: { examId },
+      where: { examId, archivedAt: null },
       orderBy: { order: 'asc' },
       include: {
         sources: {
@@ -713,32 +702,41 @@ export class ExamService {
     examId: string,
     data: CreateQuestionInput
   ): Promise<any> {
+    await this.assertExamIsDraft(examId);
+
     // Get current max order
     const maxOrder = await prisma.examQuestion.aggregate({
-      where: { examId },
+      where: { examId, archivedAt: null },
       _max: { order: true },
     });
 
-    const question = await prisma.examQuestion.create({
-      data: {
-        examId,
-        type: data.type,
-        difficulty: data.difficulty ?? DifficultyLevel.MEDIUM,
-        question: data.question,
-        options: data.options,
-        correctAnswer: data.correctAnswer,
-        rubric: data.rubric,
-        sampleAnswer: data.sampleAnswer,
-        maxWords: data.maxWords,
-        points: data.points ?? 10,
-        explanation: data.explanation,
-        topic: data.topic,
-        tags: data.tags ?? [],
-        order: (maxOrder._max.order ?? -1) + 1,
-        isAIGenerated: data.isAIGenerated ?? false,
-        aiModel: data.aiModel,
-        generationPrompt: data.generationPrompt,
-      },
+    const question = await prisma.$transaction(async (tx) => {
+      const created = await tx.examQuestion.create({
+        data: {
+          examId,
+          type: data.type,
+          difficulty: data.difficulty ?? DifficultyLevel.MEDIUM,
+          question: data.question,
+          options: data.options,
+          correctAnswer: data.correctAnswer,
+          rubric: data.rubric,
+          sampleAnswer: data.sampleAnswer,
+          maxWords: data.maxWords,
+          points: data.points ?? 10,
+          explanation: data.explanation,
+          topic: data.topic,
+          tags: data.tags ?? [],
+          order: (maxOrder._max.order ?? -1) + 1,
+          isAIGenerated: data.isAIGenerated ?? false,
+          aiModel: data.aiModel,
+          generationPrompt: data.generationPrompt,
+        },
+      });
+      await tx.exam.update({
+        where: { id: examId },
+        data: { version: { increment: 1 } },
+      });
+      return created;
     });
 
     return question;
@@ -751,22 +749,36 @@ export class ExamService {
     questionId: string,
     data: Partial<CreateQuestionInput>
   ): Promise<any> {
-    const question = await prisma.examQuestion.update({
+    const existing = await prisma.examQuestion.findUnique({
       where: { id: questionId },
-      data: {
-        ...(data.type !== undefined && { type: data.type }),
-        ...(data.difficulty !== undefined && { difficulty: data.difficulty }),
-        ...(data.question !== undefined && { question: data.question }),
-        ...(data.options !== undefined && { options: data.options }),
-        ...(data.correctAnswer !== undefined && { correctAnswer: data.correctAnswer }),
-        ...(data.rubric !== undefined && { rubric: data.rubric }),
-        ...(data.sampleAnswer !== undefined && { sampleAnswer: data.sampleAnswer }),
-        ...(data.maxWords !== undefined && { maxWords: data.maxWords }),
-        ...(data.points !== undefined && { points: data.points }),
-        ...(data.explanation !== undefined && { explanation: data.explanation }),
-        ...(data.topic !== undefined && { topic: data.topic }),
-        ...(data.tags !== undefined && { tags: data.tags }),
-      },
+      select: { examId: true },
+    });
+    if (!existing) throw new Error('QUESTION_NOT_FOUND');
+    await this.assertExamIsDraft(existing.examId);
+
+    const question = await prisma.$transaction(async (tx) => {
+      const updated = await tx.examQuestion.update({
+        where: { id: questionId },
+        data: {
+          ...(data.type !== undefined && { type: data.type }),
+          ...(data.difficulty !== undefined && { difficulty: data.difficulty }),
+          ...(data.question !== undefined && { question: data.question }),
+          ...(data.options !== undefined && { options: data.options }),
+          ...(data.correctAnswer !== undefined && { correctAnswer: data.correctAnswer }),
+          ...(data.rubric !== undefined && { rubric: data.rubric }),
+          ...(data.sampleAnswer !== undefined && { sampleAnswer: data.sampleAnswer }),
+          ...(data.maxWords !== undefined && { maxWords: data.maxWords }),
+          ...(data.points !== undefined && { points: data.points }),
+          ...(data.explanation !== undefined && { explanation: data.explanation }),
+          ...(data.topic !== undefined && { topic: data.topic }),
+          ...(data.tags !== undefined && { tags: data.tags }),
+        },
+      });
+      await tx.exam.update({
+        where: { id: existing.examId },
+        data: { version: { increment: 1 } },
+      });
+      return updated;
     });
 
     return question;
@@ -776,8 +788,34 @@ export class ExamService {
    * Delete a question
    */
   static async deleteQuestion(questionId: string): Promise<void> {
-    await prisma.examQuestion.delete({
+    const existing = await prisma.examQuestion.findUnique({
       where: { id: questionId },
+      select: { id: true, examId: true },
+    });
+    if (!existing) return;
+    await this.assertExamIsDraft(existing.examId);
+
+    await prisma.$transaction(async (tx) => {
+      const usedByAnswers = await tx.examAnswer.count({
+        where: { questionId: existing.id },
+      });
+      const usedBySnapshots = await tx.examAttemptQuestionSnapshot.count({
+        where: { questionId: existing.id },
+      });
+      if (usedByAnswers > 0 || usedBySnapshots > 0) {
+        await tx.examQuestion.update({
+          where: { id: existing.id },
+          data: { archivedAt: new Date() },
+        });
+      } else {
+        await tx.examQuestion.delete({
+          where: { id: existing.id },
+        });
+      }
+      await tx.exam.update({
+        where: { id: existing.examId },
+        data: { version: { increment: 1 } },
+      });
     });
   }
 
@@ -788,14 +826,20 @@ export class ExamService {
     examId: string,
     questionIds: string[]
   ): Promise<void> {
-    await prisma.$transaction(
-      questionIds.map((id, index) =>
-        prisma.examQuestion.update({
-          where: { id },
+    await this.assertExamIsDraft(examId);
+
+    await prisma.$transaction(async (tx) => {
+      for (let index = 0; index < questionIds.length; index++) {
+        await tx.examQuestion.update({
+          where: { id: questionIds[index] },
           data: { order: index },
-        })
-      )
-    );
+        });
+      }
+      await tx.exam.update({
+        where: { id: examId },
+        data: { version: { increment: 1 } },
+      });
+    });
   }
 
   /**

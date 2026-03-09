@@ -62,8 +62,13 @@ export class ExamGradingService {
       include: {
         exam: {
           include: {
-            questions: true,
+            questions: {
+              where: { archivedAt: null },
+            },
           },
+        },
+        questionSnapshots: {
+          orderBy: { order: 'asc' },
         },
         answers: {
           include: {
@@ -85,7 +90,25 @@ export class ExamGradingService {
     // - unanswered objective questions can be auto-graded as incorrect (0 points)
     // - manual questions (essay/fill-in-blank) show up for admin grading
     const answeredQuestionIds = new Set(attempt.answers.map((a) => a.questionId));
-    const missingQuestionIds = attempt.exam.questions
+    const questionBank =
+      attempt.questionSnapshots.length > 0
+        ? attempt.questionSnapshots.map((q) => ({
+            id: q.questionId,
+            type: q.type,
+            points: q.points,
+            correctAnswer: q.correctAnswer,
+            options: (q.options as string[] | null) ?? null,
+          }))
+        : attempt.exam.questions.map((q) => ({
+            id: q.id,
+            type: q.type,
+            points: q.points,
+            correctAnswer: q.correctAnswer,
+            options: (q.options as string[] | null) ?? null,
+          }));
+    const questionById = new Map(questionBank.map((q) => [q.id, q] as const));
+
+    const missingQuestionIds = questionBank
       .map((q) => q.id)
       .filter((qid) => !answeredQuestionIds.has(qid));
     if (missingQuestionIds.length > 0) {
@@ -101,6 +124,7 @@ export class ExamGradingService {
         where: { id: attemptId },
         include: {
           exam: { include: { questions: true } },
+          questionSnapshots: { orderBy: { order: 'asc' } },
           answers: { include: { question: true } },
         },
       });
@@ -116,7 +140,7 @@ export class ExamGradingService {
     let pendingEssays = 0;
 
     const manualQuestionIds = new Set(
-      attempt.exam.questions
+      questionBank
         .filter(
           (q) =>
             q.type === ExamQuestionType.ESSAY ||
@@ -134,7 +158,10 @@ export class ExamGradingService {
 
     // Grade each answer
     for (const answer of attempt.answers) {
-      const question = answer.question;
+      const question = questionById.get(answer.questionId);
+      if (!question) {
+        continue;
+      }
 
       if (
         question.type === ExamQuestionType.ESSAY ||
@@ -152,7 +179,7 @@ export class ExamGradingService {
         answer.selectedOption,
         answer.answer,
         question.correctAnswer,
-        question.options as string[] | null,
+        question.options,
         question.points
       );
 
@@ -192,7 +219,7 @@ export class ExamGradingService {
 
     return {
       attemptId,
-      totalQuestions: attempt.exam.questions.length,
+      totalQuestions: questionBank.length,
       gradedQuestions: gradedCount,
       pendingEssays,
       autoGradedScore,
@@ -307,9 +334,7 @@ export class ExamGradingService {
       include: {
         question: true,
         attempt: {
-          include: {
-            exam: true,
-          },
+          include: { exam: true },
         },
       },
     });
@@ -318,11 +343,24 @@ export class ExamGradingService {
       throw new Error('ANSWER_NOT_FOUND');
     }
 
-    if (answer.question.type !== ExamQuestionType.ESSAY) {
+    const snapshot = await prisma.examAttemptQuestionSnapshot.findFirst({
+      where: {
+        attemptId: answer.attemptId,
+        questionId: answer.questionId,
+      },
+    });
+    const resolvedQuestion = {
+      type: snapshot?.type ?? answer.question.type,
+      question: snapshot?.question ?? answer.question.question,
+      rubric: snapshot?.rubric ?? answer.question.rubric,
+      sampleAnswer: snapshot?.sampleAnswer ?? answer.question.sampleAnswer,
+      points: snapshot?.points ?? answer.question.points,
+    };
+
+    if (resolvedQuestion.type !== ExamQuestionType.ESSAY) {
       throw new Error('NOT_AN_ESSAY');
     }
 
-    const question = answer.question;
     const userEssay = answer.answer || '';
 
     const promptConfig = await AIPromptResolverService.resolve({
@@ -332,28 +370,28 @@ export class ExamGradingService {
     });
 
     const rubricOrDefault =
-      question.rubric || 'No specific rubric provided. Grade based on content accuracy, depth, clarity, and organization.';
-    const sampleAnswerOrDefault = question.sampleAnswer || 'No sample answer provided.';
+      resolvedQuestion.rubric || 'No specific rubric provided. Grade based on content accuracy, depth, clarity, and organization.';
+    const sampleAnswerOrDefault = resolvedQuestion.sampleAnswer || 'No sample answer provided.';
     const userEssayOrDefault = userEssay || '[No response provided]';
 
     const userPromptTemplate =
       promptConfig.userPrompt ??
       this.buildEssayGradingPrompt(
-        question.question,
-        question.rubric || '',
-        question.sampleAnswer || '',
+        resolvedQuestion.question,
+        resolvedQuestion.rubric || '',
+        resolvedQuestion.sampleAnswer || '',
         userEssay,
-        question.points
+        resolvedQuestion.points
       );
 
     const prompt =
       promptConfig.userPrompt != null
         ? AIPromptResolverService.render(userPromptTemplate, {
-            question: question.question,
+            question: resolvedQuestion.question,
             rubricOrDefault,
             sampleAnswerOrDefault,
             userEssayOrDefault,
-            maxPoints: question.points,
+            maxPoints: resolvedQuestion.points,
           })
         : userPromptTemplate;
 
@@ -398,7 +436,7 @@ export class ExamGradingService {
     const result = JSON.parse(response.choices[0].message.content || '{}');
 
     // Clamp score to valid range
-    const suggestedScore = Math.max(0, Math.min(result.score || 0, question.points));
+    const suggestedScore = Math.max(0, Math.min(result.score || 0, resolvedQuestion.points));
     const confidence = Math.max(0, Math.min(result.confidence || 0.7, 1));
 
     // Update the answer with AI grading
@@ -415,7 +453,7 @@ export class ExamGradingService {
     return {
       answerId,
       suggestedScore,
-      maxScore: question.points,
+      maxScore: resolvedQuestion.points,
       feedback: result.feedback || '',
       rubricEvaluation: result.rubricEvaluation || '',
       confidence,
@@ -485,7 +523,11 @@ Please evaluate this essay and provide a score out of ${maxPoints} points, along
       where: { id: answerId },
       include: {
         question: true,
-        attempt: true,
+        attempt: {
+          include: {
+            questionSnapshots: true,
+          },
+        },
       },
     });
 
@@ -493,16 +535,20 @@ Please evaluate this essay and provide a score out of ${maxPoints} points, along
       throw new Error('ANSWER_NOT_FOUND');
     }
 
+    const snapshot = answer.attempt.questionSnapshots.find((s) => s.questionId === answer.questionId);
+    const questionType = snapshot?.type ?? answer.question.type;
+    const questionPoints = snapshot?.points ?? answer.question.points;
+
     if (
-      answer.question.type !== ExamQuestionType.ESSAY &&
-      answer.question.type !== ExamQuestionType.FILL_IN_BLANK &&
-      answer.question.type !== ExamQuestionType.EXERCISE
+      questionType !== ExamQuestionType.ESSAY &&
+      questionType !== ExamQuestionType.FILL_IN_BLANK &&
+      questionType !== ExamQuestionType.EXERCISE
     ) {
       throw new Error('NOT_MANUAL_GRADEABLE');
     }
 
     // Clamp score to valid range
-    const finalScore = Math.max(0, Math.min(score, answer.question.points));
+    const finalScore = Math.max(0, Math.min(score, questionPoints));
 
     await prisma.examAnswer.update({
       where: { id: answerId },
@@ -517,15 +563,22 @@ Please evaluate this essay and provide a score out of ${maxPoints} points, along
     });
 
     // Check if all essays are now graded
-    const pendingEssays = await prisma.examAnswer.count({
-      where: {
-        attemptId: answer.attemptId,
-        question: { type: { in: [ExamQuestionType.ESSAY, ExamQuestionType.FILL_IN_BLANK, ExamQuestionType.EXERCISE] } },
-        gradingStatus: {
-          in: [GradingStatus.PENDING, GradingStatus.AI_SUGGESTED],
-        },
-      },
+    const attemptAnswers = await prisma.examAnswer.findMany({
+      where: { attemptId: answer.attemptId },
+      include: { question: true },
     });
+    const snapshotByQuestionId = new Map(
+      answer.attempt.questionSnapshots.map((s) => [s.questionId, s] as const)
+    );
+    const pendingEssays = attemptAnswers.filter((a) => {
+      const type = snapshotByQuestionId.get(a.questionId)?.type ?? a.question.type;
+      const isManual =
+        type === ExamQuestionType.ESSAY ||
+        type === ExamQuestionType.FILL_IN_BLANK ||
+        type === ExamQuestionType.EXERCISE;
+      if (!isManual) return false;
+      return a.gradingStatus === GradingStatus.PENDING || a.gradingStatus === GradingStatus.AI_SUGGESTED;
+    }).length;
 
     // If all essays graded, calculate final score
     if (pendingEssays === 0) {
@@ -615,17 +668,12 @@ Please evaluate this essay and provide a score out of ${maxPoints} points, along
     submittedAt: Date | null;
   }>> {
     const answers = await prisma.examAnswer.findMany({
-      where: {
-        attempt: { examId },
-        question: { type: ExamQuestionType.ESSAY },
-        gradingStatus: {
-          in: [GradingStatus.PENDING, GradingStatus.AI_SUGGESTED],
-        },
-      },
+      where: { attempt: { examId } },
       include: {
         question: true,
         attempt: {
           include: {
+            questionSnapshots: true,
             user: {
               select: {
                 id: true,
@@ -642,20 +690,33 @@ Please evaluate this essay and provide a score out of ${maxPoints} points, along
       ],
     });
 
-    return answers.map(answer => ({
-      answerId: answer.id,
-      attemptId: answer.attemptId,
-      questionId: answer.questionId,
-      question: answer.question.question,
-      rubric: answer.question.rubric,
-      sampleAnswer: answer.question.sampleAnswer,
-      maxPoints: answer.question.points,
-      userAnswer: answer.answer,
-      aiSuggestedScore: answer.aiSuggestedScore,
-      aiFeedback: answer.aiFeedback,
-      userName: answer.attempt.user.name || answer.attempt.user.email,
-      submittedAt: answer.attempt.submittedAt,
-    }));
+    return answers
+      .filter((answer) => {
+        const snapshot = answer.attempt.questionSnapshots.find((s) => s.questionId === answer.questionId);
+        const type = snapshot?.type ?? answer.question.type;
+        return (
+          type === ExamQuestionType.ESSAY &&
+          (answer.gradingStatus === GradingStatus.PENDING ||
+            answer.gradingStatus === GradingStatus.AI_SUGGESTED)
+        );
+      })
+      .map(answer => {
+        const snapshot = answer.attempt.questionSnapshots.find((s) => s.questionId === answer.questionId);
+        return {
+          answerId: answer.id,
+          attemptId: answer.attemptId,
+          questionId: answer.questionId,
+          question: snapshot?.question ?? answer.question.question,
+          rubric: snapshot?.rubric ?? answer.question.rubric,
+          sampleAnswer: snapshot?.sampleAnswer ?? answer.question.sampleAnswer,
+          maxPoints: snapshot?.points ?? answer.question.points,
+          userAnswer: answer.answer,
+          aiSuggestedScore: answer.aiSuggestedScore,
+          aiFeedback: answer.aiFeedback,
+          userName: answer.attempt.user.name || answer.attempt.user.email,
+          submittedAt: answer.attempt.submittedAt,
+        };
+      });
   }
 
   /**
@@ -665,14 +726,21 @@ Please evaluate this essay and provide a score out of ${maxPoints} points, along
     const answers = await prisma.examAnswer.findMany({
       where: {
         attemptId,
-        question: { type: ExamQuestionType.ESSAY },
-        gradingStatus: GradingStatus.PENDING,
+      },
+      include: {
+        question: true,
+        attempt: { include: { questionSnapshots: true } },
       },
     });
 
     const results: AIGradingResult[] = [];
 
     for (const answer of answers) {
+      const snapshot = answer.attempt.questionSnapshots.find((s) => s.questionId === answer.questionId);
+      const type = snapshot?.type ?? answer.question.type;
+      if (type !== ExamQuestionType.ESSAY || answer.gradingStatus !== GradingStatus.PENDING) {
+        continue;
+      }
       try {
         const result = await this.gradeEssayWithAI(answer.id);
         results.push(result);

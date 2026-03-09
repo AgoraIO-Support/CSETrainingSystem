@@ -111,13 +111,13 @@ export const PATCH = withAdminAuth(
           );
         }
 
-        if (error.message === 'EXAM_PUBLISHED_IMMUTABLE') {
+        if (error.message === 'EXAM_NOT_DRAFT') {
           return NextResponse.json(
             {
               success: false,
               error: {
                 code: 'EXAM_004',
-                message: 'Cannot modify published exam. Only deadline and availability can be changed.',
+                message: 'Exam can only be modified in DRAFT status.',
               },
             },
             { status: 400 }

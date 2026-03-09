@@ -37,14 +37,14 @@ export const POST = withAdminAuth(
         );
       }
 
-      // Check exam is in draft or pending review status
-      if (exam.status !== 'DRAFT' && exam.status !== 'PENDING_REVIEW') {
+      // Check exam is in draft status
+      if (exam.status !== 'DRAFT') {
         return NextResponse.json(
           {
             success: false,
             error: {
               code: 'EXAM_008',
-              message: 'Can only generate questions for exams in DRAFT or PENDING_REVIEW status',
+              message: 'Can only generate questions for exams in DRAFT status',
             },
           },
           { status: 400 }

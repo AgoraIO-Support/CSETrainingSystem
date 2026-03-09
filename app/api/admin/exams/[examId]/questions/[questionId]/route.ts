@@ -36,6 +36,18 @@ export const PATCH = withAdminAuth(
           { status: 404 }
         );
       }
+      if (exam.status !== 'DRAFT') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'EXAM_004',
+              message: 'Exam can only be modified in DRAFT status.',
+            },
+          },
+          { status: 400 }
+        );
+      }
 
       const question = await ExamService.updateQuestion(questionId, data);
 
@@ -92,6 +104,18 @@ export const DELETE = withAdminAuth(
             },
           },
           { status: 404 }
+        );
+      }
+      if (exam.status !== 'DRAFT') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'EXAM_004',
+              message: 'Exam can only be modified in DRAFT status.',
+            },
+          },
+          { status: 400 }
         );
       }
 

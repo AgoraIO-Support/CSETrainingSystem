@@ -21,6 +21,9 @@ export const GET = withAdminAuth(async (_req: NextRequest, _user, context: Route
             include: {
                 user: { select: { id: true, name: true, email: true } },
                 exam: { select: { id: true, title: true, totalScore: true, passingScore: true } },
+                questionSnapshots: {
+                    orderBy: { order: 'asc' },
+                },
                 answers: {
                     include: {
                         question: {
@@ -55,8 +58,9 @@ export const GET = withAdminAuth(async (_req: NextRequest, _user, context: Route
 
         const answers = await Promise.all(
             attempt.answers.map(async (a) => {
+                const snapshot = attempt.questionSnapshots.find((s) => s.questionId === a.questionId)
                 let recordingUrl: string | null = null
-                if (a.question.type === 'EXERCISE' && a.recordingStatus === 'UPLOADED' && a.recordingS3Key) {
+                if ((snapshot?.type ?? a.question.type) === 'EXERCISE' && a.recordingStatus === 'UPLOADED' && a.recordingS3Key) {
                     try {
                         recordingUrl = await FileService.getAssetAccessUrl(a.recordingS3Key)
                     } catch (err) {
@@ -84,19 +88,19 @@ export const GET = withAdminAuth(async (_req: NextRequest, _user, context: Route
                     adminScore: a.adminScore,
                     adminFeedback: a.adminFeedback,
                     question: {
-                        id: a.question.id,
-                        examId: a.question.examId,
-                        type: a.question.type,
-                        question: a.question.question,
-                        options: a.question.options as string[] | null,
-                        correctAnswer: a.question.correctAnswer,
-                        explanation: a.question.explanation,
-                        points: a.question.points,
-                        order: a.question.order,
-                        difficulty: a.question.difficulty,
-                        maxWords: a.question.maxWords,
-                        rubric: a.question.rubric,
-                        sampleAnswer: a.question.sampleAnswer,
+                        id: a.questionId,
+                        examId: attempt.examId,
+                        type: snapshot?.type ?? a.question.type,
+                        question: snapshot?.question ?? a.question.question,
+                        options: (snapshot?.options as string[] | null) ?? (a.question.options as string[] | null),
+                        correctAnswer: snapshot?.correctAnswer ?? a.question.correctAnswer,
+                        explanation: snapshot?.explanation ?? a.question.explanation,
+                        points: snapshot?.points ?? a.question.points,
+                        order: snapshot?.order ?? a.question.order,
+                        difficulty: snapshot?.difficulty ?? a.question.difficulty,
+                        maxWords: snapshot?.maxWords ?? a.question.maxWords,
+                        rubric: snapshot?.rubric ?? a.question.rubric,
+                        sampleAnswer: snapshot?.sampleAnswer ?? a.question.sampleAnswer,
                     },
                 }
             })

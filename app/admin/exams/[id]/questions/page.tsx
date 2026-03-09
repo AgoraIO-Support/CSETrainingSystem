@@ -425,6 +425,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
     }
 
     const totalPoints = questions.reduce((sum, q) => sum + q.points, 0)
+    const canEditQuestions = exam.status === 'DRAFT'
     const allSelected = questions.length > 0 && selectedQuestionIds.length === questions.length
     const hasSelection = selectedQuestionIds.length > 0
 
@@ -499,7 +500,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                     <div className="flex items-center gap-2">
                         <Button
                             variant="destructive"
-                            disabled={!hasSelection || bulkDeleting}
+                            disabled={!canEditQuestions || !hasSelection || bulkDeleting}
                             onClick={() => setConfirmBulkDeleteOpen(true)}
                         >
                             {bulkDeleting ? (
@@ -509,16 +510,22 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                             )}
                             Delete Selected ({selectedQuestionIds.length})
                         </Button>
-                        <Button variant="outline" onClick={() => setShowGenerateDialog(true)}>
+                        <Button variant="outline" onClick={() => setShowGenerateDialog(true)} disabled={!canEditQuestions}>
                             <Sparkles className="h-4 w-4 mr-2" />
                             Generate with AI
                         </Button>
-                        <Button onClick={handleCreateQuestion}>
+                        <Button onClick={handleCreateQuestion} disabled={!canEditQuestions}>
                             <Plus className="h-4 w-4 mr-2" />
                             Add Question
                         </Button>
                     </div>
                 </div>
+
+                {!canEditQuestions && (
+                    <div className="p-4 bg-amber-50 text-amber-800 rounded-lg">
+                        This exam is read-only. Return it to Draft before modifying questions.
+                    </div>
+                )}
 
                 {successMessage && (
                     <div className="p-4 bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-200 rounded-lg flex items-center gap-2">
@@ -1064,6 +1071,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                         className="h-4 w-4"
                                         checked={allSelected}
                                         onChange={(e) => handleSelectAllQuestions(e.target.checked)}
+                                        disabled={!canEditQuestions}
                                     />
                                     Select All
                                 </label>
@@ -1077,11 +1085,11 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                     No questions yet. Add questions manually or generate them with AI.
                                 </p>
                                 <div className="flex items-center justify-center gap-2">
-                                    <Button variant="outline" onClick={() => setShowGenerateDialog(true)}>
+                                    <Button variant="outline" onClick={() => setShowGenerateDialog(true)} disabled={!canEditQuestions}>
                                         <Sparkles className="h-4 w-4 mr-2" />
                                         Generate with AI
                                     </Button>
-                                    <Button onClick={handleCreateQuestion}>
+                                    <Button onClick={handleCreateQuestion} disabled={!canEditQuestions}>
                                         <Plus className="h-4 w-4 mr-2" />
                                         Add Question
                                     </Button>
@@ -1099,6 +1107,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                             className="mt-1 h-4 w-4"
                                             checked={selectedQuestionIds.includes(question.id)}
                                             onChange={(e) => toggleQuestionSelection(question.id, e.target.checked)}
+                                            disabled={!canEditQuestions}
                                         />
                                         <div className="flex items-center gap-2 text-muted-foreground">
                                             <GripVertical className="h-4 w-4" />
@@ -1130,6 +1139,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                                 variant="ghost"
                                                 size="icon"
                                                 onClick={() => handleEditQuestion(question)}
+                                                disabled={!canEditQuestions}
                                             >
                                                 <Edit className="h-4 w-4" />
                                             </Button>
@@ -1138,6 +1148,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                                 size="icon"
                                                 className="text-red-500 hover:text-red-600"
                                                 onClick={() => handleDeleteQuestion(question.id)}
+                                                disabled={!canEditQuestions}
                                             >
                                                 <Trash2 className="h-4 w-4" />
                                             </Button>

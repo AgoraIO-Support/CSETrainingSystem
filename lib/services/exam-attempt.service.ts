@@ -10,12 +10,14 @@ import {
   ExamQuestionType,
   ExamRecordingStatus,
   GradingStatus,
+  Prisma,
 } from '@prisma/client';
 import { ExamGradingService } from '@/lib/services/exam-grading.service';
 
 export interface StartAttemptResult {
   attemptId: string;
   examId: string;
+  examVersion?: number;
   attemptNumber: number;
   startedAt: Date;
   expiresAt: Date | null;
@@ -96,6 +98,62 @@ export interface AttemptWithAnswers {
 }
 
 export class ExamAttemptService {
+  private static async getAttemptQuestionSet(
+    attemptId: string,
+    examId: string
+  ): Promise<
+    Array<{
+      id: string;
+      type: ExamQuestionType;
+      question: string;
+      options: string[] | null;
+      correctAnswer: string | null;
+      explanation: string | null;
+      points: number;
+      order: number;
+      maxWords: number | null;
+    }>
+  > {
+    const snapshots = await prisma.examAttemptQuestionSnapshot.findMany({
+      where: { attemptId },
+      orderBy: { order: 'asc' },
+    });
+
+    if (snapshots.length > 0) {
+      return snapshots.map((q) => ({
+        id: q.questionId,
+        type: q.type,
+        question: q.question,
+        options: (q.options as string[] | null) ?? null,
+        correctAnswer: q.correctAnswer,
+        explanation: q.explanation,
+        points: q.points,
+        order: q.order,
+        maxWords: q.maxWords,
+      }));
+    }
+
+    const questions = await prisma.examQuestion.findMany({
+      where: { examId, archivedAt: null },
+      orderBy: { order: 'asc' },
+      select: {
+        id: true,
+        type: true,
+        question: true,
+        options: true,
+        correctAnswer: true,
+        explanation: true,
+        points: true,
+        order: true,
+        maxWords: true,
+      },
+    });
+    return questions.map((q) => ({
+      ...q,
+      options: (q.options as string[] | null) ?? null,
+    }));
+  }
+
   /**
    * Start a new exam attempt or resume existing one
    */
@@ -110,6 +168,7 @@ export class ExamAttemptService {
       where: { id: examId },
       include: {
         questions: {
+          where: { archivedAt: null },
           orderBy: { order: 'asc' },
         },
         invitations: {
@@ -165,7 +224,8 @@ export class ExamAttemptService {
         await this.submitAttempt(existingAttempt.id);
       } else {
         // Resume existing attempt
-        return this.buildAttemptResult(existingAttempt, exam);
+        const snapshotQuestions = await this.getAttemptQuestionSet(existingAttempt.id, exam.id);
+        return this.buildAttemptResult(existingAttempt, exam, snapshotQuestions);
       }
     }
 
@@ -205,11 +265,35 @@ export class ExamAttemptService {
         examId,
         attemptNumber: completedAttempts + 1,
         status: ExamAttemptStatus.IN_PROGRESS,
+        examVersion: exam.version,
         expiresAt,
         hasEssays,
         ipAddress,
         userAgent,
       },
+    });
+
+    await prisma.examAttemptQuestionSnapshot.createMany({
+      data: exam.questions.map((q) => ({
+        attemptId: attempt.id,
+        examId: exam.id,
+        examVersion: exam.version,
+        questionId: q.id,
+        type: q.type,
+        difficulty: q.difficulty,
+        question: q.question,
+        options: q.options ?? Prisma.JsonNull,
+        correctAnswer: q.correctAnswer,
+        rubric: q.rubric,
+        sampleAnswer: q.sampleAnswer,
+        maxWords: q.maxWords,
+        points: q.points,
+        explanation: q.explanation,
+        topic: q.topic,
+        tags: q.tags,
+        order: q.order,
+      })),
+      skipDuplicates: true,
     });
 
     // Mark invitation as viewed
@@ -227,7 +311,8 @@ export class ExamAttemptService {
       });
     }
 
-    return this.buildAttemptResult(attempt, exam);
+    const snapshotQuestions = await this.getAttemptQuestionSet(attempt.id, exam.id);
+    return this.buildAttemptResult(attempt, exam, snapshotQuestions);
   }
 
   /**
@@ -235,10 +320,19 @@ export class ExamAttemptService {
    */
   private static buildAttemptResult(
     attempt: any,
-    exam: any
+    exam: any,
+    baseQuestions: Array<{
+      id: string;
+      type: ExamQuestionType;
+      question: string;
+      options: string[] | null;
+      points: number;
+      order: number;
+      maxWords: number | null;
+    }>
   ): StartAttemptResult {
     // Optionally randomize questions
-    let questions = [...exam.questions];
+    let questions = [...baseQuestions];
     if (exam.randomizeQuestions) {
       questions = this.shuffleArray(questions);
     }
@@ -246,6 +340,7 @@ export class ExamAttemptService {
     return {
       attemptId: attempt.id,
       examId: exam.id,
+      examVersion: attempt.examVersion ?? exam.version ?? 1,
       attemptNumber: attempt.attemptNumber,
       startedAt: attempt.startedAt,
       expiresAt: attempt.expiresAt,
@@ -313,12 +408,22 @@ export class ExamAttemptService {
     }
 
     // Verify question belongs to this exam
-    const question = await prisma.examQuestion.findFirst({
+    const snapshotQuestion = await prisma.examAttemptQuestionSnapshot.findFirst({
       where: {
-        id: input.questionId,
-        examId: attempt.examId,
+        attemptId,
+        questionId: input.questionId,
       },
+      select: { type: true },
     });
+    const question =
+      snapshotQuestion ??
+      (await prisma.examQuestion.findFirst({
+        where: {
+          id: input.questionId,
+          examId: attempt.examId,
+        },
+        select: { type: true },
+      }));
 
     if (!question) {
       throw new Error('QUESTION_NOT_FOUND');
@@ -365,11 +470,20 @@ export class ExamAttemptService {
       where: { id: attemptId },
       include: {
         exam: {
-          include: {
-            questions: true,
+          select: {
+            id: true,
+            title: true,
+            totalScore: true,
+            passingScore: true,
+            showResultsImmediately: true,
+            allowReview: true,
           },
         },
-        answers: true,
+        answers: { select: { questionId: true } },
+        questionSnapshots: {
+          orderBy: { order: 'asc' },
+          select: { questionId: true },
+        },
       },
     });
 
@@ -393,12 +507,23 @@ export class ExamAttemptService {
     // Ensure there is an answer row for every question so unanswered questions
     // are treated as incorrect (0 points) during auto-grading and show up in review UIs.
     const existingAnswerQids = new Set(attempt.answers.map((a) => a.questionId));
-    const missingQuestions = attempt.exam.questions.filter((q) => !existingAnswerQids.has(q.id));
-    if (missingQuestions.length > 0) {
+    const questionIdsFromSnapshot = attempt.questionSnapshots.map((q) => q.questionId);
+    const questionIds =
+      questionIdsFromSnapshot.length > 0
+        ? questionIdsFromSnapshot
+        : (
+            await prisma.examQuestion.findMany({
+              where: { examId: attempt.examId, archivedAt: null },
+              select: { id: true },
+              orderBy: { order: 'asc' },
+            })
+          ).map((q) => q.id);
+    const missingQuestionIds = questionIds.filter((qid) => !existingAnswerQids.has(qid));
+    if (missingQuestionIds.length > 0) {
       await prisma.examAnswer.createMany({
-        data: missingQuestions.map((q) => ({
+        data: missingQuestionIds.map((qid) => ({
           attemptId,
-          questionId: q.id,
+          questionId: qid,
         })),
         skipDuplicates: true,
       });
@@ -438,19 +563,10 @@ export class ExamAttemptService {
           },
         },
         answers: {
-          include: {
-            question: {
-              select: {
-                id: true,
-                type: true,
-                question: true,
-                options: true,
-                correctAnswer: true,
-                explanation: true,
-                points: true,
-              },
-            },
-          },
+          include: { question: true },
+        },
+        questionSnapshots: {
+          orderBy: { order: 'asc' },
         },
       },
     });
@@ -458,6 +574,10 @@ export class ExamAttemptService {
     if (!attempt) {
       throw new Error('ATTEMPT_NOT_FOUND');
     }
+
+    const snapshotByQuestionId = new Map(
+      attempt.questionSnapshots.map((q) => [q.questionId, q] as const)
+    );
 
     return {
       id: attempt.id,
@@ -486,13 +606,16 @@ export class ExamAttemptService {
         isCorrect: a.isCorrect,
         pointsAwarded: a.pointsAwarded,
         question: {
-          id: a.question.id,
-          type: a.question.type,
-          question: a.question.question,
-          options: a.question.options as string[] | null,
-          correctAnswer: a.question.correctAnswer,
-          explanation: a.question.explanation,
-          points: a.question.points,
+          id: a.questionId,
+          type: snapshotByQuestionId.get(a.questionId)?.type ?? a.question.type,
+          question: snapshotByQuestionId.get(a.questionId)?.question ?? a.question.question,
+          options:
+            (snapshotByQuestionId.get(a.questionId)?.options as string[] | null) ??
+            (a.question.options as string[] | null),
+          correctAnswer:
+            snapshotByQuestionId.get(a.questionId)?.correctAnswer ?? a.question.correctAnswer,
+          explanation: snapshotByQuestionId.get(a.questionId)?.explanation ?? a.question.explanation,
+          points: snapshotByQuestionId.get(a.questionId)?.points ?? a.question.points,
         },
       })),
     };
@@ -550,9 +673,13 @@ export class ExamAttemptService {
         exam: {
           include: {
             questions: {
+              where: { archivedAt: null },
               orderBy: { order: 'asc' },
             },
           },
+        },
+        questionSnapshots: {
+          orderBy: { order: 'asc' },
         },
         answers: true,
       },
@@ -569,7 +696,26 @@ export class ExamAttemptService {
       return null;
     }
 
-    const result = this.buildAttemptResult(attempt, attempt.exam);
+    const snapshotQuestions = attempt.questionSnapshots.length
+      ? attempt.questionSnapshots.map((q) => ({
+          id: q.questionId,
+          type: q.type,
+          question: q.question,
+          options: (q.options as string[] | null) ?? null,
+          points: q.points,
+          order: q.order,
+          maxWords: q.maxWords,
+        }))
+      : attempt.exam.questions.map((q) => ({
+          id: q.id,
+          type: q.type,
+          question: q.question,
+          options: (q.options as string[] | null) ?? null,
+          points: q.points,
+          order: q.order,
+          maxWords: q.maxWords,
+        }));
+    const result = this.buildAttemptResult(attempt, attempt.exam, snapshotQuestions);
 
     // Include existing answers
     return {

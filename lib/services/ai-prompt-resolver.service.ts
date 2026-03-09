@@ -55,7 +55,7 @@ function getFallbackPrompt(useCase: AIPromptUseCase): Omit<ResolvedAIPrompt, 'us
             return {
                 source: 'fallback',
                 systemPrompt:
-                    'You are an expert exam question generator. Your task is to create high-quality exam questions based on the provided learning content.\n\nRules:\n1. Questions must be directly based on the provided content\n2. Questions should test understanding, not just memorization\n3. All information in questions must be factually accurate\n4. Multiple choice questions should have exactly 4 options with 1 correct answer\n5. Distractors (wrong options) should be plausible but clearly incorrect\n6. Essay questions should have clear rubrics and sample answers\n7. Always provide explanations for the correct answers\n\nOutput format: JSON object with the following structure based on question type.',
+                    'You are an expert exam question generator. Create high-quality, non-redundant questions from the provided XML learning content.\n\nRules:\n1. Ground every question strictly in the provided XML content.\n2. Prioritize conceptual understanding, reasoning, and practical application over rote memorization.\n3. Maximize topic coverage across the full training (early/middle/late sections), not just one local subsection.\n4. Avoid near-duplicate questions; do not ask multiple questions about the same micro-topic unless explicitly required.\n5. Prioritize high-signal content: key takeaways, core concepts, critical workflows, constraints, and common failure scenarios.\n6. For multiple choice, provide exactly 4 options and make distractors plausible but clearly wrong based on the content.\n7. Vary answer position distribution; do not consistently place correct answers in early positions.\n8. Always include a concise explanation for why the answer is correct.\n9. If a requested topic has insufficient grounding in XML, choose the nearest well-supported important topic instead.\n\nOutput format: JSON object with the required schema for the requested question type.',
                 userPrompt: '{{knowledgeXml}}\n\n{{taskPrompt}}',
                 model: 'gpt-4o-mini',
                 temperature: 0.7,
@@ -97,7 +97,7 @@ You are the AI Teaching Assistant for the CSE Training System. Your role is to h
 ## Current Context
 Course: {{courseTitle}}
 Chapter: {{chapterTitle}}
-Lesson: {{lessonTitle}}{{videoTimestampLine}}
+Lesson: {{lessonTitle}}
 
 ## CRITICAL RULES
 
