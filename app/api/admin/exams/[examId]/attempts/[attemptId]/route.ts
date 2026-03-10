@@ -44,7 +44,6 @@ export const GET = withAdminAuth(async (_req: NextRequest, _user, context: Route
                             },
                         },
                     },
-                    orderBy: { createdAt: 'asc' },
                 },
             },
         })
