@@ -1,6 +1,6 @@
 /**
- * Admin Essay Grading Route
- * POST /api/admin/exams/[examId]/attempts/[attemptId]/grade-essay - Finalize essay grade
+ * Admin Answer Grading Route
+ * POST /api/admin/exams/[examId]/attempts/[attemptId]/grade-essay - Finalize/override answer grade
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -18,7 +18,7 @@ const gradeEssaySchema = z.object({
   feedback: z.string().optional(),
 });
 
-// POST /api/admin/exams/[examId]/attempts/[attemptId]/grade-essay - Finalize essay grade
+// POST /api/admin/exams/[examId]/attempts/[attemptId]/grade-essay - Finalize/override answer grade
 export const POST = withAdminAuth(
   async (req: NextRequest, user, context: RouteContext) => {
     try {
@@ -26,7 +26,7 @@ export const POST = withAdminAuth(
       const { answerId, score, feedback } = gradeEssaySchema.parse(body);
 
       const gradingService = new ExamGradingService();
-      await gradingService.finalizeEssayGrade(answerId, user.id, score, feedback);
+      await gradingService.finalizeAnswerGrade(answerId, user.id, score, feedback);
 
       // Get updated grading summary
       const { attemptId } = await context.params;
@@ -35,7 +35,7 @@ export const POST = withAdminAuth(
       return NextResponse.json({
         success: true,
         data: {
-          message: 'Essay graded successfully',
+          message: 'Answer grade saved successfully',
           summary,
         },
       });
@@ -76,7 +76,7 @@ export const POST = withAdminAuth(
               success: false,
               error: {
                 code: 'NOT_MANUAL_GRADEABLE',
-                message: 'This answer is not eligible for manual grading',
+                message: 'This answer is not eligible for grade override',
               },
             },
             { status: 400 }

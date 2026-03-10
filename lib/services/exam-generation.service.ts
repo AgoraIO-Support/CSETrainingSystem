@@ -438,7 +438,23 @@ export class ExamGenerationService {
       },
     });
 
-    if (selectedLessons.length === 0) throw new Error('NO_CONTENT_AVAILABLE');
+    const foundLessonIds = new Set(selectedLessons.map((lesson) => lesson.id));
+    const missingLessonIds = Array.from(allowSet).filter((lessonId) => !foundLessonIds.has(lessonId));
+
+    if (missingLessonIds.length > 0) {
+      log('KnowledgeContext', 'warn', 'Standalone exam references missing lesson IDs', {
+        examId: exam.id,
+        requestedLessonIds: Array.from(allowSet),
+        missingLessonIds,
+      });
+    }
+
+    if (selectedLessons.length === 0) {
+      if (missingLessonIds.length > 0) {
+        throw new Error(`LESSONS_NOT_FOUND:${missingLessonIds.join(',')}`);
+      }
+      throw new Error('NO_CONTENT_AVAILABLE');
+    }
 
     const lessons = selectedLessons.map((lesson) => ({
       id: lesson.id,
@@ -482,29 +498,6 @@ export class ExamGenerationService {
       transcripts: Array<{ s3Key: string; filename: string }>;
     }>;
   }): Promise<string> {
-    // Ensure knowledge contexts exist (generate from latest VTT if missing).
-    for (const lesson of input.lessons) {
-      const status = lesson.knowledgeContext?.status;
-      if (status === 'READY' || status === 'PROCESSING') continue;
-
-      const transcript = lesson.transcripts[0];
-      if (!transcript?.s3Key) continue;
-
-      const command = new GetObjectCommand({ Bucket: ASSET_S3_BUCKET_NAME, Key: transcript.s3Key });
-      const response = await s3Client.send(command);
-      const vttContent = (await response.Body?.transformToString('utf-8')) || '';
-      if (!vttContent.trim()) continue;
-
-      await this.knowledgeService.generateAndStoreContext(lesson.id, vttContent, {
-        courseId: lesson.course.id,
-        courseTitle: lesson.course.title,
-        lessonId: lesson.id,
-        lessonTitle: lesson.title,
-        chapterTitle: lesson.chapter.title,
-        lessonDescription: lesson.description || undefined,
-      });
-    }
-
     // Deterministic ordering.
     const sorted = input.lessons.slice().sort((a, b) => {
       if (a.course.id !== b.course.id) return a.course.id.localeCompare(b.course.id);
@@ -517,6 +510,7 @@ export class ExamGenerationService {
 
     let used = 0;
     const parts: string[] = [];
+    const skippedLessons: Array<{ lessonId: string; title: string; reason: string }> = [];
 
     if (input.bundleType === 'COURSE') {
       parts.push(
@@ -529,8 +523,50 @@ export class ExamGenerationService {
     }
 
     for (const lesson of sorted) {
-      const xml = await this.knowledgeService.getKnowledgeContext(lesson.id);
-      if (!xml) continue;
+      let xml = await this.knowledgeService.getKnowledgeContext(lesson.id);
+      let missingReason: string | null = null;
+
+      if (!xml) {
+        const transcript = lesson.transcripts[0];
+        if (transcript?.s3Key) {
+          try {
+            const command = new GetObjectCommand({ Bucket: ASSET_S3_BUCKET_NAME, Key: transcript.s3Key });
+            const response = await s3Client.send(command);
+            const vttContent = (await response.Body?.transformToString('utf-8')) || '';
+
+            if (vttContent.trim()) {
+              await this.knowledgeService.generateAndStoreContext(lesson.id, vttContent, {
+                courseId: lesson.course.id,
+                courseTitle: lesson.course.title,
+                lessonId: lesson.id,
+                lessonTitle: lesson.title,
+                chapterTitle: lesson.chapter.title,
+                lessonDescription: lesson.description || undefined,
+              });
+              xml = await this.knowledgeService.getKnowledgeContext(lesson.id);
+            }
+          } catch (error) {
+            missingReason = 'TRANSCRIPT_REBUILD_FAILED';
+            log('KnowledgeContext', 'warn', 'Failed to rebuild knowledge context during question generation', {
+              lessonId: lesson.id,
+              lessonTitle: lesson.title,
+              transcriptKey: transcript.s3Key,
+              error: error instanceof Error ? error.message : 'Unknown error',
+            });
+          }
+        } else {
+          missingReason = 'TRANSCRIPT_MISSING';
+        }
+      }
+
+      if (!xml) {
+        skippedLessons.push({
+          lessonId: lesson.id,
+          title: lesson.title,
+          reason: missingReason ?? 'XML_UNAVAILABLE_AFTER_REBUILD',
+        });
+        continue;
+      }
 
       const truncated = xml.length > maxLessonChars ? xml.slice(0, maxLessonChars) : xml;
       const wrapped = this.wrapCdata(truncated);
@@ -555,7 +591,23 @@ export class ExamGenerationService {
 
     parts.push(input.bundleType === 'COURSE' ? `</course_knowledge_context>\n` : `</knowledge_context_bundle>\n`);
 
-    if (parts.length <= 2) throw new Error('NO_CONTENT_AVAILABLE');
+    if (parts.length <= 2) {
+      log('KnowledgeContext', 'warn', 'No usable knowledge context available for question generation', {
+        bundleType: input.bundleType,
+        bundleId: input.bundleId,
+        bundleTitle: input.bundleTitle,
+        requestedLessons: sorted.map((lesson) => ({
+          lessonId: lesson.id,
+          title: lesson.title,
+          hasTranscript: Boolean(lesson.transcripts[0]?.s3Key),
+          knowledgeStatus: lesson.knowledgeContext?.status ?? 'MISSING',
+        })),
+        skippedLessons,
+      });
+
+      const detail = skippedLessons.map((item) => `${item.lessonId}:${item.reason}`).join(',');
+      throw new Error(detail ? `NO_CONTENT_AVAILABLE:${detail}` : 'NO_CONTENT_AVAILABLE');
+    }
     return parts.join('');
   }
 

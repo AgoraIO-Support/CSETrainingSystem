@@ -163,6 +163,11 @@ export class ExamGradingService {
         continue;
       }
 
+      // Preserve explicit admin overrides when auto-grading is re-run.
+      if (answer.gradingStatus === GradingStatus.MANUALLY_GRADED) {
+        continue;
+      }
+
       if (
         question.type === ExamQuestionType.ESSAY ||
         question.type === ExamQuestionType.FILL_IN_BLANK ||
@@ -513,7 +518,7 @@ Please evaluate this essay and provide a score out of ${maxPoints} points, along
   /**
    * Finalize essay grade (admin approval/modification)
    */
-  async finalizeEssayGrade(
+  async finalizeAnswerGrade(
     answerId: string,
     adminId: string,
     score: number,
@@ -536,25 +541,19 @@ Please evaluate this essay and provide a score out of ${maxPoints} points, along
     }
 
     const snapshot = answer.attempt.questionSnapshots.find((s) => s.questionId === answer.questionId);
-    const questionType = snapshot?.type ?? answer.question.type;
     const questionPoints = snapshot?.points ?? answer.question.points;
-
-    if (
-      questionType !== ExamQuestionType.ESSAY &&
-      questionType !== ExamQuestionType.FILL_IN_BLANK &&
-      questionType !== ExamQuestionType.EXERCISE
-    ) {
-      throw new Error('NOT_MANUAL_GRADEABLE');
-    }
 
     // Clamp score to valid range
     const finalScore = Math.max(0, Math.min(score, questionPoints));
+    const isFullyCorrect = finalScore >= questionPoints;
+    const isFullyIncorrect = finalScore === 0;
 
     await prisma.examAnswer.update({
       where: { id: answerId },
       data: {
+        adminScore: finalScore,
         pointsAwarded: finalScore,
-        isCorrect: finalScore > 0,
+        isCorrect: isFullyCorrect ? true : isFullyIncorrect ? false : null,
         gradingStatus: GradingStatus.MANUALLY_GRADED,
         adminFeedback: feedback,
         adminGradedById: adminId,
@@ -584,6 +583,15 @@ Please evaluate this essay and provide a score out of ${maxPoints} points, along
     if (pendingEssays === 0) {
       await this.calculateFinalScore(answer.attemptId);
     }
+  }
+
+  async finalizeEssayGrade(
+    answerId: string,
+    adminId: string,
+    score: number,
+    feedback?: string
+  ): Promise<void> {
+    return this.finalizeAnswerGrade(answerId, adminId, score, feedback);
   }
 
   /**

@@ -82,13 +82,36 @@ export const POST = withAdminAuth(
       }
 
       if (error instanceof Error) {
-        if (error.message === 'NO_CONTENT_AVAILABLE') {
+        if (error.message.startsWith('LESSONS_NOT_FOUND:')) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: {
+                code: 'EXAM_010',
+                message: 'The selected lesson source no longer exists. Re-open the generator and choose a valid lesson.',
+              },
+            },
+            { status: 400 }
+          );
+        }
+
+        if (error.message.startsWith('NO_CONTENT_AVAILABLE')) {
+          const detail = error.message.split(':').slice(1).join(':');
+          const detailText = detail.toUpperCase();
+          let message = 'No XML knowledge context is currently usable for question generation. Ensure the selected lesson has either a READY XML context or a transcript (VTT) that can be rebuilt.';
+
+          if (detailText.includes('TRANSCRIPT_MISSING')) {
+            message = 'The selected lesson has no usable XML context and no transcript (VTT) to rebuild from. Upload a transcript or choose another lesson.'
+          } else if (detailText.includes('TRANSCRIPT_REBUILD_FAILED') || detailText.includes('XML_UNAVAILABLE_AFTER_REBUILD')) {
+            message = 'The selected lesson XML context could not be loaded or regenerated from its transcript. Re-upload/regenerate that lesson transcript context, or choose another lesson.'
+          }
+
           return NextResponse.json(
             {
               success: false,
               error: {
                 code: 'EXAM_009',
-                message: 'No XML knowledge context available for question generation. Ensure lesson transcripts (VTT) are uploaded and the XML knowledge context is generated.',
+                message,
               },
             },
             { status: 400 }

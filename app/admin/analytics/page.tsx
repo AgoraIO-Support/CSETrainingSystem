@@ -42,9 +42,16 @@ export default function AdminAnalyticsPage() {
             setError(null)
             try {
                 const days = Number(range)
-                const startDate = new Date()
-                startDate.setDate(startDate.getDate() - days)
-                const response = await ApiClient.getAnalytics({ startDate: startDate.toISOString() })
+                const endDate = new Date()
+                const startDate = new Date(endDate)
+                startDate.setDate(startDate.getDate() - (days - 1))
+                startDate.setHours(0, 0, 0, 0)
+                endDate.setHours(23, 59, 59, 999)
+
+                const response = await ApiClient.getAnalytics({
+                    startDate: startDate.toISOString(),
+                    endDate: endDate.toISOString(),
+                })
                 if (cancelled) return
                 setSummary(response.data)
             } catch (err) {
@@ -63,10 +70,32 @@ export default function AdminAnalyticsPage() {
         }
     }, [range, refreshIndex])
 
+    const normalizedActivity = useMemo(() => {
+        const entries = summary?.recentActivity
+        if (!Array.isArray(entries)) return []
+
+        return entries
+            .map((item, index) => {
+                const timestamp = new Date(item.date).getTime()
+                if (Number.isNaN(timestamp)) return null
+
+                return {
+                    id: item.id || `${item.date}-${index}`,
+                    date: new Date(item.date).toISOString(),
+                    timestamp,
+                    activeUsers: Number(item.activeUsers ?? 0),
+                    newEnrollments: Number(item.newEnrollments ?? 0),
+                    completedCourses: Number(item.completedCourses ?? 0),
+                    totalViews: Number(item.totalViews ?? 0),
+                    aiInteractions: Number(item.aiInteractions ?? 0),
+                }
+            })
+            .filter((item): item is NonNullable<typeof item> => item !== null)
+    }, [summary])
+
     const activityData = useMemo(() => {
-        if (!summary) return []
-        return [...summary.recentActivity]
-            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        return [...normalizedActivity]
+            .sort((a, b) => a.timestamp - b.timestamp)
             .map(item => ({
                 date: formatDate(item.date),
                 activeUsers: item.activeUsers,
@@ -74,9 +103,14 @@ export default function AdminAnalyticsPage() {
                 aiInteractions: item.aiInteractions,
                 totalViews: item.totalViews,
             }))
-    }, [summary])
+    }, [normalizedActivity])
 
-    const latestActivity = summary?.recentActivity?.[0]
+    const recentActivityData = useMemo(
+        () => [...normalizedActivity].sort((a, b) => b.timestamp - a.timestamp),
+        [normalizedActivity]
+    )
+
+    const latestActivity = recentActivityData[0]
 
     const handleRefresh = () => {
         setRefreshIndex(prev => prev + 1)
@@ -210,6 +244,7 @@ export default function AdminAnalyticsPage() {
                                                 <XAxis dataKey="date" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
                                                 <YAxis tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
                                                 <RechartsTooltip />
+                                                <Bar dataKey="totalViews" fill="#2563eb" radius={[4, 4, 0, 0]} />
                                                 <Bar dataKey="aiInteractions" fill="#a855f7" radius={[4, 4, 0, 0]} />
                                             </BarChart>
                                         </ResponsiveContainer>
@@ -287,7 +322,7 @@ export default function AdminAnalyticsPage() {
                                 </CardHeader>
                                 <CardContent>
                                     <div className="space-y-3 max-h-72 overflow-y-auto pr-2">
-                                        {summary.recentActivity.map(entry => (
+                                        {recentActivityData.map(entry => (
                                             <div
                                                 key={entry.id}
                                                 className="flex items-center justify-between rounded-lg border p-3 text-sm"
@@ -307,7 +342,7 @@ export default function AdminAnalyticsPage() {
                                                 </div>
                                             </div>
                                         ))}
-                                        {!summary.recentActivity.length && (
+                                        {!recentActivityData.length && (
                                             <p className="text-sm text-muted-foreground">No analytics records found.</p>
                                         )}
                                     </div>

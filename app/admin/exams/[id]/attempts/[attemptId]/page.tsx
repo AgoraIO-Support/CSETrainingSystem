@@ -119,14 +119,16 @@ export default function AttemptDetailPage({ params }: PageProps) {
             const response = await ApiClient.getExamAttemptDetail(examId, attemptId)
             setAttempt(response.data as unknown as AttemptDetail)
 
-            // Initialize grading forms for manually-graded questions
+            // Initialize grading forms for all questions so admins can override auto-graded scores.
             const forms: Record<string, { score: string; feedback: string }> = {}
             response.data.answers.forEach(answer => {
-                if (answer.question.type === 'ESSAY' || answer.question.type === 'FILL_IN_BLANK' || answer.question.type === 'EXERCISE') {
-                    forms[answer.id] = {
-                        score: answer.adminScore?.toString() || answer.aiSuggestedScore?.toString() || '',
-                        feedback: answer.adminFeedback || answer.aiFeedback || '',
-                    }
+                forms[answer.id] = {
+                    score:
+                        answer.adminScore?.toString() ||
+                        answer.pointsAwarded?.toString() ||
+                        answer.aiSuggestedScore?.toString() ||
+                        '',
+                    feedback: answer.adminFeedback || answer.aiFeedback || '',
                 }
             })
             setGradingForms(forms)
@@ -137,7 +139,7 @@ export default function AttemptDetailPage({ params }: PageProps) {
         }
     }
 
-    const handleGradeEssay = async (answerId: string) => {
+    const handleSaveGrade = async (answerId: string) => {
         const form = gradingForms[answerId]
         if (!form?.score) {
             setError('Please enter a score')
@@ -152,10 +154,10 @@ export default function AttemptDetailPage({ params }: PageProps) {
                 score: parseInt(form.score),
                 feedback: form.feedback || undefined,
             })
-            showSuccess('Answer graded successfully')
+            showSuccess('Grade updated successfully')
             loadData() // Refresh to get updated scores
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to grade essay')
+            setError(err instanceof Error ? err.message : 'Failed to save grade')
         } finally {
             setSavingAnswer(null)
         }
@@ -464,13 +466,13 @@ export default function AttemptDetailPage({ params }: PageProps) {
                                         <Badge variant={gradingStatusConfig[answer.gradingStatus].variant}>
                                             {gradingStatusConfig[answer.gradingStatus].label}
                                         </Badge>
-                                        {answer.isCorrect !== null && (
-                                            answer.isCorrect ? (
-                                                <CheckCircle className="h-5 w-5 text-green-600" />
-                                            ) : (
-                                                <XCircle className="h-5 w-5 text-red-600" />
-                                            )
-                                        )}
+                                        {answer.isCorrect === true ? (
+                                            <CheckCircle className="h-5 w-5 text-green-600" />
+                                        ) : answer.isCorrect === false ? (
+                                            <XCircle className="h-5 w-5 text-red-600" />
+                                        ) : answer.pointsAwarded !== null ? (
+                                            <FileText className="h-5 w-5 text-blue-600" />
+                                        ) : null}
                                         {answer.pointsAwarded !== null && (
                                             <span className="font-medium">
                                                 {answer.pointsAwarded}/{answer.question.points}
@@ -485,28 +487,46 @@ export default function AttemptDetailPage({ params }: PageProps) {
                                     <p className="font-medium">{answer.question.question}</p>
                                 </div>
 
-                                {answer.question.type === 'MULTIPLE_CHOICE' && answer.question.options && (
+                                {(answer.question.type === 'SINGLE_CHOICE' || answer.question.type === 'MULTIPLE_CHOICE') && answer.question.options && (
                                     <div>
                                         <p className="text-sm text-muted-foreground mb-1">Options</p>
                                         <ul className="space-y-1">
-                                            {answer.question.options.map((option, i) => (
-                                                <li
-                                                    key={i}
-                                                    className={`p-2 rounded ${
-                                                        answer.selectedOption === i
-                                                            ? answer.isCorrect
-                                                                ? 'bg-green-100 dark:bg-green-900/20'
-                                                                : 'bg-red-100 dark:bg-red-900/20'
-                                                            : parseInt(answer.question.correctAnswer || '') === i
-                                                                ? 'bg-green-100 dark:bg-green-900/20'
-                                                                : ''
-                                                    }`}
-                                                >
-                                                    {String.fromCharCode(65 + i)}. {option}
-                                                    {answer.selectedOption === i && ' (Selected)'}
-                                                    {parseInt(answer.question.correctAnswer || '') === i && ' ✓'}
-                                                </li>
-                                            ))}
+                                            {answer.question.options.map((option, i) => {
+                                                const selectedIndexes =
+                                                    answer.question.type === 'MULTIPLE_CHOICE' && answer.answer
+                                                        ? answer.answer
+                                                            .split(',')
+                                                            .map(s => parseInt(s, 10))
+                                                            .filter(n => !Number.isNaN(n))
+                                                        : answer.selectedOption !== null && answer.selectedOption !== undefined
+                                                            ? [answer.selectedOption]
+                                                            : []
+                                                const correctIndexes = (answer.question.correctAnswer || '')
+                                                    .split(',')
+                                                    .map(s => parseInt(s, 10))
+                                                    .filter(n => !Number.isNaN(n))
+                                                const isSelected = selectedIndexes.includes(i)
+                                                const isCorrectOption = correctIndexes.includes(i)
+
+                                                return (
+                                                    <li
+                                                        key={i}
+                                                        className={`p-2 rounded ${
+                                                            isSelected
+                                                                ? answer.isCorrect
+                                                                    ? 'bg-green-100 dark:bg-green-900/20'
+                                                                    : 'bg-red-100 dark:bg-red-900/20'
+                                                                : isCorrectOption
+                                                                    ? 'bg-green-100 dark:bg-green-900/20'
+                                                                    : ''
+                                                        }`}
+                                                    >
+                                                        {String.fromCharCode(65 + i)}. {option}
+                                                        {isSelected && ' (Selected)'}
+                                                        {isCorrectOption && ' ✓'}
+                                                    </li>
+                                                )
+                                            })}
                                         </ul>
                                     </div>
                                 )}
@@ -526,121 +546,122 @@ export default function AttemptDetailPage({ params }: PageProps) {
                                     </div>
                                 )}
 
-                                {(answer.question.type === 'ESSAY' || answer.question.type === 'FILL_IN_BLANK' || answer.question.type === 'EXERCISE') && (
-                                    <>
-                                        {answer.question.type === 'EXERCISE' && (
-                                            <div>
-                                                <p className="text-sm text-muted-foreground mb-1">Student Recording</p>
-                                                {answer.recordingUrl ? (
-                                                    <video
-                                                        className="w-full rounded-lg border bg-black"
-                                                        controls
-                                                        preload="metadata"
-                                                        src={answer.recordingUrl}
-                                                    />
-                                                ) : answer.recordingS3Key ? (
-                                                    <div className="p-3 border rounded-lg text-sm text-muted-foreground break-all">
-                                                        Recording key: {answer.recordingS3Key}
-                                                    </div>
-                                                ) : (
-                                                    <div className="p-3 border rounded-lg text-sm text-muted-foreground">
-                                                        No recording uploaded.
-                                                    </div>
-                                                )}
+                                {answer.question.type === 'EXERCISE' && (
+                                    <div>
+                                        <p className="text-sm text-muted-foreground mb-1">Student Recording</p>
+                                        {answer.recordingUrl ? (
+                                            <video
+                                                className="w-full rounded-lg border bg-black"
+                                                controls
+                                                preload="metadata"
+                                                src={answer.recordingUrl}
+                                            />
+                                        ) : answer.recordingS3Key ? (
+                                            <div className="p-3 border rounded-lg text-sm text-muted-foreground break-all">
+                                                Recording key: {answer.recordingS3Key}
+                                            </div>
+                                        ) : (
+                                            <div className="p-3 border rounded-lg text-sm text-muted-foreground">
+                                                No recording uploaded.
                                             </div>
                                         )}
+                                    </div>
+                                )}
 
-                                        {answer.question.type === 'ESSAY' && (
-                                            <>
-                                                <div>
-                                                    <p className="text-sm text-muted-foreground mb-1">Student Answer</p>
-                                                    <div className="p-4 bg-muted rounded-lg whitespace-pre-wrap">
-                                                        {answer.answer || 'No answer provided'}
-                                                    </div>
-                                                </div>
-
-                                                {answer.question.rubric && (
-                                                    <div>
-                                                        <p className="text-sm text-muted-foreground mb-1">Grading Rubric</p>
-                                                        <div className="p-3 border rounded-lg text-sm">
-                                                            {answer.question.rubric}
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {answer.question.sampleAnswer && (
-                                                    <div>
-                                                        <p className="text-sm text-muted-foreground mb-1">Sample Answer</p>
-                                                        <div className="p-3 border rounded-lg text-sm">
-                                                            {answer.question.sampleAnswer}
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {(answer.aiSuggestedScore !== null || answer.aiFeedback) && (
-                                                    <div className="p-4 border rounded-lg bg-purple-50 dark:bg-purple-900/20">
-                                                        <div className="flex items-center gap-2 mb-2">
-                                                            <Sparkles className="h-4 w-4 text-purple-600" />
-                                                            <span className="font-medium text-purple-600">AI Suggestion</span>
-                                                        </div>
-                                                        {answer.aiSuggestedScore !== null && (
-                                                            <p className="text-sm mb-1">
-                                                                Suggested Score: <strong>{answer.aiSuggestedScore}/{answer.question.points}</strong>
-                                                            </p>
-                                                        )}
-                                                        {answer.aiFeedback && (
-                                                            <p className="text-sm text-muted-foreground">{answer.aiFeedback}</p>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </>
-                                        )}
-
-                                        {/* Grading Form */}
-                                        <div className="p-4 border rounded-lg">
-                                            <p className="font-medium mb-3">
-                                                {answer.gradingStatus === 'MANUALLY_GRADED'
-                                                    ? 'Grade (Already Submitted)'
-                                                    : 'Grade This Answer'}
-                                            </p>
-                                            <div className="space-y-4">
-                                                <div className="grid gap-4 md:grid-cols-2">
-                                                    <div className="space-y-2">
-                                                        <Label>Score (out of {answer.question.points})</Label>
-                                                        <Input
-                                                            type="number"
-                                                            min={0}
-                                                            max={answer.question.points}
-                                                            value={gradingForms[answer.id]?.score || ''}
-                                                            onChange={(e) => updateGradingForm(answer.id, 'score', e.target.value)}
-                                                        />
-                                                    </div>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label>Feedback (optional)</Label>
-                                                    <Textarea
-                                                        className="text-foreground"
-                                                        value={gradingForms[answer.id]?.feedback || ''}
-                                                        onChange={(e) => updateGradingForm(answer.id, 'feedback', e.target.value)}
-                                                        rows={3}
-                                                        placeholder="Provide feedback to the student..."
-                                                    />
-                                                </div>
-                                                <Button
-                                                    onClick={() => handleGradeEssay(answer.id)}
-                                                    disabled={savingAnswer === answer.id}
-                                                >
-                                                    {savingAnswer === answer.id ? (
-                                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                                    ) : (
-                                                        <Save className="h-4 w-4 mr-2" />
-                                                    )}
-                                                    {answer.gradingStatus === 'MANUALLY_GRADED' ? 'Update Grade' : 'Submit Grade'}
-                                                </Button>
+                                {answer.question.type === 'ESSAY' && (
+                                    <>
+                                        <div>
+                                            <p className="text-sm text-muted-foreground mb-1">Student Answer</p>
+                                            <div className="p-4 bg-muted rounded-lg whitespace-pre-wrap">
+                                                {answer.answer || 'No answer provided'}
                                             </div>
                                         </div>
+
+                                        {answer.question.rubric && (
+                                            <div>
+                                                <p className="text-sm text-muted-foreground mb-1">Grading Rubric</p>
+                                                <div className="p-3 border rounded-lg text-sm">
+                                                    {answer.question.rubric}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {answer.question.sampleAnswer && (
+                                            <div>
+                                                <p className="text-sm text-muted-foreground mb-1">Sample Answer</p>
+                                                <div className="p-3 border rounded-lg text-sm">
+                                                    {answer.question.sampleAnswer}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {(answer.aiSuggestedScore !== null || answer.aiFeedback) && (
+                                            <div className="p-4 border rounded-lg bg-purple-50 dark:bg-purple-900/20">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <Sparkles className="h-4 w-4 text-purple-600" />
+                                                    <span className="font-medium text-purple-600">AI Suggestion</span>
+                                                </div>
+                                                {answer.aiSuggestedScore !== null && (
+                                                    <p className="text-sm mb-1">
+                                                        Suggested Score: <strong>{answer.aiSuggestedScore}/{answer.question.points}</strong>
+                                                    </p>
+                                                )}
+                                                {answer.aiFeedback && (
+                                                    <p className="text-sm text-muted-foreground">{answer.aiFeedback}</p>
+                                                )}
+                                            </div>
+                                        )}
                                     </>
                                 )}
+
+                                <div className="p-4 border rounded-lg">
+                                    <p className="font-medium mb-3">
+                                        {answer.gradingStatus === 'AUTO_GRADED'
+                                            ? 'Admin Override'
+                                            : answer.gradingStatus === 'MANUALLY_GRADED'
+                                                ? 'Admin Grade Override'
+                                                : 'Grade This Answer'}
+                                    </p>
+                                    <div className="space-y-4">
+                                        <div className="grid gap-4 md:grid-cols-2">
+                                            <div className="space-y-2">
+                                                <Label>Score (out of {answer.question.points})</Label>
+                                                <Input
+                                                    type="number"
+                                                    min={0}
+                                                    max={answer.question.points}
+                                                    value={gradingForms[answer.id]?.score || ''}
+                                                    onChange={(e) => updateGradingForm(answer.id, 'score', e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Feedback (optional)</Label>
+                                            <Textarea
+                                                className="text-foreground"
+                                                value={gradingForms[answer.id]?.feedback || ''}
+                                                onChange={(e) => updateGradingForm(answer.id, 'feedback', e.target.value)}
+                                                rows={3}
+                                                placeholder="Provide feedback to the student..."
+                                            />
+                                        </div>
+                                        <Button
+                                            onClick={() => handleSaveGrade(answer.id)}
+                                            disabled={savingAnswer === answer.id}
+                                        >
+                                            {savingAnswer === answer.id ? (
+                                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                            ) : (
+                                                <Save className="h-4 w-4 mr-2" />
+                                            )}
+                                            {answer.gradingStatus === 'AUTO_GRADED'
+                                                ? 'Apply Override'
+                                                : answer.gradingStatus === 'MANUALLY_GRADED'
+                                                    ? 'Update Grade'
+                                                    : 'Submit Grade'}
+                                        </Button>
+                                    </div>
+                                </div>
 
                                 {answer.question.explanation && answer.question.type !== 'ESSAY' && answer.question.type !== 'EXERCISE' && (
                                     <div>

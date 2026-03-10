@@ -347,6 +347,8 @@ export default function ExamResultPage({ params }: PageProps) {
                                                     <CheckCircle className="h-5 w-5 text-green-600" />
                                                 ) : answer.isCorrect === false ? (
                                                     <XCircle className="h-5 w-5 text-red-600" />
+                                                ) : answer.pointsAwarded !== null ? (
+                                                    <Target className="h-5 w-5 text-blue-600" />
                                                 ) : (
                                                     <Clock className="h-5 w-5 text-muted-foreground" />
                                                 )}

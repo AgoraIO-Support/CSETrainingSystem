@@ -146,7 +146,9 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                 })
                 setKnowledgeLessons(lessons)
                 const readyLessons = lessons.filter((l) => l.knowledgeStatus === 'READY')
-                setSelectedLessonIds(readyLessons[0] ? [readyLessons[0].lessonId] : [])
+                const rebuildableLessons = lessons.filter((l) => l.hasTranscript)
+                const defaultLesson = readyLessons[0] ?? rebuildableLessons[0] ?? null
+                setSelectedLessonIds(defaultLesson ? [defaultLesson.lessonId] : [])
             } catch (err) {
                 if (!cancelled) {
                     setKnowledgeLessonsError(err instanceof Error ? err.message : 'Failed to load knowledge contexts')
@@ -430,12 +432,21 @@ export default function ExamQuestionsPage({ params }: PageProps) {
     const hasSelection = selectedQuestionIds.length > 0
 
     const formatQuestionAnswer = (question: ExamQuestion) => {
-        if (question.type === 'MULTIPLE_CHOICE') {
-            const idx = Number.parseInt(question.correctAnswer || '', 10)
-            if (!Number.isFinite(idx)) return question.correctAnswer || '(missing)'
-            const optionText = question.options?.[idx]?.trim()
-            const optionLabel = String.fromCharCode(65 + idx)
-            return optionText ? `${optionLabel}. ${optionText}` : `${optionLabel}`
+        if ((question.type === 'SINGLE_CHOICE' || question.type === 'MULTIPLE_CHOICE') && question.options) {
+            const indexes = (question.correctAnswer || '')
+                .split(',')
+                .map(part => Number.parseInt(part.trim(), 10))
+                .filter(idx => Number.isFinite(idx))
+
+            if (!indexes.length) return question.correctAnswer || '(missing)'
+
+            const formatted = indexes.map(idx => {
+                const optionText = question.options?.[idx]?.trim()
+                const optionLabel = String.fromCharCode(65 + idx)
+                return optionText ? `${optionLabel}. ${optionText}` : `${optionLabel}`
+            })
+
+            return formatted.join(', ')
         }
 
         if (question.type === 'TRUE_FALSE') {
@@ -452,7 +463,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
             return question.sampleAnswer || '(sample answer missing)'
         }
 
-        return 'Manual review (exercise recording)'
+        return question.type === 'EXERCISE' ? 'Manual review (exercise recording)' : question.correctAnswer || '(missing)'
     }
 
     const buildAnswerKeyText = () => {
@@ -1128,7 +1139,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                                 )}
                                             </div>
                                             <p className="text-sm line-clamp-2">{question.question}</p>
-                                            {question.type === 'MULTIPLE_CHOICE' && question.options && (
+                                            {(question.type === 'SINGLE_CHOICE' || question.type === 'MULTIPLE_CHOICE') && question.options && (
                                                 <div className="mt-2 text-xs text-muted-foreground">
                                                     Options: {question.options.filter(o => o).join(', ')}
                                                 </div>
