@@ -44,7 +44,7 @@ export const GET = withAdminAuth(async (_req: NextRequest, _user, context: Route
                             },
                         },
                     },
-                    orderBy: { updatedAt: 'asc' },
+                    orderBy: { createdAt: 'asc' },
                 },
             },
         })
@@ -105,6 +105,12 @@ export const GET = withAdminAuth(async (_req: NextRequest, _user, context: Route
                 }
             })
         )
+        answers.sort((left, right) => {
+            const leftOrder = left.question.order ?? Number.MAX_SAFE_INTEGER
+            const rightOrder = right.question.order ?? Number.MAX_SAFE_INTEGER
+            if (leftOrder !== rightOrder) return leftOrder - rightOrder
+            return left.id.localeCompare(right.id)
+        })
 
         const certificate = await prisma.certificate.findFirst({
             where: { examId, userId: attempt.userId },
