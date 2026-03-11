@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ApiClient } from '@/lib/api-client'
+import { formatDateTimeInExamTimeZone } from '@/lib/exam-timezone'
 import {
     Search,
     Plus,
@@ -155,13 +156,9 @@ export default function AdminExamsPage() {
         }
     }
 
-    const formatDate = (date: string | Date | null | undefined) => {
+    const formatDate = (date: string | Date | null | undefined, timeZone = 'UTC') => {
         if (!date) return '-'
-        return new Date(date).toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-        })
+        return formatDateTimeInExamTimeZone(date, timeZone, { includeTimeZoneName: true })
     }
 
     return (
@@ -276,7 +273,7 @@ export default function AdminExamsPage() {
                                                     Pass: {exam.passingScore}/{exam.totalScore}
                                                 </span>
                                                 {exam.deadline && (
-                                                    <span>Deadline: {formatDate(exam.deadline)}</span>
+                                                    <span>Deadline: {formatDate(exam.deadline, exam.timezone)}</span>
                                                 )}
                                             </div>
                                             {exam.course && (

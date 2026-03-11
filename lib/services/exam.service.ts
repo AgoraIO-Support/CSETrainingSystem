@@ -22,6 +22,7 @@ export interface CreateExamInput {
   description?: string;
   instructions?: string;
   timeLimit?: number;
+  timezone: string;
   deadline?: Date;
   availableFrom?: Date;
   totalScore?: number;
@@ -38,6 +39,7 @@ export interface UpdateExamInput {
   description?: string;
   instructions?: string;
   timeLimit?: number;
+  timezone?: string;
   deadline?: Date | null;
   availableFrom?: Date | null;
   totalScore?: number;
@@ -92,6 +94,7 @@ export interface ExamWithDetails {
   instructions: string | null;
   status: ExamStatus;
   timeLimit: number | null;
+  timezone: string;
   deadline: Date | null;
   availableFrom: Date | null;
   totalScore: number;
@@ -309,6 +312,7 @@ export class ExamService {
         description: data.description,
         instructions: data.instructions,
         timeLimit: data.timeLimit,
+        timezone: data.timezone,
         deadline: data.deadline,
         availableFrom: data.availableFrom,
         totalScore: data.totalScore ?? 100,
@@ -392,6 +396,7 @@ export class ExamService {
         ...(data.description !== undefined && { description: data.description }),
         ...(data.instructions !== undefined && { instructions: data.instructions }),
         ...(data.timeLimit !== undefined && { timeLimit: data.timeLimit }),
+        ...(data.timezone !== undefined && { timezone: data.timezone }),
         ...(data.deadline !== undefined && { deadline: data.deadline }),
         ...(data.availableFrom !== undefined && { availableFrom: data.availableFrom }),
         ...(data.totalScore !== undefined && { totalScore: data.totalScore }),

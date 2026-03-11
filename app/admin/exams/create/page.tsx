@@ -10,11 +10,13 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { ApiClient } from '@/lib/api-client'
+import { getBrowserTimeZone, getExamTimeZoneOptions } from '@/lib/exam-timezone'
 import { ArrowLeft, Loader2, Save } from 'lucide-react'
 import Link from 'next/link'
 import type { Course, ExamType } from '@/types'
 
 export default function CreateExamPage() {
+    const timeZoneOptions = getExamTimeZoneOptions()
     const router = useRouter()
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -37,6 +39,7 @@ export default function CreateExamPage() {
         randomizeOptions: false,
         showResultsImmediately: true,
         allowReview: true,
+        timezone: 'UTC',
         availableFrom: '',
         deadline: '',
         certificateEnabled: false,
@@ -56,6 +59,14 @@ export default function CreateExamPage() {
             }
         }
         loadCourses()
+    }, [])
+
+    useEffect(() => {
+        setForm(prev => (
+            prev.timezone && prev.timezone !== 'UTC'
+                ? prev
+                : { ...prev, timezone: getBrowserTimeZone() }
+        ))
     }, [])
 
     useEffect(() => {
@@ -87,6 +98,7 @@ export default function CreateExamPage() {
                 randomizeOptions: form.randomizeOptions,
                 showResultsImmediately: form.showResultsImmediately,
                 allowReview: form.allowReview,
+                timezone: form.timezone,
                 availableFrom: form.availableFrom || undefined,
                 deadline: form.deadline || undefined,
             }
@@ -265,7 +277,7 @@ export default function CreateExamPage() {
                             <CardDescription>Configure how the exam is scored</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="grid gap-4 md:grid-cols-3">
+                            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="totalScore">Total Score *</Label>
                                     <Input
@@ -404,6 +416,20 @@ export default function CreateExamPage() {
                                 </div>
 
                                 <div className="space-y-2">
+                                    <Label htmlFor="timezone">Timezone</Label>
+                                    <Input
+                                        id="timezone"
+                                        list="exam-timezone-options"
+                                        value={form.timezone}
+                                        onChange={(e) => updateForm('timezone', e.target.value)}
+                                        placeholder="e.g. Asia/Shanghai"
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Available From and Deadline below are interpreted in this timezone and stored as UTC.
+                                    </p>
+                                </div>
+
+                                <div className="space-y-2">
                                     <Label htmlFor="availableFrom">Available From</Label>
                                     <Input
                                         id="availableFrom"
@@ -423,6 +449,11 @@ export default function CreateExamPage() {
                                     />
                                 </div>
                             </div>
+                            <datalist id="exam-timezone-options">
+                                {timeZoneOptions.map((timeZone) => (
+                                    <option key={timeZone} value={timeZone} />
+                                ))}
+                            </datalist>
                         </CardContent>
                     </Card>
 

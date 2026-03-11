@@ -8,6 +8,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAdminAuth } from '@/lib/auth-middleware';
 import { ExamService } from '@/lib/services/exam.service';
 import { createExamSchema } from '@/lib/validations';
+import {
+  assertExamTimeRange,
+  normalizeExamTimeZone,
+  optionalLocalDateTimeToUtc,
+} from '@/lib/exam-timezone';
 import { ExamStatus, ExamType } from '@prisma/client';
 import { z } from 'zod';
 
@@ -57,8 +62,21 @@ export const POST = withAdminAuth(async (req: NextRequest, user) => {
   try {
     const body = await req.json();
     const data = createExamSchema.parse(body);
+    const timezone = normalizeExamTimeZone(data.timezone);
+    const availableFrom = optionalLocalDateTimeToUtc(data.availableFrom, timezone);
+    const deadline = optionalLocalDateTimeToUtc(data.deadline, timezone);
 
-    const exam = await ExamService.createExam(data, user.id);
+    assertExamTimeRange(availableFrom, deadline);
+
+    const exam = await ExamService.createExam(
+      {
+        ...data,
+        timezone,
+        availableFrom,
+        deadline,
+      },
+      user.id
+    );
 
     return NextResponse.json(
       {
@@ -85,6 +103,26 @@ export const POST = withAdminAuth(async (req: NextRequest, user) => {
     }
 
     if (error instanceof Error) {
+      if (
+        error.message === 'INVALID_EXAM_LOCAL_TIME' ||
+        error.message === 'INVALID_EXAM_DATETIME_FORMAT' ||
+        error.message === 'INVALID_EXAM_TIME_RANGE'
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'VALIDATION_ERROR',
+              message:
+                error.message === 'INVALID_EXAM_TIME_RANGE'
+                  ? 'Deadline must be later than Available From.'
+                  : 'Invalid exam date/time for the selected timezone.',
+            },
+          },
+          { status: 400 }
+        );
+      }
+
       if (error.message === 'COURSE_REQUIRED') {
         return NextResponse.json(
           {

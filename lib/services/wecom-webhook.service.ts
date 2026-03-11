@@ -1,5 +1,6 @@
 import prisma from '@/lib/prisma';
 import { log } from '@/lib/logger';
+import { DEFAULT_EXAM_TIMEZONE, formatDateTimeInExamTimeZone } from '@/lib/exam-timezone';
 
 export interface SendWecomResult {
   success: boolean;
@@ -11,15 +12,9 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 const WECOM_WEBHOOK_URL = process.env.WECOM_WEBHOOK_URL || '';
 const WECOM_LOG_CONTENT = process.env.CSE_WECOM_LOG_CONTENT === '1';
 
-function formatDeadline(deadline: Date | null): string {
+function formatDeadline(deadline: Date | null, timeZone: string): string {
   if (!deadline) return 'No deadline';
-  return deadline.toLocaleString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatDateTimeInExamTimeZone(deadline, timeZone, { includeTimeZoneName: true });
 }
 
 function escapeMarkdown(value: string): string {
@@ -67,6 +62,7 @@ export class WecomWebhookService {
             title: true,
             description: true,
             deadline: true,
+            timezone: true,
             timeLimit: true,
             maxAttempts: true,
             status: true,
@@ -89,7 +85,7 @@ export class WecomWebhookService {
         `**User**: ${escapeMarkdown(user.name || user.email)} (${escapeMarkdown(user.email)})`,
         `**Exam**: ${escapeMarkdown(exam.title)}`,
         `**Status**: ${escapeMarkdown(exam.status)}`,
-        `**Deadline**: ${escapeMarkdown(formatDeadline(exam.deadline))}`,
+        `**Deadline**: ${escapeMarkdown(formatDeadline(exam.deadline, exam.timezone || DEFAULT_EXAM_TIMEZONE))}`,
         `**Time Limit**: ${exam.timeLimit ? `${exam.timeLimit} minutes` : 'No limit'}`,
         `**Max Attempts**: ${exam.maxAttempts}`,
         exam.description ? `**Description**: ${escapeMarkdown(exam.description)}` : null,

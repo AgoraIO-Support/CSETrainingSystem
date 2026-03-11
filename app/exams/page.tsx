@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { ApiClient } from '@/lib/api-client'
+import { buildExamScheduleDisplay } from '@/lib/exam-timezone'
 import {
     Loader2,
     Clock,
@@ -75,15 +76,6 @@ export default function ExamsPage() {
         } finally {
             setLoading(false)
         }
-    }
-
-    const formatDate = (date: string | Date | null | undefined) => {
-        if (!date) return null
-        return new Date(date).toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-        })
     }
 
     const isDeadlineSoon = (deadline: string | Date | null | undefined) => {
@@ -227,7 +219,7 @@ export default function ExamsPage() {
                                                 {exam.deadline && (
                                                     <span className="flex items-center gap-1">
                                                         <Calendar className="h-4 w-4" />
-                                                        Due: {formatDate(exam.deadline)}
+                                                        Due (your local time): {buildExamScheduleDisplay(exam.deadline, exam.timezone)?.localLabel}
                                                     </span>
                                                 )}
                                             </div>

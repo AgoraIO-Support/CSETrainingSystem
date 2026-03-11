@@ -84,6 +84,8 @@ export const GET = withAuth(async (req: NextRequest, user) => {
         totalScore: exam.totalScore,
         passingScore: exam.passingScore,
         maxAttempts: exam.maxAttempts,
+        timezone: exam.timezone,
+        availableFrom: exam.availableFrom,
         deadline: exam.deadline,
         questionCount: exam._count.questions,
         // User status

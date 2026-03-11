@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
 import { ApiClient } from '@/lib/api-client'
+import { getExamTimeZoneOptions, utcToLocalDateTimeInputValue } from '@/lib/exam-timezone'
 import { ArrowLeft, Loader2, Save, Send, CheckCircle, XCircle } from 'lucide-react'
 import Link from 'next/link'
 import type { Exam, ExamStatus } from '@/types'
@@ -29,6 +30,7 @@ type PageProps = {
 }
 
 export default function EditExamPage({ params }: PageProps) {
+    const timeZoneOptions = getExamTimeZoneOptions()
     const { id: examId } = use(params)
     const router = useRouter()
     const [exam, setExam] = useState<Exam | null>(null)
@@ -71,6 +73,7 @@ export default function EditExamPage({ params }: PageProps) {
         randomizeOptions: false,
         showResultsImmediately: true,
         allowReview: true,
+        timezone: 'UTC',
         availableFrom: '',
         deadline: '',
     })
@@ -93,8 +96,9 @@ export default function EditExamPage({ params }: PageProps) {
                     randomizeOptions: data.randomizeOptions,
                     showResultsImmediately: data.showResultsImmediately,
                     allowReview: data.allowReview,
-                    availableFrom: data.availableFrom ? new Date(data.availableFrom).toISOString().slice(0, 16) : '',
-                    deadline: data.deadline ? new Date(data.deadline).toISOString().slice(0, 16) : '',
+                    timezone: data.timezone,
+                    availableFrom: utcToLocalDateTimeInputValue(data.availableFrom, data.timezone),
+                    deadline: utcToLocalDateTimeInputValue(data.deadline, data.timezone),
                 })
             } catch (err) {
                 setError(err instanceof Error ? err.message : 'Failed to load exam')
@@ -176,6 +180,7 @@ export default function EditExamPage({ params }: PageProps) {
                 randomizeOptions: form.randomizeOptions,
                 showResultsImmediately: form.showResultsImmediately,
                 allowReview: form.allowReview,
+                timezone: form.timezone,
                 availableFrom: form.availableFrom || null,
                 deadline: form.deadline || null,
             }
@@ -669,7 +674,7 @@ export default function EditExamPage({ params }: PageProps) {
                             <CardDescription>Availability settings for this exam</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="grid gap-4 md:grid-cols-3">
+                            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="timeLimit">Time Limit (minutes)</Label>
                                     <Input
@@ -681,6 +686,21 @@ export default function EditExamPage({ params }: PageProps) {
                                         placeholder="No limit"
                                         disabled={!canEditExam}
                                     />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="timezone">Timezone</Label>
+                                    <Input
+                                        id="timezone"
+                                        list="exam-timezone-options"
+                                        value={form.timezone}
+                                        onChange={(e) => updateForm('timezone', e.target.value)}
+                                        disabled={!canEditExam}
+                                        placeholder="e.g. Asia/Shanghai"
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        These times are interpreted in this business timezone and stored as UTC.
+                                    </p>
                                 </div>
 
                                 <div className="space-y-2">
@@ -705,6 +725,11 @@ export default function EditExamPage({ params }: PageProps) {
                                     />
                                 </div>
                             </div>
+                            <datalist id="exam-timezone-options">
+                                {timeZoneOptions.map((timeZone) => (
+                                    <option key={timeZone} value={timeZone} />
+                                ))}
+                            </datalist>
                         </CardContent>
                     </Card>
 

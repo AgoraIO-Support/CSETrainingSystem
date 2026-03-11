@@ -558,6 +558,7 @@ export class ApiClient {
         randomizeOptions?: boolean
         showResultsImmediately?: boolean
         allowReview?: boolean
+        timezone: string
         availableFrom?: string
         deadline?: string
     }): Promise<{ success: boolean; data: Exam }> {
@@ -579,6 +580,7 @@ export class ApiClient {
         randomizeOptions: boolean
         showResultsImmediately: boolean
         allowReview: boolean
+        timezone: string
         availableFrom: string | null
         deadline: string | null
     }>): Promise<{ success: boolean; data: Exam }> {

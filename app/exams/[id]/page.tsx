@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ApiClient } from '@/lib/api-client'
+import { buildExamScheduleDisplay } from '@/lib/exam-timezone'
 import {
     ArrowLeft,
     Loader2,
@@ -103,7 +104,7 @@ export default function ExamIntroPage({ params }: PageProps) {
         }
     }
 
-    const formatDate = (date: string | Date | null | undefined) => {
+    const formatLocalDateTime = (date: string | Date | null | undefined) => {
         if (!date) return '-'
         return new Date(date).toLocaleString('en-US', {
             month: 'short',
@@ -139,6 +140,8 @@ export default function ExamIntroPage({ params }: PageProps) {
     }
 
     const hasPassed = exam.userAttempts.some(a => a.passed === true)
+    const availableFromSchedule = buildExamScheduleDisplay(exam.availableFrom, exam.timezone)
+    const deadlineSchedule = buildExamScheduleDisplay(exam.deadline, exam.timezone)
     const bestAttempt = exam.userAttempts.reduce((best, current) => {
         if (current.percentageScore === null) return best
         if (!best || (best.percentageScore ?? 0) < current.percentageScore) return current
@@ -268,16 +271,30 @@ export default function ExamIntroPage({ params }: PageProps) {
                         )}
 
                         <div className="grid gap-4 md:grid-cols-2">
-                            {exam.availableFrom && (
-                                <div className="flex items-center gap-2 text-sm">
+                            {availableFromSchedule && (
+                                <div className="flex items-start gap-2 text-sm">
                                     <Calendar className="h-4 w-4 text-muted-foreground" />
-                                    <span>Available from: {formatDate(exam.availableFrom)}</span>
+                                    <div>
+                                        <p>Available from (your local time): {availableFromSchedule.localLabel}</p>
+                                        {availableFromSchedule.viewerTimeZone !== availableFromSchedule.examTimeZone && (
+                                            <p className="text-xs text-muted-foreground">
+                                                Exam timezone ({availableFromSchedule.examTimeZone}): {availableFromSchedule.examLabel}
+                                            </p>
+                                        )}
+                                    </div>
                                 </div>
                             )}
-                            {exam.deadline && (
-                                <div className="flex items-center gap-2 text-sm">
+                            {deadlineSchedule && (
+                                <div className="flex items-start gap-2 text-sm">
                                     <Calendar className="h-4 w-4 text-muted-foreground" />
-                                    <span>Deadline: {formatDate(exam.deadline)}</span>
+                                    <div>
+                                        <p>Deadline (your local time): {deadlineSchedule.localLabel}</p>
+                                        {deadlineSchedule.viewerTimeZone !== deadlineSchedule.examTimeZone && (
+                                            <p className="text-xs text-muted-foreground">
+                                                Exam timezone ({deadlineSchedule.examTimeZone}): {deadlineSchedule.examLabel}
+                                            </p>
+                                        )}
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -335,7 +352,7 @@ export default function ExamIntroPage({ params }: PageProps) {
                                                 <p className="font-medium">Attempt #{attempt.attemptNumber}</p>
                                                 <p className="text-sm text-muted-foreground">
                                                     {attempt.submittedAt
-                                                        ? formatDate(attempt.submittedAt)
+                                                        ? formatLocalDateTime(attempt.submittedAt)
                                                         : 'In progress'}
                                                 </p>
                                             </div>

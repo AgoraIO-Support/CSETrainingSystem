@@ -1,6 +1,7 @@
 import { LessonAssetType, ExamType, ExamQuestionType, DifficultyLevel, ExamStatus } from '@prisma/client'
 import { z } from 'zod'
 import { LessonCompletionRule, LessonType } from '@prisma/client'
+import { DEFAULT_EXAM_TIMEZONE, isValidExamTimeZone } from '@/lib/exam-timezone'
 
 // User schemas
 export const registerSchema = z.object({
@@ -161,7 +162,7 @@ export function validateRequestBody<T>(schema: z.ZodSchema<T>, data: unknown): T
 // EXAM SCHEMAS
 // ============================================================================
 
-const optionalDateTimeInput = () =>
+const optionalLocalDateTimeInput = () =>
     z.preprocess(
         (value) => {
             if (value === undefined || value === null) return undefined
@@ -172,11 +173,10 @@ const optionalDateTimeInput = () =>
             }
             return value
         },
-        // Accept both ISO datetime strings and `datetime-local` inputs like "2025-12-29T06:40".
-        z.coerce.date().optional()
+        z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/).optional()
     )
 
-const optionalNullableDateTimeInput = () =>
+const optionalNullableLocalDateTimeInput = () =>
     z.preprocess(
         (value) => {
             if (value === undefined) return undefined
@@ -188,8 +188,15 @@ const optionalNullableDateTimeInput = () =>
             }
             return value
         },
-        z.coerce.date().nullable().optional()
+        z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/).nullable().optional()
     )
+
+const examTimeZoneInput = () =>
+    z
+        .string()
+        .trim()
+        .min(1, 'Timezone is required')
+        .refine(isValidExamTimeZone, 'Timezone must be a valid IANA timezone')
 
 export const createExamSchema = z.object({
     examType: z.nativeEnum(ExamType),
@@ -198,8 +205,9 @@ export const createExamSchema = z.object({
     description: z.string().optional(),
     instructions: z.string().optional(),
     timeLimit: z.number().int().positive().optional(),
-    deadline: optionalDateTimeInput(),
-    availableFrom: optionalDateTimeInput(),
+    timezone: examTimeZoneInput().default(DEFAULT_EXAM_TIMEZONE),
+    deadline: optionalLocalDateTimeInput(),
+    availableFrom: optionalLocalDateTimeInput(),
     totalScore: z.number().int().positive().default(100),
     passingScore: z.number().int().min(0).max(100).default(70),
     randomizeQuestions: z.boolean().default(false),
@@ -214,8 +222,9 @@ export const updateExamSchema = z.object({
     description: z.string().optional().nullable(),
     instructions: z.string().optional().nullable(),
     timeLimit: z.number().int().positive().optional().nullable(),
-    deadline: optionalNullableDateTimeInput(),
-    availableFrom: optionalNullableDateTimeInput(),
+    timezone: examTimeZoneInput().optional(),
+    deadline: optionalNullableLocalDateTimeInput(),
+    availableFrom: optionalNullableLocalDateTimeInput(),
     totalScore: z.number().int().positive().optional(),
     passingScore: z.number().int().min(0).max(100).optional(),
     randomizeQuestions: z.boolean().optional(),

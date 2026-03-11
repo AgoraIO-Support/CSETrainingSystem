@@ -9,6 +9,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAdminAuth } from '@/lib/auth-middleware';
 import { ExamService } from '@/lib/services/exam.service';
 import { updateExamSchema } from '@/lib/validations';
+import {
+  assertExamTimeRange,
+  normalizeExamTimeZone,
+  optionalNullableLocalDateTimeToUtc,
+} from '@/lib/exam-timezone';
 import { z } from 'zod';
 
 type RouteContext = {
@@ -63,6 +68,28 @@ export const PATCH = withAdminAuth(
       const { examId } = await context.params;
       const body = await req.json();
       const data = updateExamSchema.parse(body);
+      const existingExam = await ExamService.getExamById(examId);
+
+      if (!existingExam) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'EXAM_NOT_FOUND',
+              message: 'Exam not found',
+            },
+          },
+          { status: 404 }
+        );
+      }
+
+      const timezone = normalizeExamTimeZone(data.timezone ?? existingExam.timezone);
+      const availableFrom = optionalNullableLocalDateTimeToUtc(data.availableFrom, timezone);
+      const deadline = optionalNullableLocalDateTimeToUtc(data.deadline, timezone);
+      const nextAvailableFrom = availableFrom === undefined ? existingExam.availableFrom : availableFrom;
+      const nextDeadline = deadline === undefined ? existingExam.deadline : deadline;
+
+      assertExamTimeRange(nextAvailableFrom, nextDeadline);
 
       // Transform nullable values to undefined for service compatibility
       const updateData = {
@@ -70,8 +97,9 @@ export const PATCH = withAdminAuth(
         description: data.description ?? undefined,
         instructions: data.instructions ?? undefined,
         timeLimit: data.timeLimit ?? undefined,
-        deadline: data.deadline ?? undefined,
-        availableFrom: data.availableFrom ?? undefined,
+        timezone,
+        deadline,
+        availableFrom,
       };
 
       const exam = await ExamService.updateExam(examId, updateData);
@@ -98,6 +126,26 @@ export const PATCH = withAdminAuth(
       }
 
       if (error instanceof Error) {
+        if (
+          error.message === 'INVALID_EXAM_LOCAL_TIME' ||
+          error.message === 'INVALID_EXAM_DATETIME_FORMAT' ||
+          error.message === 'INVALID_EXAM_TIME_RANGE'
+        ) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: {
+                code: 'VALIDATION_ERROR',
+                message:
+                  error.message === 'INVALID_EXAM_TIME_RANGE'
+                    ? 'Deadline must be later than Available From.'
+                    : 'Invalid exam date/time for the selected timezone.',
+              },
+            },
+            { status: 400 }
+          );
+        }
+
         if (error.message === 'EXAM_NOT_FOUND') {
           return NextResponse.json(
             {

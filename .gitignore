@@ -34,6 +34,7 @@ tmp/
 e2e/playwright-report/
 e2e/test-results/
 playwright-report/
+.playwright-cli/
 test-results/
 
 # Assistant artifacts

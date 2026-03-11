@@ -1237,6 +1237,7 @@ model Exam {
 
   // Timing
   timeLimit     Int? // Minutes (null = no limit)
+  timezone      String   @default("UTC")
   deadline      DateTime? // Exam closes after this date
   availableFrom DateTime? // Exam becomes available after this date
 

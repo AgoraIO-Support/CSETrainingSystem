@@ -67,6 +67,7 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
         totalScore: exam.totalScore,
         passingScore: exam.passingScore,
         maxAttempts: exam.maxAttempts,
+        timezone: exam.timezone,
         deadline: exam.deadline,
         availableFrom: exam.availableFrom,
         showResultsImmediately: exam.showResultsImmediately,

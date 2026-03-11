@@ -16,6 +16,7 @@ import {
   Hr,
   Link,
 } from '@react-email/components';
+import { DEFAULT_EXAM_TIMEZONE, formatDateTimeInExamTimeZone } from '@/lib/exam-timezone';
 
 // Common styles
 const main = {
@@ -91,6 +92,7 @@ interface ExamInvitationEmailProps {
   examTitle: string;
   examDescription?: string;
   deadline?: Date;
+  examTimezone?: string;
   timeLimit?: number;
   maxAttempts: number;
   examUrl: string;
@@ -102,6 +104,7 @@ export function ExamInvitationEmail({
   examTitle,
   examDescription,
   deadline,
+  examTimezone = DEFAULT_EXAM_TIMEZONE,
   timeLimit,
   maxAttempts,
   examUrl,
@@ -138,14 +141,7 @@ export function ExamInvitationEmail({
               {deadline && (
                 <li>
                   Deadline:{' '}
-                  {new Date(deadline).toLocaleDateString('en-US', {
-                    weekday: 'long',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
+                  {formatDateTimeInExamTimeZone(deadline, examTimezone, { includeTimeZoneName: true })}
                 </li>
               )}
               {timeLimit && <li>Time Limit: {timeLimit} minutes</li>}
@@ -174,6 +170,7 @@ interface ExamReminderEmailProps {
   userName: string;
   examTitle: string;
   deadline?: Date;
+  examTimezone?: string;
   examUrl: string;
   appName: string;
 }
@@ -182,6 +179,7 @@ export function ExamReminderEmail({
   userName,
   examTitle,
   deadline,
+  examTimezone = DEFAULT_EXAM_TIMEZONE,
   examUrl,
   appName,
 }: ExamReminderEmailProps) {
@@ -207,14 +205,7 @@ export function ExamReminderEmail({
                   style={{ ...text, fontSize: '14px', margin: '0', color: '#dc2626' }}
                 >
                   Deadline:{' '}
-                  {new Date(deadline).toLocaleDateString('en-US', {
-                    weekday: 'long',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
+                  {formatDateTimeInExamTimeZone(deadline, examTimezone, { includeTimeZoneName: true })}
                 </Text>
               )}
             </Section>

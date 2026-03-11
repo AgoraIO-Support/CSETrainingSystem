@@ -351,6 +351,7 @@ export interface Exam {
     randomizeOptions: boolean
     showResultsImmediately: boolean
     allowReview: boolean
+    timezone: string
     availableFrom?: string | Date | null
     deadline?: string | Date | null
     createdAt: string | Date
