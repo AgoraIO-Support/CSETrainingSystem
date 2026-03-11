@@ -7,6 +7,25 @@ export interface AnalyticsSummary {
     totalCourses: number
     totalEnrollments: number
     completionRate: number
+    learnerProgress: Array<{
+        userId: string
+        name: string
+        email: string
+        status: 'ACTIVE' | 'SUSPENDED' | 'DELETED'
+        lastLoginAt: Date | null
+        enrollmentCount: number
+        completedCourses: number
+        averageProgress: number
+        courses: Array<{
+            courseId: string
+            title: string
+            progress: number
+            status: 'ACTIVE' | 'COMPLETED' | 'DROPPED'
+            enrolledAt: Date
+            lastAccessedAt: Date | null
+            completedAt: Date | null
+        }>
+    }>
     recentActivity: Array<{
         id: string
         date: Date
@@ -176,12 +195,53 @@ export class AnalyticsService {
     static async getSummary(params: AnalyticsParams = {}): Promise<AnalyticsSummary> {
         const range = resolveRange(params)
 
-        const [totalUsers, activeUsers, totalCourses, totalEnrollments, completedEnrollments, recentActivity] = await Promise.all([
+        const [
+            totalUsers,
+            activeUsers,
+            totalCourses,
+            totalEnrollments,
+            completedEnrollments,
+            learnerProgress,
+            recentActivity,
+        ] = await Promise.all([
             prisma.user.count(),
             prisma.user.count({ where: { status: 'ACTIVE' } }),
             prisma.course.count(),
             prisma.enrollment.count(),
             prisma.enrollment.count({ where: { status: 'COMPLETED' } }),
+            prisma.user.findMany({
+                where: { role: 'USER' },
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    status: true,
+                    lastLoginAt: true,
+                    enrollments: {
+                        select: {
+                            courseId: true,
+                            progress: true,
+                            status: true,
+                            enrolledAt: true,
+                            lastAccessedAt: true,
+                            completedAt: true,
+                            course: {
+                                select: {
+                                    title: true,
+                                },
+                            },
+                        },
+                        orderBy: [
+                            { lastAccessedAt: 'desc' },
+                            { enrolledAt: 'desc' },
+                        ],
+                    },
+                },
+                orderBy: [
+                    { lastLoginAt: 'desc' },
+                    { createdAt: 'desc' },
+                ],
+            }),
             getRecentActivity(range),
         ])
 
@@ -193,6 +253,39 @@ export class AnalyticsService {
             totalCourses,
             totalEnrollments,
             completionRate,
+            learnerProgress: learnerProgress.map((user) => {
+                const enrollmentCount = user.enrollments.length
+                const completedCourses = user.enrollments.filter((enrollment) => enrollment.status === 'COMPLETED').length
+                const averageProgress =
+                    enrollmentCount > 0
+                        ? Number(
+                              (
+                                  user.enrollments.reduce((sum, enrollment) => sum + enrollment.progress, 0) /
+                                  enrollmentCount
+                              ).toFixed(1)
+                          )
+                        : 0
+
+                return {
+                    userId: user.id,
+                    name: user.name,
+                    email: user.email,
+                    status: user.status,
+                    lastLoginAt: user.lastLoginAt,
+                    enrollmentCount,
+                    completedCourses,
+                    averageProgress,
+                    courses: user.enrollments.map((enrollment) => ({
+                        courseId: enrollment.courseId,
+                        title: enrollment.course.title,
+                        progress: Number(enrollment.progress.toFixed(1)),
+                        status: enrollment.status,
+                        enrolledAt: enrollment.enrolledAt,
+                        lastAccessedAt: enrollment.lastAccessedAt,
+                        completedAt: enrollment.completedAt,
+                    })),
+                }
+            }),
             recentActivity,
         }
     }

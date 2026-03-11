@@ -49,6 +49,25 @@ export interface AdminAnalyticsSummary {
     totalCourses: number
     totalEnrollments: number
     completionRate: number
+    learnerProgress: Array<{
+        userId: string
+        name: string
+        email: string
+        status: 'ACTIVE' | 'SUSPENDED' | 'DELETED'
+        lastLoginAt: string | Date | null
+        enrollmentCount: number
+        completedCourses: number
+        averageProgress: number
+        courses: Array<{
+            courseId: string
+            title: string
+            progress: number
+            status: 'ACTIVE' | 'COMPLETED' | 'DROPPED'
+            enrolledAt: string | Date
+            lastAccessedAt: string | Date | null
+            completedAt: string | Date | null
+        }>
+    }>
     recentActivity: SystemAnalyticsEntry[]
 }
 

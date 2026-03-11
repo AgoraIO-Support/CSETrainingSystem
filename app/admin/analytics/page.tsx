@@ -5,10 +5,13 @@ import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
 import { ApiClient } from '@/lib/api-client'
 import type { AdminAnalyticsSummary } from '@/types'
 import { formatDate } from '@/lib/utils'
-import { Loader2, Users, Activity, BookOpen, Target, RefreshCcw, Laptop, Cpu } from 'lucide-react'
+import { Loader2, Users, Activity, BookOpen, Target, RefreshCcw, Laptop, Cpu, Search } from 'lucide-react'
 import {
     ResponsiveContainer,
     LineChart,
@@ -33,6 +36,7 @@ export default function AdminAnalyticsPage() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [refreshIndex, setRefreshIndex] = useState(0)
+    const [learnerSearch, setLearnerSearch] = useState('')
 
     useEffect(() => {
         let cancelled = false
@@ -111,6 +115,19 @@ export default function AdminAnalyticsPage() {
     )
 
     const latestActivity = recentActivityData[0]
+    const filteredLearnerProgress = useMemo(() => {
+        const learnerProgress = summary?.learnerProgress ?? []
+        const query = learnerSearch.trim().toLowerCase()
+        if (!query) return learnerProgress
+
+        return learnerProgress.filter((learner) => {
+            const userMatch =
+                learner.name.toLowerCase().includes(query) ||
+                learner.email.toLowerCase().includes(query)
+            const courseMatch = learner.courses.some((course) => course.title.toLowerCase().includes(query))
+            return userMatch || courseMatch
+        })
+    }, [summary?.learnerProgress, learnerSearch])
 
     const handleRefresh = () => {
         setRefreshIndex(prev => prev + 1)
@@ -349,6 +366,112 @@ export default function AdminAnalyticsPage() {
                                 </CardContent>
                             </Card>
                         </div>
+
+                        <Card>
+                            <CardHeader>
+                                <div className="flex items-center justify-between gap-4 flex-wrap">
+                                    <div>
+                                        <CardTitle>Learner Progress</CardTitle>
+                                        <CardDescription>
+                                            Review each learner&apos;s enrolled courses and per-course completion progress
+                                        </CardDescription>
+                                    </div>
+                                    <div className="relative w-full sm:w-80">
+                                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                        <Input
+                                            value={learnerSearch}
+                                            onChange={(event) => setLearnerSearch(event.target.value)}
+                                            placeholder="Search learner or course"
+                                            className="pl-9"
+                                        />
+                                    </div>
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                {filteredLearnerProgress.length === 0 ? (
+                                    <div className="py-10 text-center text-sm text-muted-foreground">
+                                        No learner progress records match the current search.
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {filteredLearnerProgress.map((learner) => (
+                                            <details
+                                                key={learner.userId}
+                                                className="rounded-lg border bg-card p-4"
+                                                open={filteredLearnerProgress.length <= 3}
+                                            >
+                                                <summary className="cursor-pointer list-none">
+                                                    <div className="flex items-start justify-between gap-4">
+                                                        <div className="space-y-1">
+                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                <p className="font-semibold">{learner.name}</p>
+                                                                <Badge variant="outline">{learner.status}</Badge>
+                                                            </div>
+                                                            <p className="text-sm text-muted-foreground">{learner.email}</p>
+                                                            <p className="text-xs text-muted-foreground">
+                                                                Last login: {learner.lastLoginAt ? formatDate(learner.lastLoginAt) : 'No login yet'}
+                                                            </p>
+                                                        </div>
+                                                        <div className="grid gap-3 text-sm sm:grid-cols-3">
+                                                            <div>
+                                                                <p className="text-xs text-muted-foreground">Enrollments</p>
+                                                                <p className="font-semibold">{learner.enrollmentCount}</p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-xs text-muted-foreground">Completed</p>
+                                                                <p className="font-semibold">{learner.completedCourses}</p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-xs text-muted-foreground">Average progress</p>
+                                                                <p className="font-semibold">{learner.averageProgress}%</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </summary>
+
+                                                <div className="mt-4 space-y-3">
+                                                    {learner.courses.length === 0 ? (
+                                                        <p className="text-sm text-muted-foreground">This learner has no enrollments yet.</p>
+                                                    ) : (
+                                                        learner.courses.map((course) => (
+                                                            <div
+                                                                key={`${learner.userId}-${course.courseId}`}
+                                                                className="rounded-md border p-3"
+                                                            >
+                                                                <div className="flex items-start justify-between gap-3">
+                                                                    <div className="min-w-0 flex-1">
+                                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                                            <p className="font-medium">{course.title}</p>
+                                                                            <Badge variant="secondary">{course.status}</Badge>
+                                                                        </div>
+                                                                        <div className="mt-2">
+                                                                            <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+                                                                                <span>Progress</span>
+                                                                                <span>{course.progress}%</span>
+                                                                            </div>
+                                                                            <Progress value={course.progress} className="h-2" />
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="text-right text-xs text-muted-foreground">
+                                                                        <p>Enrolled {formatDate(course.enrolledAt)}</p>
+                                                                        <p>
+                                                                            Last active {course.lastAccessedAt ? formatDate(course.lastAccessedAt) : 'N/A'}
+                                                                        </p>
+                                                                        <p>
+                                                                            Completed {course.completedAt ? formatDate(course.completedAt) : 'Not yet'}
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ))
+                                                    )}
+                                                </div>
+                                            </details>
+                                        ))}
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
                     </div>
                 )}
             </div>
