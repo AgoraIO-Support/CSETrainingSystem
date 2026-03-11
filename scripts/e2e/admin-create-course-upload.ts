@@ -9,6 +9,8 @@
  * - (Optional) Basic learner UI loads the video + subtitles track
  *
  * Usage:
+ *   npm --prefix scripts/e2e install
+ *
  *   E2E_BASE_URL=http://127.0.0.1:3000 \
  *   E2E_ADMIN_EMAIL=admin@agora.io \
  *   E2E_ADMIN_PASSWORD=password123 \

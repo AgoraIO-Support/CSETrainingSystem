@@ -1,0 +1,8 @@
+{
+  "name": "cse-training-system-e2e",
+  "private": true,
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "puppeteer": "^24.33.1"
+  }
+}

@@ -7,6 +7,8 @@
  *   against a running Next.js dev server and real browser media elements.
  *
  * How to run:
+ *   npm --prefix scripts/e2e install
+ *
  *   E2E_BASE_URL=http://localhost:3000 \\
  *   E2E_USER_EMAIL=user@agora.io \\
  *   E2E_USER_PASSWORD=password123 \\

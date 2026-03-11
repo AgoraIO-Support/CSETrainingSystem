@@ -7,9 +7,9 @@
         "build": "next build",
         "start": "next start",
         "test": "jest",
-        "e2e": "playwright test -c e2e/playwright.config.ts",
-        "e2e:ui": "playwright test -c e2e/playwright.config.ts --ui",
-        "e2e:install": "playwright install chromium",
+        "e2e": "npm --prefix scripts/e2e install --no-audit --no-fund && npm --prefix scripts/e2e exec playwright test -c playwright.config.ts",
+        "e2e:ui": "npm --prefix scripts/e2e install --no-audit --no-fund && npm --prefix scripts/e2e exec playwright test -c playwright.config.ts --ui",
+        "e2e:install": "npm --prefix scripts/e2e install --no-audit --no-fund && npm --prefix scripts/e2e exec playwright install chromium",
         "e2e:exercise": "tsx scripts/e2e/exam-exercise-recording-upload.ts",
         "transcript:worker": "tsx scripts/transcript-worker.ts",
         "build:worker": "node scripts/build-worker.mjs",
@@ -77,7 +77,6 @@
         "zod": "^3.25.76"
     },
     "devDependencies": {
-        "@playwright/test": "^1.57.0",
         "@testing-library/jest-dom": "^6.9.1",
         "@testing-library/react": "^16.3.1",
         "@testing-library/user-event": "^14.6.1",
@@ -98,7 +97,6 @@
         "jest-environment-jsdom": "^29.7.0",
         "postcss": "^8.4.49",
         "prisma": "^5.22.0",
-        "puppeteer": "^24.33.1",
         "tailwindcss": "^3.4.17",
         "tsx": "^4.7.0",
         "typescript": "^5.6.3"
