@@ -13,6 +13,46 @@ type RouteContext = {
   params: Promise<{ examId: string }>;
 };
 
+type ResultAnswer = {
+  questionId: string;
+  question: string;
+  type: string;
+  points: number;
+  maxPoints: number;
+  userAnswer: string | null;
+  selectedOption: number | null;
+  isCorrect: boolean | null;
+  pointsAwarded: number | null;
+  gradingStatus: string;
+  recordingStatus: string | null;
+  options?: string[];
+  correctAnswer?: string;
+  explanation?: string;
+};
+
+type ResultPayload = {
+  attemptId: string;
+  examId: string;
+  examTitle: string;
+  attemptNumber: number;
+  status: string;
+  startedAt: Date;
+  submittedAt: Date | null;
+  resultsAvailable: boolean;
+  rawScore: number | null;
+  percentageScore: number | null;
+  passed: boolean | null;
+  totalScore: number;
+  passingScore: number;
+  allowReview: boolean;
+  maxAttempts: number;
+  attemptsUsed: number;
+  reviewUnlocked: boolean;
+  reviewUnlockedByPassing: boolean;
+  reviewUnlockedByAttempts: boolean;
+  answers?: ResultAnswer[];
+};
+
 // GET /api/exams/[examId]/result?attemptId=xxx - Get exam result
 export const GET = withAuth(async (req: NextRequest, user, context: RouteContext) => {
   try {
@@ -42,7 +82,6 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
       },
     });
     const maxAttempts = examMeta.maxAttempts;
-    const reviewUnlocked = attemptsUsed >= maxAttempts;
 
     let attempt;
 
@@ -86,6 +125,10 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
       attempt = await ExamAttemptService.getAttemptWithAnswers(completedAttempt.id);
     }
 
+    const reviewUnlockedByPassing = Boolean(attempt.passed);
+    const reviewUnlockedByAttempts = attemptsUsed >= maxAttempts;
+    const reviewUnlocked = reviewUnlockedByPassing || reviewUnlockedByAttempts;
+
     // Check if results are available
     if (!attempt.exam.showResultsImmediately && attempt.status !== ExamAttemptStatus.GRADED) {
       return NextResponse.json({
@@ -108,13 +151,15 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
           maxAttempts,
           attemptsUsed,
           reviewUnlocked,
+          reviewUnlockedByPassing,
+          reviewUnlockedByAttempts,
           message: 'Results are not yet available. Please check back after grading is complete.',
         },
       });
     }
 
     // Build result response
-    const result: any = {
+    const result: ResultPayload = {
       attemptId: attempt.id,
       examId: attempt.examId,
       examTitle: attempt.exam.title,
@@ -132,6 +177,8 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
       maxAttempts,
       attemptsUsed,
       reviewUnlocked,
+      reviewUnlockedByPassing,
+      reviewUnlockedByAttempts,
     };
 
     // Include answers if review is allowed
@@ -189,7 +236,7 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
           correctAnswer = null;
         }
 
-        const answerResult: any = {
+        const answerResult: ResultAnswer = {
           questionId: answer.questionId,
           question: answer.question.question,
           type: questionType,

@@ -679,6 +679,9 @@ export class ApiClient {
         maxWords?: number
         rubric?: string
         sampleAnswer?: string
+        attachmentS3Key?: string | null
+        attachmentFilename?: string | null
+        attachmentMimeType?: string | null
     }): Promise<{ success: boolean; data: ExamQuestion }> {
         return this.request(`/admin/exams/${examId}/questions`, {
             method: 'POST',
@@ -698,9 +701,32 @@ export class ApiClient {
         maxWords: number
         rubric: string
         sampleAnswer: string
+        attachmentS3Key: string | null
+        attachmentFilename: string | null
+        attachmentMimeType: string | null
     }>): Promise<{ success: boolean; data: ExamQuestion }> {
         return this.request(`/admin/exams/${examId}/questions/${questionId}`, {
             method: 'PATCH',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async getAdminExamQuestionAttachmentUploadUrl(examId: string, questionId: string, payload: {
+        filename: string
+        contentType: string
+    }): Promise<{
+        success: boolean
+        data: {
+            uploadUrl: string
+            key: string
+            bucket: string
+            publicUrl: string
+            accessUrl: string
+            expiresIn: number
+        }
+    }> {
+        return this.request(`/admin/exams/${examId}/questions/${questionId}/attachment-upload-url`, {
+            method: 'POST',
             body: JSON.stringify(payload),
         })
     }
@@ -1036,6 +1062,9 @@ export class ApiClient {
                 points: number
                 order: number
                 maxWords?: number
+                attachmentFilename?: string | null
+                attachmentMimeType?: string | null
+                attachmentUrl?: string | null
             }>
         }
     }> {
@@ -1173,6 +1202,9 @@ export class ApiClient {
                 points: number
                 order: number
                 maxWords?: number
+                attachmentFilename?: string | null
+                attachmentMimeType?: string | null
+                attachmentUrl?: string | null
             }>
             existingAnswers: Record<string, {
                 answer: string | null

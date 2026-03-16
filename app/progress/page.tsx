@@ -192,7 +192,7 @@ export default function ProgressPage() {
                             </Card>
                         </div>
 
-                        <Card>
+                        <Card id="enrolled-courses">
                             <CardHeader>
                                 <CardTitle>Courses</CardTitle>
                                 <CardDescription>Resume courses you are enrolled in</CardDescription>

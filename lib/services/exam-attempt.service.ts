@@ -13,6 +13,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { ExamGradingService } from '@/lib/services/exam-grading.service';
+import { FileService } from '@/lib/services/file.service';
 
 export interface StartAttemptResult {
   attemptId: string;
@@ -21,15 +22,18 @@ export interface StartAttemptResult {
   attemptNumber: number;
   startedAt: Date;
   expiresAt: Date | null;
-  questions: Array<{
-    id: string;
-    type: ExamQuestionType;
-    question: string;
-    options: string[] | null;
-    points: number;
-    order: number;
-    maxWords?: number;
-  }>;
+    questions: Array<{
+      id: string;
+      type: ExamQuestionType;
+      question: string;
+      options: string[] | null;
+      points: number;
+      order: number;
+      maxWords?: number;
+      attachmentFilename?: string | null;
+      attachmentMimeType?: string | null;
+      attachmentUrl?: string | null;
+    }>;
   timeLimit: number | null;
   totalQuestions: number;
 }
@@ -85,6 +89,9 @@ export interface AttemptWithAnswers {
       correctAnswer: string | null;
       explanation: string | null;
       points: number;
+      attachmentS3Key: string | null;
+      attachmentFilename: string | null;
+      attachmentMimeType: string | null;
     };
   }>;
   exam: {
@@ -112,6 +119,10 @@ export class ExamAttemptService {
       points: number;
       order: number;
       maxWords: number | null;
+      attachmentS3Key: string | null;
+      attachmentFilename: string | null;
+      attachmentMimeType: string | null;
+      attachmentUrl: string | null;
     }>
   > {
     const snapshots = await prisma.examAttemptQuestionSnapshot.findMany({
@@ -120,7 +131,7 @@ export class ExamAttemptService {
     });
 
     if (snapshots.length > 0) {
-      return snapshots.map((q) => ({
+      return Promise.all(snapshots.map(async (q) => ({
         id: q.questionId,
         type: q.type,
         question: q.question,
@@ -130,7 +141,11 @@ export class ExamAttemptService {
         points: q.points,
         order: q.order,
         maxWords: q.maxWords,
-      }));
+        attachmentS3Key: q.attachmentS3Key,
+        attachmentFilename: q.attachmentFilename,
+        attachmentMimeType: q.attachmentMimeType,
+        attachmentUrl: q.attachmentS3Key ? await FileService.getAssetAccessUrl(q.attachmentS3Key) : null,
+      })));
     }
 
     const questions = await prisma.examQuestion.findMany({
@@ -146,12 +161,16 @@ export class ExamAttemptService {
         points: true,
         order: true,
         maxWords: true,
+        attachmentS3Key: true,
+        attachmentFilename: true,
+        attachmentMimeType: true,
       },
     });
-    return questions.map((q) => ({
+    return Promise.all(questions.map(async (q) => ({
       ...q,
       options: (q.options as string[] | null) ?? null,
-    }));
+      attachmentUrl: q.attachmentS3Key ? await FileService.getAssetAccessUrl(q.attachmentS3Key) : null,
+    })));
   }
 
   /**
@@ -287,6 +306,9 @@ export class ExamAttemptService {
         rubric: q.rubric,
         sampleAnswer: q.sampleAnswer,
         maxWords: q.maxWords,
+        attachmentS3Key: q.attachmentS3Key,
+        attachmentFilename: q.attachmentFilename,
+        attachmentMimeType: q.attachmentMimeType,
         points: q.points,
         explanation: q.explanation,
         topic: q.topic,
@@ -329,6 +351,9 @@ export class ExamAttemptService {
       points: number;
       order: number;
       maxWords: number | null;
+      attachmentFilename: string | null;
+      attachmentMimeType: string | null;
+      attachmentUrl: string | null;
     }>
   ): StartAttemptResult {
     // Optionally randomize questions
@@ -365,6 +390,9 @@ export class ExamAttemptService {
           points: q.points,
           order: q.order,
           maxWords: q.maxWords || undefined,
+          attachmentFilename: q.attachmentFilename || undefined,
+          attachmentMimeType: q.attachmentMimeType || undefined,
+          attachmentUrl: q.attachmentUrl || undefined,
         };
       }),
     };
@@ -616,6 +644,12 @@ export class ExamAttemptService {
             snapshotByQuestionId.get(a.questionId)?.correctAnswer ?? a.question.correctAnswer,
           explanation: snapshotByQuestionId.get(a.questionId)?.explanation ?? a.question.explanation,
           points: snapshotByQuestionId.get(a.questionId)?.points ?? a.question.points,
+          attachmentS3Key:
+            snapshotByQuestionId.get(a.questionId)?.attachmentS3Key ?? a.question.attachmentS3Key,
+          attachmentFilename:
+            snapshotByQuestionId.get(a.questionId)?.attachmentFilename ?? a.question.attachmentFilename,
+          attachmentMimeType:
+            snapshotByQuestionId.get(a.questionId)?.attachmentMimeType ?? a.question.attachmentMimeType,
         },
       })),
     };
@@ -696,25 +730,7 @@ export class ExamAttemptService {
       return null;
     }
 
-    const snapshotQuestions = attempt.questionSnapshots.length
-      ? attempt.questionSnapshots.map((q) => ({
-          id: q.questionId,
-          type: q.type,
-          question: q.question,
-          options: (q.options as string[] | null) ?? null,
-          points: q.points,
-          order: q.order,
-          maxWords: q.maxWords,
-        }))
-      : attempt.exam.questions.map((q) => ({
-          id: q.id,
-          type: q.type,
-          question: q.question,
-          options: (q.options as string[] | null) ?? null,
-          points: q.points,
-          order: q.order,
-          maxWords: q.maxWords,
-        }));
+    const snapshotQuestions = await this.getAttemptQuestionSet(attempt.id, examId);
     const result = this.buildAttemptResult(attempt, attempt.exam, snapshotQuestions);
 
     // Include existing answers

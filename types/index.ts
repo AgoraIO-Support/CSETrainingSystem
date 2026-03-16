@@ -378,6 +378,10 @@ export interface ExamQuestion {
     maxWords?: number | null
     rubric?: string | null
     sampleAnswer?: string | null
+    attachmentS3Key?: string | null
+    attachmentFilename?: string | null
+    attachmentMimeType?: string | null
+    attachmentUrl?: string | null
 }
 
 export interface ExamAttempt {

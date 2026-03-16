@@ -247,6 +247,9 @@ const examQuestionSchemaBase = z.object({
     rubric: z.string().optional(),
     sampleAnswer: z.string().optional(),
     maxWords: z.number().int().positive().optional(),
+    attachmentS3Key: z.string().nullable().optional(),
+    attachmentFilename: z.string().nullable().optional(),
+    attachmentMimeType: z.string().nullable().optional(),
     points: z.number().int().positive().default(10),
     explanation: z.string().optional(),
     topic: z.string().optional(),
@@ -294,10 +297,50 @@ const refineExerciseQuestionFields = (
             path: ['maxWords'],
         })
     }
+
+    if (typeof data.attachmentS3Key === 'string' && data.attachmentS3Key.trim()) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Exercise questions do not support attachments',
+            path: ['attachmentS3Key'],
+        })
+    }
 }
 
-export const createExamQuestionSchema = examQuestionSchemaBase.superRefine(refineExerciseQuestionFields)
-export const updateExamQuestionSchema = examQuestionSchemaBase.partial().superRefine(refineExerciseQuestionFields)
+const refineEssayAttachmentFields = (
+    data: z.infer<typeof examQuestionSchemaBase> | Partial<z.infer<typeof examQuestionSchemaBase>>,
+    ctx: z.RefinementCtx
+) => {
+    const attachmentFields = [data.attachmentS3Key, data.attachmentFilename, data.attachmentMimeType]
+    const attachmentCount = attachmentFields.filter((value) => typeof value === 'string' && value.trim().length > 0).length
+
+    if (attachmentCount === 0) return
+
+    if (data.type !== ExamQuestionType.ESSAY) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Only essay questions support document attachments',
+            path: ['attachmentS3Key'],
+        })
+        return
+    }
+
+    if (attachmentCount !== 3) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Attachment metadata is incomplete',
+            path: ['attachmentS3Key'],
+        })
+    }
+}
+
+export const createExamQuestionSchema = examQuestionSchemaBase
+    .superRefine(refineExerciseQuestionFields)
+    .superRefine(refineEssayAttachmentFields)
+export const updateExamQuestionSchema = examQuestionSchemaBase
+    .partial()
+    .superRefine(refineExerciseQuestionFields)
+    .superRefine(refineEssayAttachmentFields)
 
 export const reorderExamQuestionsSchema = z.object({
     questionIds: z.array(z.string().uuid()).nonempty(),

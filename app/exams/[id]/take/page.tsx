@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
 import { ScreenRecorderAnswer } from '@/components/exam/screen-recorder-answer'
+import { RichTextContent } from '@/components/ui/rich-text-content'
 import { ApiClient } from '@/lib/api-client'
 import {
     Loader2,
@@ -18,8 +19,9 @@ import {
     Send,
     AlertCircle,
     CheckCircle,
-    Circle,
     Flag,
+    Paperclip,
+    ExternalLink,
 } from 'lucide-react'
 import type { ExamQuestionType } from '@/types'
 
@@ -31,6 +33,9 @@ interface ExamQuestion {
     points: number
     order: number
     maxWords?: number
+    attachmentFilename?: string | null
+    attachmentMimeType?: string | null
+    attachmentUrl?: string | null
 }
 
 interface AttemptData {
@@ -380,7 +385,11 @@ export default function TakeExamPage({ params }: PageProps) {
                             </div>
                         </CardHeader>
                         <CardContent className="space-y-6">
-                            <div className="text-lg font-medium">{currentQuestion.question}</div>
+                            {currentQuestion.type === 'ESSAY' ? (
+                                <RichTextContent html={currentQuestion.question} className="text-base" />
+                            ) : (
+                                <div className="text-lg font-medium">{currentQuestion.question}</div>
+                            )}
 
                             {/* Single Choice */}
                             {currentQuestion.type === 'SINGLE_CHOICE' && currentQuestion.options && (
@@ -471,6 +480,23 @@ export default function TakeExamPage({ params }: PageProps) {
                             {/* Essay */}
                             {currentQuestion.type === 'ESSAY' && (
                                 <div className="space-y-2">
+                                    {currentQuestion.attachmentFilename && currentQuestion.attachmentUrl && (
+                                        <div className="rounded-lg border bg-muted/30 p-4">
+                                            <div className="flex items-center gap-2 text-sm font-medium">
+                                                <Paperclip className="h-4 w-4" />
+                                                Reference document
+                                            </div>
+                                            <a
+                                                href={currentQuestion.attachmentUrl}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="mt-2 inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                                            >
+                                                {currentQuestion.attachmentFilename}
+                                                <ExternalLink className="h-3.5 w-3.5" />
+                                            </a>
+                                        </div>
+                                    )}
                                     <Textarea
                                         placeholder="Write your answer..."
                                         rows={10}

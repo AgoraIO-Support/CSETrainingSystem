@@ -224,18 +224,20 @@ export default function HomePage() {
 
                 {/* Stats Overview */}
                 <div className="grid gap-4 md:grid-cols-3">
-                    <Card>
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-sm font-medium">Enrolled Courses</CardTitle>
-                            <BookOpen className="h-4 w-4 text-muted-foreground" />
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">{enrolledCourseCount}</div>
-                            <p className="text-xs text-muted-foreground mt-1">
-                                Active courses
-                            </p>
-                        </CardContent>
-                    </Card>
+                    <Link href="/progress#enrolled-courses" className="block">
+                        <Card className="transition-colors hover:bg-accent/40">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                <CardTitle className="text-sm font-medium">Enrolled Courses</CardTitle>
+                                <BookOpen className="h-4 w-4 text-muted-foreground" />
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-2xl font-bold">{enrolledCourseCount}</div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Open your enrolled course list
+                                </p>
+                            </CardContent>
+                        </Card>
+                    </Link>
 
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">

@@ -9,7 +9,10 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { RichTextEditor } from '@/components/ui/rich-text-editor'
+import { RichTextContent } from '@/components/ui/rich-text-content'
 import { ApiClient } from '@/lib/api-client'
+import { stripRichTextToPlainText } from '@/lib/rich-text'
 import {
     ArrowLeft,
     Loader2,
@@ -23,6 +26,8 @@ import {
     CheckCircle,
     XCircle,
     Copy,
+    Paperclip,
+    ExternalLink,
 } from 'lucide-react'
 import Link from 'next/link'
 import type { Exam, ExamQuestion, ExamQuestionType } from '@/types'
@@ -72,6 +77,10 @@ interface QuestionForm {
     maxWords?: number
     rubric?: string
     sampleAnswer?: string
+    attachmentS3Key?: string
+    attachmentFilename?: string
+    attachmentMimeType?: string
+    attachmentUrl?: string
 }
 
 const defaultQuestionForm: QuestionForm = {
@@ -103,6 +112,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
     const [showForm, setShowForm] = useState(false)
     const [editingQuestion, setEditingQuestion] = useState<ExamQuestion | null>(null)
     const [form, setForm] = useState<QuestionForm>(defaultQuestionForm)
+    const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
     const [saving, setSaving] = useState(false)
 
     // AI generation state
@@ -184,9 +194,17 @@ export default function ExamQuestionsPage({ params }: PageProps) {
         }
     }
 
+    const closeQuestionForm = () => {
+        setShowForm(false)
+        setEditingQuestion(null)
+        setForm(defaultQuestionForm)
+        setAttachmentFile(null)
+    }
+
     const handleCreateQuestion = () => {
         setEditingQuestion(null)
         setForm(defaultQuestionForm)
+        setAttachmentFile(null)
         setShowForm(true)
         requestAnimationFrame(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
     }
@@ -209,7 +227,12 @@ export default function ExamQuestionsPage({ params }: PageProps) {
             maxWords: question.maxWords || undefined,
             rubric: question.rubric || undefined,
             sampleAnswer: question.sampleAnswer || undefined,
+            attachmentS3Key: question.attachmentS3Key || undefined,
+            attachmentFilename: question.attachmentFilename || undefined,
+            attachmentMimeType: question.attachmentMimeType || undefined,
+            attachmentUrl: question.attachmentUrl || undefined,
         })
+        setAttachmentFile(null)
         setShowForm(true)
         requestAnimationFrame(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
     }
@@ -292,6 +315,15 @@ export default function ExamQuestionsPage({ params }: PageProps) {
         setError(null)
 
         try {
+            const normalizedQuestion =
+                form.type === 'ESSAY'
+                    ? form.question
+                    : form.question.trim()
+            const questionPlainText = stripRichTextToPlainText(normalizedQuestion)
+            if (!questionPlainText) {
+                throw new Error('Question text is required')
+            }
+
             const hasCorrectAnswer =
                 form.type === 'SINGLE_CHOICE' ||
                 form.type === 'MULTIPLE_CHOICE' ||
@@ -319,7 +351,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
 
             const payload = {
                 type: form.type,
-                question: form.question,
+                question: normalizedQuestion,
                 options: normalizedOptions,
                 correctAnswer: payloadCorrectAnswer,
                 explanation: form.explanation || undefined,
@@ -328,21 +360,80 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                 maxWords: form.type === 'ESSAY' ? form.maxWords : undefined,
                 rubric: form.type === 'ESSAY' ? form.rubric : undefined,
                 sampleAnswer: form.type === 'ESSAY' ? form.sampleAnswer : undefined,
+                attachmentS3Key:
+                    form.type === 'ESSAY'
+                        ? form.attachmentS3Key || undefined
+                        : editingQuestion?.attachmentS3Key
+                            ? null
+                            : undefined,
+                attachmentFilename:
+                    form.type === 'ESSAY'
+                        ? form.attachmentFilename || undefined
+                        : editingQuestion?.attachmentFilename
+                            ? null
+                            : undefined,
+                attachmentMimeType:
+                    form.type === 'ESSAY'
+                        ? form.attachmentMimeType || undefined
+                        : editingQuestion?.attachmentMimeType
+                            ? null
+                            : undefined,
             }
 
+            let savedQuestion: ExamQuestion
             if (editingQuestion) {
                 const response = await ApiClient.updateExamQuestion(examId, editingQuestion.id, payload)
-                setQuestions(prev => prev.map(q => q.id === editingQuestion.id ? response.data : q))
-                showSuccess('Question updated successfully')
+                savedQuestion = response.data
             } else {
                 const response = await ApiClient.createExamQuestion(examId, payload)
-                setQuestions(prev => [...prev, response.data])
-                showSuccess('Question created successfully')
+                savedQuestion = response.data
             }
 
-            setShowForm(false)
-            setEditingQuestion(null)
-            setForm(defaultQuestionForm)
+            if (form.type === 'ESSAY' && attachmentFile) {
+                try {
+                    const attachmentPayload = await uploadEssayAttachment(savedQuestion.id, attachmentFile)
+                    const attachmentResponse = await ApiClient.updateExamQuestion(examId, savedQuestion.id, attachmentPayload)
+                    savedQuestion = attachmentResponse.data
+                } catch (uploadError) {
+                    setQuestions(prev => {
+                        const exists = prev.some(q => q.id === savedQuestion.id)
+                        return exists ? prev.map(q => q.id === savedQuestion.id ? savedQuestion : q) : [...prev, savedQuestion]
+                    })
+                    setEditingQuestion(savedQuestion)
+                    setForm({
+                        type: savedQuestion.type,
+                        question: savedQuestion.question,
+                        options: savedQuestion.options || ['', '', '', ''],
+                        correctAnswer: savedQuestion.correctAnswer || '',
+                        multiCorrectAnswers: savedQuestion.correctAnswer
+                            ? savedQuestion.correctAnswer.split(',').map(s => s.trim()).filter(Boolean)
+                            : [],
+                        explanation: savedQuestion.explanation || '',
+                        points: savedQuestion.points,
+                        difficulty: (savedQuestion.difficulty as 'EASY' | 'MEDIUM' | 'HARD') || 'MEDIUM',
+                        maxWords: savedQuestion.maxWords || undefined,
+                        rubric: savedQuestion.rubric || undefined,
+                        sampleAnswer: savedQuestion.sampleAnswer || undefined,
+                        attachmentS3Key: savedQuestion.attachmentS3Key || undefined,
+                        attachmentFilename: savedQuestion.attachmentFilename || undefined,
+                        attachmentMimeType: savedQuestion.attachmentMimeType || undefined,
+                        attachmentUrl: savedQuestion.attachmentUrl || undefined,
+                    })
+                    setShowForm(true)
+                    throw new Error(
+                        uploadError instanceof Error
+                            ? `Question saved, but attachment upload failed: ${uploadError.message}`
+                            : 'Question saved, but attachment upload failed'
+                    )
+                }
+            }
+
+            setQuestions(prev => {
+                const exists = prev.some(q => q.id === savedQuestion.id)
+                return exists ? prev.map(q => q.id === savedQuestion.id ? savedQuestion : q) : [...prev, savedQuestion]
+            })
+            showSuccess(editingQuestion ? 'Question updated successfully' : 'Question created successfully')
+            closeQuestionForm()
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to save question')
         } finally {
@@ -401,6 +492,81 @@ export default function ExamQuestionsPage({ params }: PageProps) {
             ...prev,
             options: prev.options.map((o, i) => i === index ? value : o),
         }))
+    }
+
+    const updateQuestionType = (nextType: ExamQuestionType) => {
+        setForm(prev => ({
+            ...prev,
+            type: nextType,
+            ...(nextType === 'ESSAY'
+                ? {}
+                : {
+                    attachmentS3Key: undefined,
+                    attachmentFilename: undefined,
+                    attachmentMimeType: undefined,
+                    attachmentUrl: undefined,
+                }),
+        }))
+
+        if (nextType !== 'ESSAY') {
+            setAttachmentFile(null)
+        }
+    }
+
+    const resolveEssayAttachmentContentType = (file: File) => {
+        if (file.type && (file.type.startsWith('application/') || file.type.startsWith('text/'))) {
+            return file.type
+        }
+
+        const extension = file.name.split('.').pop()?.toLowerCase()
+        const extensionMap: Record<string, string> = {
+            pdf: 'application/pdf',
+            doc: 'application/msword',
+            docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            ppt: 'application/vnd.ms-powerpoint',
+            pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            xls: 'application/vnd.ms-excel',
+            xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            txt: 'text/plain',
+            rtf: 'application/rtf',
+            md: 'text/markdown',
+            odt: 'application/vnd.oasis.opendocument.text',
+            ods: 'application/vnd.oasis.opendocument.spreadsheet',
+            odp: 'application/vnd.oasis.opendocument.presentation',
+        }
+
+        return extension ? extensionMap[extension] ?? null : null
+    }
+
+    const uploadEssayAttachment = async (questionId: string, file: File) => {
+        const contentType = resolveEssayAttachmentContentType(file)
+        if (!contentType) {
+            throw new Error('Unsupported document type. Upload a Word, PDF, spreadsheet, presentation, or text file.')
+        }
+
+        const uploadUrlResponse = await ApiClient.getAdminExamQuestionAttachmentUploadUrl(examId, questionId, {
+            filename: file.name,
+            contentType,
+        })
+
+        const uploadResponse = await fetch(uploadUrlResponse.data.uploadUrl, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': contentType,
+                'x-amz-server-side-encryption': 'AES256',
+            },
+            body: file,
+        })
+
+        if (!uploadResponse.ok) {
+            throw new Error(`Failed to upload essay attachment (${uploadResponse.status})`)
+        }
+
+        return {
+            attachmentS3Key: uploadUrlResponse.data.key,
+            attachmentFilename: file.name,
+            attachmentMimeType: contentType,
+        }
     }
 
     if (loading) {
@@ -470,14 +636,14 @@ export default function ExamQuestionsPage({ params }: PageProps) {
         return questions
             .map((question, index) => {
                 const lines = [
-                    `Q${index + 1}. [${questionTypeLabels[question.type]}] ${question.question}`,
+                    `Q${index + 1}. [${questionTypeLabels[question.type]}] ${stripRichTextToPlainText(question.question)}`,
                     `Answer: ${formatQuestionAnswer(question)}`,
                 ]
                 if (question.type === 'ESSAY' && question.rubric) {
                     lines.push(`Rubric: ${question.rubric}`)
                 }
                 if (question.explanation) {
-                    lines.push(`Explanation: ${question.explanation}`)
+                    lines.push(`Explanation: ${stripRichTextToPlainText(question.explanation)}`)
                 }
                 return lines.join('\n')
             })
@@ -604,7 +770,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                         <CardHeader>
                             <div className="flex items-center justify-between">
                                 <CardTitle>{editingQuestion ? 'Edit Question' : 'Add Question'}</CardTitle>
-                                <Button variant="ghost" size="icon" onClick={() => setShowForm(false)}>
+                                <Button variant="ghost" size="icon" onClick={closeQuestionForm}>
                                     <X className="h-4 w-4" />
                                 </Button>
                             </div>
@@ -617,7 +783,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                         <select
                                             className="w-full h-10 px-3 border rounded-md bg-background"
                                             value={form.type}
-                                            onChange={(e) => updateForm('type', e.target.value as ExamQuestionType)}
+                                            onChange={(e) => updateQuestionType(e.target.value as ExamQuestionType)}
                                         >
                                             <option value="SINGLE_CHOICE">Single Choice</option>
                                             <option value="MULTIPLE_CHOICE">Multiple Choice</option>
@@ -652,12 +818,20 @@ export default function ExamQuestionsPage({ params }: PageProps) {
 
                                 <div className="space-y-2">
                                     <Label>Question *</Label>
-                                    <Textarea
-                                        value={form.question}
-                                        onChange={(e) => updateForm('question', e.target.value)}
-                                        rows={3}
-                                        required
-                                    />
+                                    {form.type === 'ESSAY' ? (
+                                        <RichTextEditor
+                                            value={form.question}
+                                            onChange={(value) => updateForm('question', value)}
+                                            placeholder="Write the essay prompt with paragraphs, lists, emphasis, and links..."
+                                        />
+                                    ) : (
+                                        <Textarea
+                                            value={form.question}
+                                            onChange={(e) => updateForm('question', e.target.value)}
+                                            rows={3}
+                                            required
+                                        />
+                                    )}
                                 </div>
 
                                 {(form.type === 'SINGLE_CHOICE' || form.type === 'MULTIPLE_CHOICE') && (
@@ -750,6 +924,41 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                 {form.type === 'ESSAY' && (
                                     <>
                                         <div className="space-y-2">
+                                            <Label>Reference Document (optional)</Label>
+                                            <Input
+                                                type="file"
+                                                accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.rtf,.md,.odt,.ods,.odp,.xls,.xlsx"
+                                                onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)}
+                                            />
+                                            <p className="text-xs text-muted-foreground">
+                                                Upload a Word, PDF, spreadsheet, presentation, or text file that learners can open while answering.
+                                            </p>
+                                            {(attachmentFile || form.attachmentFilename) && (
+                                                <div className="rounded-md border bg-muted/30 p-3 text-sm space-y-2">
+                                                    <div className="flex items-center gap-2 font-medium">
+                                                        <Paperclip className="h-4 w-4" />
+                                                        <span>{attachmentFile ? `New file: ${attachmentFile.name}` : form.attachmentFilename}</span>
+                                                    </div>
+                                                    {attachmentFile && form.attachmentFilename && (
+                                                        <p className="text-xs text-muted-foreground">
+                                                            Saving will replace the current attachment.
+                                                        </p>
+                                                    )}
+                                                    {!attachmentFile && form.attachmentUrl && (
+                                                        <a
+                                                            href={form.attachmentUrl}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            className="inline-flex items-center gap-1 text-primary hover:underline"
+                                                        >
+                                                            <ExternalLink className="h-3.5 w-3.5" />
+                                                            View current attachment
+                                                        </a>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="space-y-2">
                                             <Label>Max Words (optional)</Label>
                                             <Input
                                                 type="number"
@@ -782,11 +991,10 @@ export default function ExamQuestionsPage({ params }: PageProps) {
 
                                 <div className="space-y-2">
                                     <Label>Explanation (shown after answering)</Label>
-                                    <Textarea
+                                    <RichTextEditor
                                         value={form.explanation}
-                                        onChange={(e) => updateForm('explanation', e.target.value)}
-                                        rows={2}
-                                        placeholder="Explain why the answer is correct..."
+                                        onChange={(value) => updateForm('explanation', value)}
+                                        placeholder="Explain why the answer is correct. Use paragraphs, lists, and links if needed..."
                                     />
                                 </div>
 
@@ -799,7 +1007,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                         )}
                                         {editingQuestion ? 'Update' : 'Create'} Question
                                     </Button>
-                                    <Button type="button" variant="outline" onClick={() => setShowForm(false)}>
+                                    <Button type="button" variant="outline" onClick={closeQuestionForm}>
                                         Cancel
                                     </Button>
                                 </div>
@@ -880,7 +1088,12 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                 <select
                                     className="w-full h-10 px-3 border rounded-md bg-background"
                                     value={generateConfig.difficulty}
-                                    onChange={(e) => setGenerateConfig(prev => ({ ...prev, difficulty: e.target.value as any }))}
+                                    onChange={(e) =>
+                                        setGenerateConfig(prev => ({
+                                            ...prev,
+                                            difficulty: e.target.value as 'EASY' | 'MEDIUM' | 'HARD' | 'mixed',
+                                        }))
+                                    }
                                 >
                                     <option value="mixed">Mixed</option>
                                     <option value="EASY">Easy</option>
@@ -1138,10 +1351,32 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                                     </span>
                                                 )}
                                             </div>
-                                            <p className="text-sm line-clamp-2">{question.question}</p>
+                                            {question.type === 'ESSAY' ? (
+                                                <p className="text-sm line-clamp-2">{stripRichTextToPlainText(question.question)}</p>
+                                            ) : (
+                                                <p className="text-sm line-clamp-2">{question.question}</p>
+                                            )}
                                             {(question.type === 'SINGLE_CHOICE' || question.type === 'MULTIPLE_CHOICE') && question.options && (
                                                 <div className="mt-2 text-xs text-muted-foreground">
                                                     Options: {question.options.filter(o => o).join(', ')}
+                                                </div>
+                                            )}
+                                            {question.type === 'ESSAY' && question.attachmentFilename && (
+                                                <div className="mt-2 text-xs text-muted-foreground flex items-center gap-2">
+                                                    <Paperclip className="h-3.5 w-3.5" />
+                                                    {question.attachmentUrl ? (
+                                                        <a
+                                                            href={question.attachmentUrl}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            className="inline-flex items-center gap-1 text-primary hover:underline"
+                                                        >
+                                                            {question.attachmentFilename}
+                                                            <ExternalLink className="h-3 w-3" />
+                                                        </a>
+                                                    ) : (
+                                                        <span>{question.attachmentFilename}</span>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
@@ -1190,7 +1425,12 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                 {questions.map((question, index) => (
                                     <div key={`answer-key-${question.id}`} className="rounded-lg border p-3">
                                         <div className="text-sm font-medium">
-                                            Q{index + 1}. {question.question}
+                                            <span>Q{index + 1}.</span>
+                                            {question.type === 'ESSAY' ? (
+                                                <RichTextContent html={question.question} className="mt-2" />
+                                            ) : (
+                                                <span className="ml-1">{question.question}</span>
+                                            )}
                                         </div>
                                         <div className="mt-1 text-xs text-muted-foreground">
                                             {questionTypeLabels[question.type]}
@@ -1205,10 +1445,28 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                                 <span className="whitespace-pre-wrap">{question.rubric}</span>
                                             </div>
                                         )}
+                                        {question.type === 'ESSAY' && question.attachmentFilename && (
+                                            <div className="mt-2 text-sm">
+                                                <span className="font-medium">Attachment: </span>
+                                                {question.attachmentUrl ? (
+                                                    <a
+                                                        href={question.attachmentUrl}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="inline-flex items-center gap-1 text-primary hover:underline"
+                                                    >
+                                                        {question.attachmentFilename}
+                                                        <ExternalLink className="h-3.5 w-3.5" />
+                                                    </a>
+                                                ) : (
+                                                    <span>{question.attachmentFilename}</span>
+                                                )}
+                                            </div>
+                                        )}
                                         {question.explanation && (
                                             <div className="mt-2 text-sm">
                                                 <span className="font-medium">Explanation: </span>
-                                                <span className="whitespace-pre-wrap">{question.explanation}</span>
+                                                <RichTextContent html={question.explanation} className="mt-1" />
                                             </div>
                                         )}
                                     </div>

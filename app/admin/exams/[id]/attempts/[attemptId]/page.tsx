@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
+import { RichTextContent } from '@/components/ui/rich-text-content'
 import { ApiClient } from '@/lib/api-client'
 import {
     ArrowLeft,
@@ -484,7 +485,11 @@ export default function AttemptDetailPage({ params }: PageProps) {
                             <CardContent className="space-y-4">
                                 <div>
                                     <p className="text-sm text-muted-foreground mb-1">Question</p>
-                                    <p className="font-medium">{answer.question.question}</p>
+                                    {answer.question.type === 'ESSAY' ? (
+                                        <RichTextContent html={answer.question.question} className="font-medium" />
+                                    ) : (
+                                        <p className="font-medium">{answer.question.question}</p>
+                                    )}
                                 </div>
 
                                 {(answer.question.type === 'SINGLE_CHOICE' || answer.question.type === 'MULTIPLE_CHOICE') && answer.question.options && (
@@ -666,7 +671,7 @@ export default function AttemptDetailPage({ params }: PageProps) {
                                 {answer.question.explanation && answer.question.type !== 'ESSAY' && answer.question.type !== 'EXERCISE' && (
                                     <div>
                                         <p className="text-sm text-muted-foreground mb-1">Explanation</p>
-                                        <p className="text-sm">{answer.question.explanation}</p>
+                                        <RichTextContent html={answer.question.explanation} className="text-sm" />
                                     </div>
                                 )}
                             </CardContent>

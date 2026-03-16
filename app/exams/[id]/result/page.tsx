@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
+import { RichTextContent } from '@/components/ui/rich-text-content'
 import { ApiClient } from '@/lib/api-client'
 import {
     ArrowLeft,
@@ -40,6 +41,8 @@ interface ResultData {
     maxAttempts: number
     attemptsUsed: number
     reviewUnlocked: boolean
+    reviewUnlockedByPassing?: boolean
+    reviewUnlockedByAttempts?: boolean
     answers?: Array<{
         questionId: string
         question: string
@@ -147,6 +150,14 @@ export default function ExamResultPage({ params }: PageProps) {
 
     const isPending = result.status === 'SUBMITTED' && result.percentageScore === null
     const attemptsRemaining = Math.max(0, (result.maxAttempts ?? 0) - (result.attemptsUsed ?? 0))
+    const reviewUnlockDescription = result.reviewUnlocked
+        ? result.reviewUnlockedByPassing
+            ? 'Review unlocked because you passed this attempt'
+            : 'Review unlocked because you used all available attempts'
+        : `Unlocks after you pass or use all attempts (${result.attemptsUsed}/${result.maxAttempts} used)`
+    const reviewUnlockTitle = !result.reviewUnlocked
+        ? `Answer review unlocks after you pass or use all attempts (${attemptsRemaining} remaining)`
+        : undefined
 
     return (
         <DashboardLayout>
@@ -293,20 +304,12 @@ export default function ExamResultPage({ params }: PageProps) {
                             <div className="flex items-center justify-between">
                                 <div>
                                     <CardTitle>Answer Review</CardTitle>
-                                    <CardDescription>
-                                        {result.reviewUnlocked
-                                            ? 'Review your answers and explanations'
-                                            : `Unlocks after you use all attempts (${result.attemptsUsed}/${result.maxAttempts} used)`}
-                                    </CardDescription>
+                                    <CardDescription>{reviewUnlockDescription}</CardDescription>
                                 </div>
                                 <Button
                                     variant="outline"
                                     disabled={!result.reviewUnlocked || !result.answers || result.answers.length === 0}
-                                    title={
-                                        !result.reviewUnlocked
-                                            ? `Answer review unlocks after you use all attempts (${attemptsRemaining} remaining)`
-                                            : undefined
-                                    }
+                                    title={reviewUnlockTitle}
                                     onClick={() => setShowAnswers(!showAnswers)}
                                 >
                                     {showAnswers ? 'Hide Answers' : 'Show Answers'}
@@ -316,7 +319,7 @@ export default function ExamResultPage({ params }: PageProps) {
                         {!result.reviewUnlocked && (
                             <CardContent>
                                 <div className="p-3 rounded-lg bg-muted text-sm text-muted-foreground">
-                                    Use all attempts to unlock answer review. Remaining attempts: {attemptsRemaining}.
+                                    Pass the exam or use all attempts to unlock answer review. Remaining attempts: {attemptsRemaining}.
                                 </div>
                             </CardContent>
                         )}
@@ -358,7 +361,11 @@ export default function ExamResultPage({ params }: PageProps) {
                                             </div>
                                         </div>
 
-                                        <p className="font-medium mb-3">{answer.question}</p>
+                                        {answer.type === 'ESSAY' ? (
+                                            <RichTextContent html={answer.question} className="mb-3" />
+                                        ) : (
+                                            <p className="font-medium mb-3">{answer.question}</p>
+                                        )}
 
                                         <div className="grid gap-2 md:grid-cols-2">
                                             <div>
@@ -382,9 +389,10 @@ export default function ExamResultPage({ params }: PageProps) {
                                                 <p className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">
                                                     Explanation
                                                 </p>
-                                                <p className="text-sm text-blue-700 dark:text-blue-300">
-                                                    {answer.explanation}
-                                                </p>
+                                                <RichTextContent
+                                                    html={answer.explanation}
+                                                    className="text-sm text-blue-700 dark:text-blue-300"
+                                                />
                                             </div>
                                         )}
                                     </div>

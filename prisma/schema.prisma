@@ -1304,6 +1304,9 @@ model ExamQuestion {
   rubric       String? @db.Text // Grading criteria for essays
   sampleAnswer String? @db.Text // Reference answer for AI grading
   maxWords     Int? // Word limit for essays
+  attachmentS3Key String?
+  attachmentFilename String?
+  attachmentMimeType String?
 
   points      Int     @default(10)
   explanation String? @db.Text // Shown after submission
@@ -1417,6 +1420,9 @@ model ExamAttemptQuestionSnapshot {
   rubric       String? @db.Text
   sampleAnswer String? @db.Text
   maxWords     Int?
+  attachmentS3Key String?
+  attachmentFilename String?
+  attachmentMimeType String?
   points      Int     @default(10)
   explanation String? @db.Text
   topic String?

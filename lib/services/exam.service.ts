@@ -60,6 +60,9 @@ export interface CreateQuestionInput {
   rubric?: string;
   sampleAnswer?: string;
   maxWords?: number;
+  attachmentS3Key?: string | null;
+  attachmentFilename?: string | null;
+  attachmentMimeType?: string | null;
   points?: number;
   explanation?: string;
   topic?: string;
@@ -129,6 +132,23 @@ export interface ExamWithDetails {
 }
 
 export class ExamService {
+  private static async enrichQuestionWithAttachmentUrl<T extends {
+    attachmentS3Key?: string | null;
+  }>(question: T): Promise<T & { attachmentUrl: string | null }> {
+    return {
+      ...question,
+      attachmentUrl: question.attachmentS3Key
+        ? await FileService.getAssetAccessUrl(question.attachmentS3Key)
+        : null,
+    };
+  }
+
+  private static async enrichQuestionsWithAttachmentUrl<T extends {
+    attachmentS3Key?: string | null;
+  }>(questions: T[]): Promise<Array<T & { attachmentUrl: string | null }>> {
+    return Promise.all(questions.map((question) => this.enrichQuestionWithAttachmentUrl(question)));
+  }
+
   private static async assertExamIsDraft(examId: string): Promise<void> {
     const exam = await prisma.exam.findUnique({
       where: { id: examId },
@@ -697,7 +717,7 @@ export class ExamService {
       },
     });
 
-    return questions;
+    return this.enrichQuestionsWithAttachmentUrl(questions);
   }
 
   /**
@@ -727,6 +747,9 @@ export class ExamService {
           rubric: data.rubric,
           sampleAnswer: data.sampleAnswer,
           maxWords: data.maxWords,
+          attachmentS3Key: data.attachmentS3Key,
+          attachmentFilename: data.attachmentFilename,
+          attachmentMimeType: data.attachmentMimeType,
           points: data.points ?? 10,
           explanation: data.explanation,
           topic: data.topic,
@@ -744,7 +767,7 @@ export class ExamService {
       return created;
     });
 
-    return question;
+    return this.enrichQuestionWithAttachmentUrl(question);
   }
 
   /**
@@ -773,6 +796,9 @@ export class ExamService {
           ...(data.rubric !== undefined && { rubric: data.rubric }),
           ...(data.sampleAnswer !== undefined && { sampleAnswer: data.sampleAnswer }),
           ...(data.maxWords !== undefined && { maxWords: data.maxWords }),
+          ...(data.attachmentS3Key !== undefined && { attachmentS3Key: data.attachmentS3Key }),
+          ...(data.attachmentFilename !== undefined && { attachmentFilename: data.attachmentFilename }),
+          ...(data.attachmentMimeType !== undefined && { attachmentMimeType: data.attachmentMimeType }),
           ...(data.points !== undefined && { points: data.points }),
           ...(data.explanation !== undefined && { explanation: data.explanation }),
           ...(data.topic !== undefined && { topic: data.topic }),
@@ -786,7 +812,7 @@ export class ExamService {
       return updated;
     });
 
-    return question;
+    return this.enrichQuestionWithAttachmentUrl(question);
   }
 
   /**
