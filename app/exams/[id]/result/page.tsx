@@ -370,9 +370,20 @@ export default function ExamResultPage({ params }: PageProps) {
                                         <div className="grid gap-2 md:grid-cols-2">
                                             <div>
                                                 <p className="text-sm text-muted-foreground mb-1">Your Answer</p>
-                                                <p className={answer.isCorrect === false ? 'text-red-600' : ''}>
-                                                    {answer.userAnswer || 'No answer provided'}
-                                                </p>
+                                                {answer.type === 'ESSAY' ? (
+                                                    answer.userAnswer ? (
+                                                        <RichTextContent
+                                                            html={answer.userAnswer}
+                                                            className={answer.isCorrect === false ? 'text-red-600' : undefined}
+                                                        />
+                                                    ) : (
+                                                        <p>No answer provided</p>
+                                                    )
+                                                ) : (
+                                                    <p className={answer.isCorrect === false ? 'text-red-600' : ''}>
+                                                        {answer.userAnswer || 'No answer provided'}
+                                                    </p>
+                                                )}
                                             </div>
                                             {answer.type !== 'ESSAY' && answer.type !== 'EXERCISE' && (
                                                 <div>

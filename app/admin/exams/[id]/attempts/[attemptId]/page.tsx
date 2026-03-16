@@ -577,9 +577,13 @@ export default function AttemptDetailPage({ params }: PageProps) {
                                     <>
                                         <div>
                                             <p className="text-sm text-muted-foreground mb-1">Student Answer</p>
-                                            <div className="p-4 bg-muted rounded-lg whitespace-pre-wrap">
-                                                {answer.answer || 'No answer provided'}
-                                            </div>
+                                            {answer.answer ? (
+                                                <RichTextContent html={answer.answer} className="rounded-lg bg-muted p-4" />
+                                            ) : (
+                                                <div className="p-4 bg-muted rounded-lg">
+                                                    No answer provided
+                                                </div>
+                                            )}
                                         </div>
 
                                         {answer.question.rubric && (

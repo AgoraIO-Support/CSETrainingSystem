@@ -16,6 +16,7 @@ import { log, timeAsync } from '@/lib/logger';
 import { CertificateService } from '@/lib/services/certificate.service';
 import { AIPromptResolverService } from '@/lib/services/ai-prompt-resolver.service';
 import { getChatCompletionsTokenBudget } from '@/lib/services/openai-models';
+import { stripRichTextToPlainText } from '@/lib/rich-text';
 
 export interface GradingResult {
   attemptId: string;
@@ -366,7 +367,7 @@ export class ExamGradingService {
       throw new Error('NOT_AN_ESSAY');
     }
 
-    const userEssay = answer.answer || '';
+    const userEssay = stripRichTextToPlainText(answer.answer || '');
 
     const promptConfig = await AIPromptResolverService.resolve({
       useCase: AIPromptUseCase.EXAM_GRADING_ESSAY,

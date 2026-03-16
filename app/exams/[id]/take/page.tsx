@@ -6,11 +6,12 @@ import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
 import { ScreenRecorderAnswer } from '@/components/exam/screen-recorder-answer'
+import { RichTextEditor } from '@/components/ui/rich-text-editor'
 import { RichTextContent } from '@/components/ui/rich-text-content'
 import { ApiClient } from '@/lib/api-client'
+import { stripRichTextToPlainText } from '@/lib/rich-text'
 import {
     Loader2,
     Clock,
@@ -497,15 +498,14 @@ export default function TakeExamPage({ params }: PageProps) {
                                             </a>
                                         </div>
                                     )}
-                                    <Textarea
-                                        placeholder="Write your answer..."
-                                        rows={10}
+                                    <RichTextEditor
                                         value={currentAnswer?.answer || ''}
-                                        onChange={(e) => handleAnswerChange(currentQuestion.id, { answer: e.target.value })}
+                                        onChange={(value) => handleAnswerChange(currentQuestion.id, { answer: value })}
+                                        placeholder="Write your answer..."
                                     />
                                     {currentQuestion.maxWords && (
                                         <p className="text-sm text-muted-foreground text-right">
-                                            {(currentAnswer?.answer || '').split(/\s+/).filter(w => w).length} / {currentQuestion.maxWords} words
+                                            {stripRichTextToPlainText(currentAnswer?.answer || '').split(/\s+/).filter(w => w).length} / {currentQuestion.maxWords} words
                                         </p>
                                     )}
                                 </div>

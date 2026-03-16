@@ -131,21 +131,45 @@ export class ExamAttemptService {
     });
 
     if (snapshots.length > 0) {
-      return Promise.all(snapshots.map(async (q) => ({
-        id: q.questionId,
-        type: q.type,
-        question: q.question,
-        options: (q.options as string[] | null) ?? null,
-        correctAnswer: q.correctAnswer,
-        explanation: q.explanation,
-        points: q.points,
-        order: q.order,
-        maxWords: q.maxWords,
-        attachmentS3Key: q.attachmentS3Key,
-        attachmentFilename: q.attachmentFilename,
-        attachmentMimeType: q.attachmentMimeType,
-        attachmentUrl: q.attachmentS3Key ? await FileService.getAssetAccessUrl(q.attachmentS3Key) : null,
-      })));
+      const currentQuestions = await prisma.examQuestion.findMany({
+        where: {
+          examId,
+          archivedAt: null,
+          id: { in: snapshots.map((snapshot) => snapshot.questionId) },
+        },
+        select: {
+          id: true,
+          attachmentS3Key: true,
+          attachmentFilename: true,
+          attachmentMimeType: true,
+        },
+      });
+      const currentQuestionMap = new Map(currentQuestions.map((question) => [question.id, question] as const));
+
+      return Promise.all(
+        snapshots.map(async (q) => {
+          const currentQuestion = currentQuestionMap.get(q.questionId);
+          const attachmentS3Key = q.attachmentS3Key ?? currentQuestion?.attachmentS3Key ?? null;
+          const attachmentFilename = q.attachmentFilename ?? currentQuestion?.attachmentFilename ?? null;
+          const attachmentMimeType = q.attachmentMimeType ?? currentQuestion?.attachmentMimeType ?? null;
+
+          return {
+            id: q.questionId,
+            type: q.type,
+            question: q.question,
+            options: (q.options as string[] | null) ?? null,
+            correctAnswer: q.correctAnswer,
+            explanation: q.explanation,
+            points: q.points,
+            order: q.order,
+            maxWords: q.maxWords,
+            attachmentS3Key,
+            attachmentFilename,
+            attachmentMimeType,
+            attachmentUrl: attachmentS3Key ? await FileService.getAssetAccessUrl(attachmentS3Key) : null,
+          };
+        })
+      );
     }
 
     const questions = await prisma.examQuestion.findMany({
