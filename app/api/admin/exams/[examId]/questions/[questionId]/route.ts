@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAdminAuth } from '@/lib/auth-middleware';
 import { ExamService } from '@/lib/services/exam.service';
 import { updateExamQuestionSchema } from '@/lib/validations';
+import prisma from '@/lib/prisma';
 import { z } from 'zod';
 
 type RouteContext = {
@@ -20,7 +21,36 @@ export const PATCH = withAdminAuth(
     try {
       const { examId, questionId } = await context.params;
       const body = await req.json();
-      const data = updateExamQuestionSchema.parse(body);
+
+      const existingQuestion = await prisma.examQuestion.findFirst({
+        where: {
+          id: questionId,
+          examId,
+          archivedAt: null,
+        },
+        select: {
+          id: true,
+          type: true,
+        },
+      });
+
+      if (!existingQuestion) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'QUESTION_NOT_FOUND',
+              message: 'Question not found',
+            },
+          },
+          { status: 404 }
+        );
+      }
+
+      const data = updateExamQuestionSchema.parse({
+        ...body,
+        type: body.type ?? existingQuestion.type,
+      });
 
       // Verify exam exists
       const exam = await ExamService.getExamById(examId);

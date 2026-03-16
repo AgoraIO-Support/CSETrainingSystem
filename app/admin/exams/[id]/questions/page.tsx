@@ -392,7 +392,10 @@ export default function ExamQuestionsPage({ params }: PageProps) {
             if (form.type === 'ESSAY' && attachmentFile) {
                 try {
                     const attachmentPayload = await uploadEssayAttachment(savedQuestion.id, attachmentFile)
-                    const attachmentResponse = await ApiClient.updateExamQuestion(examId, savedQuestion.id, attachmentPayload)
+                    const attachmentResponse = await ApiClient.updateExamQuestion(examId, savedQuestion.id, {
+                        type: 'ESSAY',
+                        ...attachmentPayload,
+                    })
                     savedQuestion = attachmentResponse.data
                 } catch (uploadError) {
                     setQuestions(prev => {
