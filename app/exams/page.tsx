@@ -39,6 +39,22 @@ type ExamListItem = Exam & {
     hasPassed?: boolean
 }
 
+type RawExamListItem = Exam & {
+    questionCount?: number
+    _count?: { questions?: number }
+    userStatus?: {
+        completedAttempts: number
+        remainingAttempts: number
+        hasInProgressAttempt: boolean
+        inProgressAttemptId?: string | null
+        bestScore?: number | null
+        hasPassed: boolean
+    }
+    userAttempts?: number
+    bestScore?: number | null
+    hasPassed?: boolean
+}
+
 export default function ExamsPage() {
     const [exams, setExams] = useState<ExamListItem[]>([])
     const [loading, setLoading] = useState(true)
@@ -52,7 +68,7 @@ export default function ExamsPage() {
         setLoading(true)
         try {
             const response = await ApiClient.getAvailableExams()
-            const normalized = (response.data as any[]).map((exam) => {
+            const normalized = (response.data as RawExamListItem[]).map((exam) => {
                 const attemptsUsed = Number.isFinite(exam.userAttempts)
                     ? exam.userAttempts
                     : exam.userStatus
@@ -160,18 +176,18 @@ export default function ExamsPage() {
                 {/* Exam List */}
                 <Card>
                     <CardHeader>
-                        <CardTitle>Available Exams</CardTitle>
-                        <CardDescription>Exams you can take</CardDescription>
+                        <CardTitle>Assigned Exams</CardTitle>
+                        <CardDescription>Exams assigned to you, including expired ones</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        {availableExams.length === 0 ? (
+                        {exams.length === 0 ? (
                             <div className="text-center py-12">
                                 <FileQuestion className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                                 <p className="text-muted-foreground">No exams available at this time</p>
                             </div>
                         ) : (
                             <div className="space-y-4">
-                                {availableExams.map(exam => (
+                                {exams.map(exam => (
                                     <div
                                         key={exam.id}
                                         className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors"
@@ -189,6 +205,11 @@ export default function ExamsPage() {
                                                     <Badge variant="destructive">
                                                         <AlertCircle className="h-3 w-3 mr-1" />
                                                         Deadline Soon
+                                                    </Badge>
+                                                )}
+                                                {isDeadlinePassed(exam.deadline) && (
+                                                    <Badge variant="outline">
+                                                        Expired
                                                     </Badge>
                                                 )}
                                             </div>
@@ -249,9 +270,11 @@ export default function ExamsPage() {
                                         <div className="ml-4">
                                             <Link href={`/exams/${exam.id}`}>
                                                 <Button
-                                                    disabled={(exam.userAttempts ?? 0) >= exam.maxAttempts && !exam.hasPassed}
+                                                    disabled={isDeadlinePassed(exam.deadline) || (exam.userAttempts ?? 0) >= exam.maxAttempts && !exam.hasPassed}
                                                 >
-                                                    {(exam.userAttempts ?? 0) === 0 ? (
+                                                    {isDeadlinePassed(exam.deadline) ? (
+                                                        'Deadline Passed'
+                                                    ) : (exam.userAttempts ?? 0) === 0 ? (
                                                         <>
                                                             <Play className="h-4 w-4 mr-2" />
                                                             Start Exam

@@ -38,6 +38,24 @@ interface ExamDetails extends Exam {
     }>
     canAttempt: boolean
     remainingAttempts: number
+    accessReason?: string
+}
+
+type RawExamDetails = Exam & {
+    questionCount?: number
+    questionsCount?: number
+    canTake?: boolean
+    canAttempt?: boolean
+    remainingAttempts?: number
+    accessReason?: string
+    userAttempts?: Array<{
+        id: string
+        attemptNumber: number
+        status: string
+        percentageScore: number | null
+        passed: boolean | null
+        submittedAt: string | null
+    }>
 }
 
 type PageProps = {
@@ -60,11 +78,11 @@ export default function ExamIntroPage({ params }: PageProps) {
         setLoading(true)
         try {
             const [examRes, attemptsRes] = await Promise.all([
-                ApiClient.getExamDetails(examId) as any,
+                ApiClient.getExamDetails(examId),
                 ApiClient.getUserExamAttempts(examId),
             ])
 
-            const rawExam: any = examRes?.data
+            const rawExam = examRes?.data as RawExamDetails
             const attempts = attemptsRes?.data ?? []
 
             // Backward/forward compatible normalization:
@@ -75,6 +93,7 @@ export default function ExamIntroPage({ params }: PageProps) {
                 questionsCount: rawExam?.questionsCount ?? rawExam?.questionCount ?? 0,
                 canAttempt: rawExam?.canAttempt ?? rawExam?.canTake ?? false,
                 remainingAttempts: rawExam?.remainingAttempts ?? 0,
+                accessReason: rawExam?.accessReason,
                 userAttempts: Array.isArray(rawExam?.userAttempts) ? rawExam.userAttempts : attempts,
             })
         } catch (err) {
@@ -179,6 +198,20 @@ export default function ExamIntroPage({ params }: PageProps) {
                     <div className="p-4 bg-destructive/10 text-destructive rounded-lg flex items-center gap-2">
                         <XCircle className="h-4 w-4" />
                         {error}
+                    </div>
+                )}
+
+                {exam.accessReason === 'EXAM_DEADLINE_PASSED' && (
+                    <div className="p-4 bg-amber-50 text-amber-800 rounded-lg flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4" />
+                        This exam is still assigned to you, but the deadline has passed.
+                    </div>
+                )}
+
+                {exam.accessReason === 'EXAM_NOT_AVAILABLE_YET' && (
+                    <div className="p-4 bg-blue-50 text-blue-800 rounded-lg flex items-center gap-2">
+                        <Info className="h-4 w-4" />
+                        This exam is assigned to you, but it is not available yet.
                     </div>
                 )}
 
@@ -439,9 +472,13 @@ export default function ExamIntroPage({ params }: PageProps) {
                         </Button>
                     ) : (
                         <Button size="lg" disabled>
-                            {exam.remainingAttempts === 0
-                                ? 'No attempts remaining'
-                                : 'Exam not available'}
+                            {exam.accessReason === 'EXAM_DEADLINE_PASSED'
+                                ? 'Deadline Passed'
+                                : exam.accessReason === 'EXAM_NOT_AVAILABLE_YET'
+                                    ? 'Not Available Yet'
+                                    : exam.remainingAttempts === 0
+                                        ? 'No attempts remaining'
+                                        : 'Exam not available'}
                         </Button>
                     )}
                 </div>

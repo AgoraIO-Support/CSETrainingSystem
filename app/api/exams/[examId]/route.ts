@@ -20,7 +20,12 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
     // Check if user can access this exam
     const accessCheck = await ExamService.canUserTakeExam(user.id, examId);
 
-    if (!accessCheck.canTake && !accessCheck.reason?.includes('MAX_ATTEMPTS')) {
+    const canStillViewExam =
+      accessCheck.reason === 'MAX_ATTEMPTS_REACHED' ||
+      accessCheck.reason === 'EXAM_NOT_AVAILABLE_YET' ||
+      accessCheck.reason === 'EXAM_DEADLINE_PASSED';
+
+    if (!accessCheck.canTake && !canStillViewExam) {
       return NextResponse.json(
         {
           success: false,
