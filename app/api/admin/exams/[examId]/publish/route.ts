@@ -86,10 +86,30 @@ export const POST = withAdminAuth(async (req: NextRequest, _user, context: Route
             )
         }
 
-        const users = await prisma.user.findMany({
-            where: { id: { in: userIds }, status: 'ACTIVE' },
-            select: { id: true },
+        const existingInvitationCount = await prisma.examInvitation.count({
+            where: { examId },
         })
+
+        if (userIds.length === 0 && existingInvitationCount === 0) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: {
+                        code: 'EXAM_011',
+                        message: 'Publishing requires assigning users or keeping existing invitations.',
+                    },
+                },
+                { status: 400 }
+            )
+        }
+
+        const users =
+            userIds.length > 0
+                ? await prisma.user.findMany({
+                      where: { id: { in: userIds }, status: 'ACTIVE' },
+                      select: { id: true },
+                  })
+                : []
         const activeUserIds = new Set(users.map((u) => u.id))
         const invalidUserIds = userIds.filter((id) => !activeUserIds.has(id))
         if (invalidUserIds.length > 0) {
@@ -106,13 +126,16 @@ export const POST = withAdminAuth(async (req: NextRequest, _user, context: Route
             )
         }
 
-        const existingInvites = await prisma.examInvitation.findMany({
-            where: {
-                examId,
-                userId: { in: userIds },
-            },
-            select: { userId: true },
-        })
+        const existingInvites =
+            userIds.length > 0
+                ? await prisma.examInvitation.findMany({
+                      where: {
+                          examId,
+                          userId: { in: userIds },
+                      },
+                      select: { userId: true },
+                  })
+                : []
         const existingSet = new Set(existingInvites.map((i) => i.userId))
         const toCreate = userIds.filter((id) => !existingSet.has(id))
 
@@ -158,6 +181,7 @@ export const POST = withAdminAuth(async (req: NextRequest, _user, context: Route
             meta: {
                 invited: toCreate.length,
                 skipped: userIds.length - toCreate.length,
+                existingInvitations: existingInvitationCount,
                 notificationsSent: notificationResults.sent,
                 notificationsFailed: notificationResults.failed,
                 // backward compatibility for older clients

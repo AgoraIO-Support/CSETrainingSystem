@@ -110,7 +110,6 @@ export default function ExamInvitationsPage({ params }: PageProps) {
 
     const handlePublish = async () => {
         if (!exam) return
-        if (selectedUserIds.length === 0) return
 
         setInviting(true)
         setError(null)
@@ -122,10 +121,16 @@ export default function ExamInvitationsPage({ params }: PageProps) {
             })
             setExam(response.data)
             const sent = response.meta?.notificationsSent ?? response.meta?.emailsSent ?? 0
-            showSuccess(
-                `Exam published. Assigned ${response.meta?.invited ?? selectedUserIds.length} user(s).` +
-                    (publishSendingNotifications ? ` Notifications sent: ${sent}.` : '')
-            )
+            if (selectedUserIds.length > 0) {
+                showSuccess(
+                    `Exam published. Assigned ${response.meta?.invited ?? selectedUserIds.length} user(s).` +
+                        (publishSendingNotifications ? ` Notifications sent: ${sent}.` : '')
+                )
+            } else {
+                showSuccess(
+                    `Exam published. ${response.meta?.existingInvitations ?? invitations.length} existing invitation(s) remain active.`
+                )
+            }
             setSelectedUserIds([])
             loadData()
         } catch (err) {
@@ -192,6 +197,7 @@ export default function ExamInvitationsPage({ params }: PageProps) {
     const pendingNotifications = invitations.filter(inv => !inv.emailSentAt)
     const isPublished = exam.status === 'PUBLISHED'
     const isApproved = exam.status === 'APPROVED'
+    const canPublishExistingInvitations = !isPublished && isApproved && invitations.length > 0
 
     return (
         <DashboardLayout>
@@ -302,7 +308,9 @@ export default function ExamInvitationsPage({ params }: PageProps) {
                         {!isPublished && (
                             <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border">
                                 <span className="text-sm text-muted-foreground">
-                                    Publish will assign the selected users.
+                                    {canPublishExistingInvitations
+                                        ? 'Publish will keep current invitations active. You can also select additional users below.'
+                                        : 'Publish will assign the selected users.'}
                                 </span>
                                 <label className="flex items-center gap-2 text-sm">
                                     <input
@@ -316,10 +324,12 @@ export default function ExamInvitationsPage({ params }: PageProps) {
                             </div>
                         )}
 
-                        {selectedUserIds.length > 0 && (
+                        {(selectedUserIds.length > 0 || canPublishExistingInvitations) && (
                             <div className="flex items-center justify-between p-3 bg-primary/10 rounded-lg">
                                 <span className="text-sm font-medium">
-                                    {selectedUserIds.length} user(s) selected
+                                    {selectedUserIds.length > 0
+                                        ? `${selectedUserIds.length} user(s) selected`
+                                        : `${invitations.length} existing invitation(s) ready to republish`}
                                 </span>
                                 <Button
                                     onClick={isPublished ? handleInviteUsers : handlePublish}

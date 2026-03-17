@@ -371,7 +371,7 @@ export const inviteUsersSchema = z.object({
 })
 
 export const publishExamSchema = z.object({
-    userIds: z.array(z.string().uuid()).nonempty('Select at least one user to assign this exam'),
+    userIds: z.array(z.string().uuid()).default([]),
     // Backward compatible: `sendEmail` accepted from older clients.
     sendEmail: z.boolean().optional(),
     sendNotification: z.boolean().optional(),

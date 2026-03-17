@@ -609,7 +609,7 @@ export class ApiClient {
         })
     }
 
-    static async publishExam(examId: string, payload: { userIds: string[]; sendNotification?: boolean; sendEmail?: boolean }): Promise<{ success: boolean; data: Exam; meta?: { invited: number; skipped: number; notificationsSent?: number; notificationsFailed?: number; emailsSent?: number; emailsFailed?: number } }> {
+    static async publishExam(examId: string, payload: { userIds: string[]; sendNotification?: boolean; sendEmail?: boolean }): Promise<{ success: boolean; data: Exam; meta?: { invited: number; skipped: number; existingInvitations?: number; notificationsSent?: number; notificationsFailed?: number; emailsSent?: number; emailsFailed?: number } }> {
         return this.request(`/admin/exams/${examId}/publish`, {
             method: 'POST',
             body: JSON.stringify(payload),
