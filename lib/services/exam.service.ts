@@ -13,6 +13,7 @@ import {
 } from '@prisma/client';
 import { FileService } from '@/lib/services/file.service';
 import { ASSET_S3_BUCKET_NAME, S3_BUCKET_NAME } from '@/lib/aws-s3';
+import { resolveRichTextAssetUrls } from '@/lib/rich-text';
 
 // Input types
 export interface CreateExamInput {
@@ -134,12 +135,24 @@ export interface ExamWithDetails {
 export class ExamService {
   private static async enrichQuestionWithAttachmentUrl<T extends {
     attachmentS3Key?: string | null;
+    question?: string | null;
+    explanation?: string | null;
   }>(question: T): Promise<T & { attachmentUrl: string | null }> {
+    const [resolvedQuestion, resolvedExplanation, attachmentUrl] = await Promise.all([
+      question.question
+        ? resolveRichTextAssetUrls(question.question, (key) => FileService.getAssetAccessUrl(key))
+        : Promise.resolve(question.question),
+      question.explanation
+        ? resolveRichTextAssetUrls(question.explanation, (key) => FileService.getAssetAccessUrl(key))
+        : Promise.resolve(question.explanation),
+      question.attachmentS3Key ? FileService.getAssetAccessUrl(question.attachmentS3Key) : Promise.resolve(null),
+    ]);
+
     return {
       ...question,
-      attachmentUrl: question.attachmentS3Key
-        ? await FileService.getAssetAccessUrl(question.attachmentS3Key)
-        : null,
+      ...(question.question !== undefined ? { question: resolvedQuestion } : {}),
+      ...(question.explanation !== undefined ? { explanation: resolvedExplanation } : {}),
+      attachmentUrl,
     };
   }
 

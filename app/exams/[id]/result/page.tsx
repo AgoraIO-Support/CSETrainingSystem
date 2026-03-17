@@ -328,7 +328,7 @@ export default function ExamResultPage({ params }: PageProps) {
                                 {result.answers.map((answer, index) => (
                                     <div
                                         key={answer.questionId}
-                                        className={`p-4 border rounded-lg ${
+                                        className={`space-y-4 p-5 border rounded-xl ${
                                             answer.isCorrect === true
                                                 ? 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800'
                                                 : answer.isCorrect === false
@@ -336,7 +336,7 @@ export default function ExamResultPage({ params }: PageProps) {
                                                     : ''
                                         }`}
                                     >
-                                        <div className="flex items-start justify-between mb-3">
+                                        <div className="flex items-start justify-between gap-4">
                                             <div className="flex items-center gap-3">
                                                 <span className="flex items-center justify-center w-8 h-8 rounded-full bg-muted font-medium">
                                                     {index + 1}
@@ -361,34 +361,45 @@ export default function ExamResultPage({ params }: PageProps) {
                                             </div>
                                         </div>
 
-                                        {answer.type === 'ESSAY' ? (
-                                            <RichTextContent html={answer.question} className="mb-3" />
-                                        ) : (
-                                            <p className="font-medium mb-3">{answer.question}</p>
-                                        )}
+                                        <div className="rounded-lg border bg-background/80 p-4">
+                                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                                Question
+                                            </p>
+                                            {answer.type === 'ESSAY' ? (
+                                                <RichTextContent html={answer.question} className="text-base" />
+                                            ) : (
+                                                <p className="font-medium whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                                                    {answer.question}
+                                                </p>
+                                            )}
+                                        </div>
 
-                                        <div className="grid gap-2 md:grid-cols-2">
-                                            <div>
-                                                <p className="text-sm text-muted-foreground mb-1">Your Answer</p>
+                                        <div className={`grid gap-4 ${answer.type !== 'ESSAY' && answer.type !== 'EXERCISE' ? 'md:grid-cols-2' : ''}`}>
+                                            <div className="rounded-lg border bg-background/70 p-4">
+                                                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                                    Your Answer
+                                                </p>
                                                 {answer.type === 'ESSAY' ? (
                                                     answer.userAnswer ? (
                                                         <RichTextContent
                                                             html={answer.userAnswer}
-                                                            className={answer.isCorrect === false ? 'text-red-600' : undefined}
+                                                            className={answer.isCorrect === false ? 'text-red-700 dark:text-red-300' : ''}
                                                         />
                                                     ) : (
-                                                        <p>No answer provided</p>
+                                                        <p className="text-sm text-muted-foreground">No answer provided</p>
                                                     )
                                                 ) : (
-                                                    <p className={answer.isCorrect === false ? 'text-red-600' : ''}>
+                                                    <p className={`whitespace-pre-wrap break-words [overflow-wrap:anywhere] ${answer.isCorrect === false ? 'text-red-700 dark:text-red-300' : ''}`}>
                                                         {answer.userAnswer || 'No answer provided'}
                                                     </p>
                                                 )}
                                             </div>
                                             {answer.type !== 'ESSAY' && answer.type !== 'EXERCISE' && (
-                                                <div>
-                                                    <p className="text-sm text-muted-foreground mb-1">Correct Answer</p>
-                                                    <p className="text-green-600">
+                                                <div className="rounded-lg border bg-green-50/70 p-4 dark:bg-green-950/20">
+                                                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-green-700 dark:text-green-300">
+                                                        Correct Answer
+                                                    </p>
+                                                    <p className="whitespace-pre-wrap break-words text-green-700 dark:text-green-300 [overflow-wrap:anywhere]">
                                                         {answer.correctAnswer || '-'}
                                                     </p>
                                                 </div>
@@ -396,13 +407,13 @@ export default function ExamResultPage({ params }: PageProps) {
                                         </div>
 
                                         {answer.explanation && (
-                                            <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                                                <p className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">
+                                            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/20">
+                                                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-800 dark:text-blue-200">
                                                     Explanation
                                                 </p>
                                                 <RichTextContent
                                                     html={answer.explanation}
-                                                    className="text-sm text-blue-700 dark:text-blue-300"
+                                                    className="text-sm text-blue-800 dark:text-blue-200"
                                                 />
                                             </div>
                                         )}

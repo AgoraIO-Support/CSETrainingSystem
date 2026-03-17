@@ -14,6 +14,7 @@ import {
 } from '@prisma/client';
 import { ExamGradingService } from '@/lib/services/exam-grading.service';
 import { FileService } from '@/lib/services/file.service';
+import { resolveRichTextAssetUrls } from '@/lib/rich-text';
 
 export interface StartAttemptResult {
   attemptId: string;
@@ -152,21 +153,26 @@ export class ExamAttemptService {
           const attachmentS3Key = q.attachmentS3Key ?? currentQuestion?.attachmentS3Key ?? null;
           const attachmentFilename = q.attachmentFilename ?? currentQuestion?.attachmentFilename ?? null;
           const attachmentMimeType = q.attachmentMimeType ?? currentQuestion?.attachmentMimeType ?? null;
+          const [question, explanation, attachmentUrl] = await Promise.all([
+            resolveRichTextAssetUrls(q.question, (key) => FileService.getAssetAccessUrl(key)),
+            resolveRichTextAssetUrls(q.explanation, (key) => FileService.getAssetAccessUrl(key)),
+            attachmentS3Key ? FileService.getAssetAccessUrl(attachmentS3Key) : Promise.resolve(null),
+          ]);
 
           return {
             id: q.questionId,
             type: q.type,
-            question: q.question,
+            question: question ?? q.question,
             options: (q.options as string[] | null) ?? null,
             correctAnswer: q.correctAnswer,
-            explanation: q.explanation,
+            explanation: explanation ?? q.explanation,
             points: q.points,
             order: q.order,
             maxWords: q.maxWords,
             attachmentS3Key,
             attachmentFilename,
             attachmentMimeType,
-            attachmentUrl: attachmentS3Key ? await FileService.getAssetAccessUrl(attachmentS3Key) : null,
+            attachmentUrl,
           };
         })
       );
@@ -190,11 +196,21 @@ export class ExamAttemptService {
         attachmentMimeType: true,
       },
     });
-    return Promise.all(questions.map(async (q) => ({
-      ...q,
-      options: (q.options as string[] | null) ?? null,
-      attachmentUrl: q.attachmentS3Key ? await FileService.getAssetAccessUrl(q.attachmentS3Key) : null,
-    })));
+    return Promise.all(questions.map(async (q) => {
+      const [question, explanation, attachmentUrl] = await Promise.all([
+        resolveRichTextAssetUrls(q.question, (key) => FileService.getAssetAccessUrl(key)),
+        resolveRichTextAssetUrls(q.explanation, (key) => FileService.getAssetAccessUrl(key)),
+        q.attachmentS3Key ? FileService.getAssetAccessUrl(q.attachmentS3Key) : Promise.resolve(null),
+      ])
+
+      return {
+        ...q,
+        question: question ?? q.question,
+        explanation: explanation ?? q.explanation,
+        options: (q.options as string[] | null) ?? null,
+        attachmentUrl,
+      }
+    }));
   }
 
   /**
@@ -644,37 +660,46 @@ export class ExamAttemptService {
       percentageScore: attempt.percentageScore,
       passed: attempt.passed,
       exam: attempt.exam,
-      answers: attempt.answers.map(a => ({
-        id: a.id,
-        questionId: a.questionId,
-        answer: a.answer,
-        selectedOption: a.selectedOption,
-        recordingS3Key: a.recordingS3Key,
-        recordingMimeType: a.recordingMimeType,
-        recordingSizeBytes: a.recordingSizeBytes,
-        recordingDurationSeconds: a.recordingDurationSeconds,
-        recordingStatus: a.recordingStatus,
-        gradingStatus: a.gradingStatus,
-        isCorrect: a.isCorrect,
-        pointsAwarded: a.pointsAwarded,
-        question: {
-          id: a.questionId,
-          type: snapshotByQuestionId.get(a.questionId)?.type ?? a.question.type,
-          question: snapshotByQuestionId.get(a.questionId)?.question ?? a.question.question,
-          options:
-            (snapshotByQuestionId.get(a.questionId)?.options as string[] | null) ??
-            (a.question.options as string[] | null),
-          correctAnswer:
-            snapshotByQuestionId.get(a.questionId)?.correctAnswer ?? a.question.correctAnswer,
-          explanation: snapshotByQuestionId.get(a.questionId)?.explanation ?? a.question.explanation,
-          points: snapshotByQuestionId.get(a.questionId)?.points ?? a.question.points,
-          attachmentS3Key:
-            snapshotByQuestionId.get(a.questionId)?.attachmentS3Key ?? a.question.attachmentS3Key,
-          attachmentFilename:
-            snapshotByQuestionId.get(a.questionId)?.attachmentFilename ?? a.question.attachmentFilename,
-          attachmentMimeType:
-            snapshotByQuestionId.get(a.questionId)?.attachmentMimeType ?? a.question.attachmentMimeType,
-        },
+      answers: await Promise.all(attempt.answers.map(async (a) => {
+        const snapshot = snapshotByQuestionId.get(a.questionId)
+        const [answer, question, explanation] = await Promise.all([
+          resolveRichTextAssetUrls(a.answer, (key) => FileService.getAssetAccessUrl(key)),
+          resolveRichTextAssetUrls(snapshot?.question ?? a.question.question, (key) => FileService.getAssetAccessUrl(key)),
+          resolveRichTextAssetUrls(snapshot?.explanation ?? a.question.explanation, (key) => FileService.getAssetAccessUrl(key)),
+        ])
+
+        return {
+          id: a.id,
+          questionId: a.questionId,
+          answer: answer ?? null,
+          selectedOption: a.selectedOption,
+          recordingS3Key: a.recordingS3Key,
+          recordingMimeType: a.recordingMimeType,
+          recordingSizeBytes: a.recordingSizeBytes,
+          recordingDurationSeconds: a.recordingDurationSeconds,
+          recordingStatus: a.recordingStatus,
+          gradingStatus: a.gradingStatus,
+          isCorrect: a.isCorrect,
+          pointsAwarded: a.pointsAwarded,
+          question: {
+            id: a.questionId,
+            type: snapshot?.type ?? a.question.type,
+            question: question ?? (snapshot?.question ?? a.question.question),
+            options:
+              (snapshot?.options as string[] | null) ??
+              (a.question.options as string[] | null),
+            correctAnswer:
+              snapshot?.correctAnswer ?? a.question.correctAnswer,
+            explanation: explanation ?? (snapshot?.explanation ?? a.question.explanation),
+            points: snapshot?.points ?? a.question.points,
+            attachmentS3Key:
+              snapshot?.attachmentS3Key ?? a.question.attachmentS3Key,
+            attachmentFilename:
+              snapshot?.attachmentFilename ?? a.question.attachmentFilename,
+            attachmentMimeType:
+              snapshot?.attachmentMimeType ?? a.question.attachmentMimeType,
+          },
+        }
       })),
     };
   }
@@ -758,17 +783,21 @@ export class ExamAttemptService {
     const result = this.buildAttemptResult(attempt, attempt.exam, snapshotQuestions);
 
     // Include existing answers
-    return {
-      ...result,
-      existingAnswers: attempt.answers.reduce((acc, ans) => {
-        acc[ans.questionId] = {
-          answer: ans.answer,
+    const existingAnswersEntries = await Promise.all(
+      attempt.answers.map(async (ans) => [
+        ans.questionId,
+        {
+          answer: await resolveRichTextAssetUrls(ans.answer, (key) => FileService.getAssetAccessUrl(key)),
           selectedOption: ans.selectedOption,
           recordingS3Key: ans.recordingS3Key ?? null,
           recordingStatus: ans.recordingStatus ?? null,
-        };
-        return acc;
-      }, {} as CurrentAttemptResult['existingAnswers']),
+        },
+      ] as const)
+    )
+
+    return {
+      ...result,
+      existingAnswers: Object.fromEntries(existingAnswersEntries) as CurrentAttemptResult['existingAnswers'],
     };
   }
 

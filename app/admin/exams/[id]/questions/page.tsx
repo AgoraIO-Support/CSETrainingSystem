@@ -12,6 +12,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { RichTextEditor } from '@/components/ui/rich-text-editor'
 import { RichTextContent } from '@/components/ui/rich-text-content'
 import { ApiClient } from '@/lib/api-client'
+import { resolveUploadedFileContentType } from '@/lib/file-upload'
 import { stripRichTextToPlainText } from '@/lib/rich-text'
 import {
     ArrowLeft,
@@ -516,36 +517,35 @@ export default function ExamQuestionsPage({ params }: PageProps) {
         }
     }
 
-    const resolveEssayAttachmentContentType = (file: File) => {
-        if (file.type && (file.type.startsWith('application/') || file.type.startsWith('text/'))) {
-            return file.type
+    const uploadEditorAsset = async (file: File) => {
+        const contentType = resolveUploadedFileContentType(file)
+        const uploadUrlResponse = await ApiClient.getAdminExamRichContentUploadUrl(examId, {
+            filename: file.name,
+            contentType,
+        })
+
+        const uploadResponse = await fetch(uploadUrlResponse.data.uploadUrl, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': contentType,
+                'x-amz-server-side-encryption': 'AES256',
+            },
+            body: file,
+        })
+
+        if (!uploadResponse.ok) {
+            throw new Error(`Failed to upload file (${uploadResponse.status})`)
         }
 
-        const extension = file.name.split('.').pop()?.toLowerCase()
-        const extensionMap: Record<string, string> = {
-            pdf: 'application/pdf',
-            doc: 'application/msword',
-            docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            ppt: 'application/vnd.ms-powerpoint',
-            pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-            xls: 'application/vnd.ms-excel',
-            xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            txt: 'text/plain',
-            rtf: 'application/rtf',
-            md: 'text/markdown',
-            odt: 'application/vnd.oasis.opendocument.text',
-            ods: 'application/vnd.oasis.opendocument.spreadsheet',
-            odp: 'application/vnd.oasis.opendocument.presentation',
+        return {
+            url: uploadUrlResponse.data.accessUrl,
+            name: file.name,
+            assetKey: uploadUrlResponse.data.key,
         }
-
-        return extension ? extensionMap[extension] ?? null : null
     }
 
     const uploadEssayAttachment = async (questionId: string, file: File) => {
-        const contentType = resolveEssayAttachmentContentType(file)
-        if (!contentType) {
-            throw new Error('Unsupported document type. Upload a Word, PDF, spreadsheet, presentation, or text file.')
-        }
+        const contentType = resolveUploadedFileContentType(file)
 
         const uploadUrlResponse = await ApiClient.getAdminExamQuestionAttachmentUploadUrl(examId, questionId, {
             filename: file.name,
@@ -826,6 +826,8 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                             value={form.question}
                                             onChange={(value) => updateForm('question', value)}
                                             placeholder="Write the essay prompt with paragraphs, lists, emphasis, and links..."
+                                            onUploadImage={uploadEditorAsset}
+                                            onUploadFile={uploadEditorAsset}
                                         />
                                     ) : (
                                         <Textarea
@@ -930,11 +932,10 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                             <Label>Reference Document (optional)</Label>
                                             <Input
                                                 type="file"
-                                                accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.rtf,.md,.odt,.ods,.odp,.xls,.xlsx"
                                                 onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)}
                                             />
                                             <p className="text-xs text-muted-foreground">
-                                                Upload a Word, PDF, spreadsheet, presentation, or text file that learners can open while answering.
+                                                Upload any file learners should reference while answering, including archives, images, or documents.
                                             </p>
                                             {(attachmentFile || form.attachmentFilename) && (
                                                 <div className="rounded-md border bg-muted/30 p-3 text-sm space-y-2">
@@ -998,6 +999,8 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                         value={form.explanation}
                                         onChange={(value) => updateForm('explanation', value)}
                                         placeholder="Explain why the answer is correct. Use paragraphs, lists, and links if needed..."
+                                        onUploadImage={uploadEditorAsset}
+                                        onUploadFile={uploadEditorAsset}
                                     />
                                 </div>
 

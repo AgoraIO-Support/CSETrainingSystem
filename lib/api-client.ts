@@ -731,6 +731,25 @@ export class ApiClient {
         })
     }
 
+    static async getAdminExamRichContentUploadUrl(examId: string, payload: {
+        filename: string
+        contentType: string
+    }): Promise<{
+        success: boolean
+        data: {
+            uploadUrl: string
+            key: string
+            bucket: string
+            accessUrl: string
+            expiresIn: number
+        }
+    }> {
+        return this.request(`/admin/exams/${examId}/rich-content-upload-url`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
     static async deleteExamQuestion(examId: string, questionId: string): Promise<{ success: boolean; message: string }> {
         return this.request(`/admin/exams/${examId}/questions/${questionId}`, {
             method: 'DELETE',
@@ -1090,6 +1109,26 @@ export class ApiClient {
         questionId: string
     }): Promise<{ success: boolean; data: { uploadUrl: string; key: string; bucket: string; contentType: string; expiresIn: number } }> {
         return this.request(`/exams/${examId}/exercise/upload-url`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async createExamRichContentUploadUrl(examId: string, attemptId: string, payload: {
+        questionId: string
+        filename: string
+        contentType: string
+    }): Promise<{
+        success: boolean
+        data: {
+            uploadUrl: string
+            key: string
+            bucket: string
+            accessUrl: string
+            expiresIn: number
+        }
+    }> {
+        return this.request(`/exams/${examId}/attempts/${attemptId}/rich-content-upload-url`, {
             method: 'POST',
             body: JSON.stringify(payload),
         })

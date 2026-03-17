@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
 import { FileService } from '@/lib/services/file.service'
+import { resolveRichTextAssetUrls } from '@/lib/rich-text'
 
 type RouteContext = {
     params: Promise<{ examId: string; attemptId: string }>
@@ -68,10 +69,16 @@ export const GET = withAdminAuth(async (_req: NextRequest, _user, context: Route
                     }
                 }
 
+                const [answer, question, explanation] = await Promise.all([
+                    resolveRichTextAssetUrls(a.answer, (key) => FileService.getAssetAccessUrl(key)),
+                    resolveRichTextAssetUrls(snapshot?.question ?? a.question.question, (key) => FileService.getAssetAccessUrl(key)),
+                    resolveRichTextAssetUrls(snapshot?.explanation ?? a.question.explanation, (key) => FileService.getAssetAccessUrl(key)),
+                ])
+
                 return {
                     id: a.id,
                     questionId: a.questionId,
-                    answer: a.answer,
+                    answer,
                     selectedOption: a.selectedOption,
                     recordingS3Key: a.recordingS3Key,
                     recordingStatus: a.recordingStatus,
@@ -90,10 +97,10 @@ export const GET = withAdminAuth(async (_req: NextRequest, _user, context: Route
                         id: a.questionId,
                         examId: attempt.examId,
                         type: snapshot?.type ?? a.question.type,
-                        question: snapshot?.question ?? a.question.question,
+                        question: question ?? (snapshot?.question ?? a.question.question),
                         options: (snapshot?.options as string[] | null) ?? (a.question.options as string[] | null),
                         correctAnswer: snapshot?.correctAnswer ?? a.question.correctAnswer,
-                        explanation: snapshot?.explanation ?? a.question.explanation,
+                        explanation: explanation ?? (snapshot?.explanation ?? a.question.explanation),
                         points: snapshot?.points ?? a.question.points,
                         order: snapshot?.order ?? a.question.order,
                         difficulty: snapshot?.difficulty ?? a.question.difficulty,

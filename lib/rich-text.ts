@@ -21,6 +21,7 @@ const ALLOWED_TAGS = new Set([
     'h5',
     'h6',
     'div',
+    'img',
 ])
 
 const escapeHtml = (value: string) =>
@@ -31,7 +32,10 @@ const escapeHtml = (value: string) =>
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;')
 
-const isSafeHref = (href: string) => /^(https?:|mailto:)/i.test(href)
+const escapeHtmlAttribute = (value: string) => escapeHtml(value)
+
+const isSafeHref = (href: string) => /^(https?:|mailto:|\/)/i.test(href)
+const isSafeImageSrc = (src: string) => /^(https?:|\/)/i.test(src)
 
 const unwrapNode = (source: HTMLElement, targetDocument: Document) => {
     const fragment = targetDocument.createDocumentFragment()
@@ -68,6 +72,25 @@ const sanitizeNode = (node: Node, targetDocument: Document): Node | null => {
             cleanElement.setAttribute('href', href)
             cleanElement.setAttribute('target', '_blank')
             cleanElement.setAttribute('rel', 'noreferrer noopener')
+        }
+        const assetKey = element.getAttribute('data-asset-key')?.trim()
+        if (assetKey) {
+            cleanElement.setAttribute('data-asset-key', assetKey)
+        }
+    }
+
+    if (tagName === 'img') {
+        const src = element.getAttribute('src')?.trim() ?? ''
+        if (src && isSafeImageSrc(src)) {
+            cleanElement.setAttribute('src', src)
+        }
+        const alt = element.getAttribute('alt')?.trim()
+        if (alt) {
+            cleanElement.setAttribute('alt', alt)
+        }
+        const assetKey = element.getAttribute('data-asset-key')?.trim()
+        if (assetKey) {
+            cleanElement.setAttribute('data-asset-key', assetKey)
         }
     }
 
@@ -107,3 +130,43 @@ export const stripRichTextToPlainText = (value: string) =>
         .replace(/&nbsp;/gi, ' ')
         .replace(/\s+/g, ' ')
         .trim()
+
+const replaceTagAttribute = (tag: string, attribute: 'href' | 'src', nextValue: string) => {
+    const escapedValue = escapeHtmlAttribute(nextValue)
+    const attributePattern = new RegExp(`${attribute}\\s*=\\s*(['"]).*?\\1`, 'i')
+    if (attributePattern.test(tag)) {
+        return tag.replace(attributePattern, `${attribute}="${escapedValue}"`)
+    }
+
+    const closing = tag.endsWith('/>') ? '/>' : '>'
+    return `${tag.slice(0, -closing.length)} ${attribute}="${escapedValue}"${closing}`
+}
+
+export const resolveRichTextAssetUrls = async (
+    value: string | null | undefined,
+    resolveAssetUrl: (key: string) => Promise<string>
+) => {
+    if (!value) return value
+
+    const assetKeys = Array.from(value.matchAll(/data-asset-key\s*=\s*(['"])(.*?)\1/gi))
+        .map((match) => match[2]?.trim())
+        .filter((key): key is string => Boolean(key))
+
+    if (assetKeys.length === 0) {
+        return value
+    }
+
+    const uniqueAssetKeys = Array.from(new Set(assetKeys))
+    const resolvedEntries = await Promise.all(
+        uniqueAssetKeys.map(async (key) => [key, await resolveAssetUrl(key)] as const)
+    )
+    const resolvedMap = new Map(resolvedEntries)
+
+    return value.replace(/<(a|img)\b[^>]*data-asset-key\s*=\s*(['"])(.*?)\2[^>]*>/gi, (tag, tagName, _quote, key) => {
+        const resolvedUrl = resolvedMap.get(String(key).trim())
+        if (!resolvedUrl) return tag
+        return String(tagName).toLowerCase() === 'img'
+            ? replaceTagAttribute(tag, 'src', resolvedUrl)
+            : replaceTagAttribute(tag, 'href', resolvedUrl)
+    })
+}

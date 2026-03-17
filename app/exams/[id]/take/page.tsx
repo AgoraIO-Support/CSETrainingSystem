@@ -11,6 +11,7 @@ import { ScreenRecorderAnswer } from '@/components/exam/screen-recorder-answer'
 import { RichTextEditor } from '@/components/ui/rich-text-editor'
 import { RichTextContent } from '@/components/ui/rich-text-content'
 import { ApiClient } from '@/lib/api-client'
+import { resolveUploadedFileContentType } from '@/lib/file-upload'
 import { stripRichTextToPlainText } from '@/lib/rich-text'
 import {
     Loader2,
@@ -193,6 +194,38 @@ export default function TakeExamPage({ params }: PageProps) {
                 recordingStatus: 'UPLOADED',
             },
         }))
+    }
+
+    const uploadEssayAnswerAsset = async (questionId: string, file: File) => {
+        if (!attemptData) {
+            throw new Error('Attempt not loaded')
+        }
+
+        const contentType = resolveUploadedFileContentType(file)
+        const uploadUrlResponse = await ApiClient.createExamRichContentUploadUrl(examId, attemptData.attemptId, {
+            questionId,
+            filename: file.name,
+            contentType,
+        })
+
+        const uploadResponse = await fetch(uploadUrlResponse.data.uploadUrl, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': contentType,
+                'x-amz-server-side-encryption': 'AES256',
+            },
+            body: file,
+        })
+
+        if (!uploadResponse.ok) {
+            throw new Error(`Failed to upload file (${uploadResponse.status})`)
+        }
+
+        return {
+            url: uploadUrlResponse.data.accessUrl,
+            name: file.name,
+            assetKey: uploadUrlResponse.data.key,
+        }
     }
 
     // Handle submit
@@ -502,6 +535,8 @@ export default function TakeExamPage({ params }: PageProps) {
                                         value={currentAnswer?.answer || ''}
                                         onChange={(value) => handleAnswerChange(currentQuestion.id, { answer: value })}
                                         placeholder="Write your answer..."
+                                        onUploadImage={(file) => uploadEssayAnswerAsset(currentQuestion.id, file)}
+                                        onUploadFile={(file) => uploadEssayAnswerAsset(currentQuestion.id, file)}
                                     />
                                     {currentQuestion.maxWords && (
                                         <p className="text-sm text-muted-foreground text-right">
