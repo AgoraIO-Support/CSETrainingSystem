@@ -43,6 +43,7 @@ interface ResultData {
     reviewUnlocked: boolean
     reviewUnlockedByPassing?: boolean
     reviewUnlockedByAttempts?: boolean
+    reviewUnlockedByDeadline?: boolean
     answers?: Array<{
         questionId: string
         question: string
@@ -154,10 +155,12 @@ export default function ExamResultPage({ params }: PageProps) {
     const reviewUnlockDescription = result.reviewUnlocked
         ? result.reviewUnlockedByPassing
             ? 'Review unlocked because you passed this attempt'
-            : 'Review unlocked because you used all available attempts'
-        : `Unlocks after you pass or use all attempts (${result.attemptsUsed}/${result.maxAttempts} used)`
+            : result.reviewUnlockedByAttempts
+                ? 'Review unlocked because you used all available attempts'
+                : 'Review unlocked because the exam deadline has passed'
+        : `Unlocks after you pass, use all attempts, or the deadline passes (${result.attemptsUsed}/${result.maxAttempts} used)`
     const reviewUnlockTitle = !result.reviewUnlocked
-        ? `Answer review unlocks after you pass or use all attempts (${attemptsRemaining} remaining)`
+        ? `Answer review unlocks after you pass, use all attempts, or the deadline passes (${attemptsRemaining} remaining)`
         : undefined
 
     return (
@@ -320,7 +323,7 @@ export default function ExamResultPage({ params }: PageProps) {
                         {!result.reviewUnlocked && (
                             <CardContent>
                                 <div className="p-3 rounded-lg bg-muted text-sm text-muted-foreground">
-                                    Pass the exam or use all attempts to unlock answer review. Remaining attempts: {attemptsRemaining}.
+                                    Pass the exam, use all attempts, or wait until the deadline passes to unlock answer review. Remaining attempts: {attemptsRemaining}.
                                 </div>
                             </CardContent>
                         )}

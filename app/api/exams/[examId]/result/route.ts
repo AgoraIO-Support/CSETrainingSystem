@@ -51,6 +51,7 @@ type ResultPayload = {
   reviewUnlocked: boolean;
   reviewUnlockedByPassing: boolean;
   reviewUnlockedByAttempts: boolean;
+  reviewUnlockedByDeadline: boolean;
   answers?: ResultAnswer[];
 };
 
@@ -63,7 +64,7 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
 
     const examMeta = await prisma.exam.findUnique({
       where: { id: examId },
-      select: { maxAttempts: true },
+      select: { maxAttempts: true, deadline: true },
     });
     if (!examMeta) {
       return NextResponse.json(
@@ -128,7 +129,8 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
 
     const reviewUnlockedByPassing = Boolean(attempt.passed);
     const reviewUnlockedByAttempts = attemptsUsed >= maxAttempts;
-    const reviewUnlocked = reviewUnlockedByPassing || reviewUnlockedByAttempts;
+    const reviewUnlockedByDeadline = Boolean(examMeta.deadline && examMeta.deadline < new Date());
+    const reviewUnlocked = reviewUnlockedByPassing || reviewUnlockedByAttempts || reviewUnlockedByDeadline;
 
     // Check if results are available
     if (!attempt.exam.showResultsImmediately && attempt.status !== ExamAttemptStatus.GRADED) {
@@ -154,6 +156,7 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
           reviewUnlocked,
           reviewUnlockedByPassing,
           reviewUnlockedByAttempts,
+          reviewUnlockedByDeadline,
           message: 'Results are not yet available. Please check back after grading is complete.',
         },
       });
@@ -180,6 +183,7 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
       reviewUnlocked,
       reviewUnlockedByPassing,
       reviewUnlockedByAttempts,
+      reviewUnlockedByDeadline,
     };
 
     // Include answers if review is allowed
