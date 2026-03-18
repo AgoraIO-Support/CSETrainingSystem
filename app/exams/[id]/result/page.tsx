@@ -54,6 +54,7 @@ interface ResultData {
         pointsAwarded: number | null
         maxPoints: number
         explanation: string | null
+        feedback?: string | null
     }>
 }
 
@@ -415,6 +416,17 @@ export default function ExamResultPage({ params }: PageProps) {
                                                     html={answer.explanation}
                                                     className="text-sm text-blue-800 dark:text-blue-200"
                                                 />
+                                            </div>
+                                        )}
+
+                                        {answer.feedback && (
+                                            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/20">
+                                                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
+                                                    Grading Feedback
+                                                </p>
+                                                <p className="whitespace-pre-wrap break-words text-sm text-amber-900 dark:text-amber-100 [overflow-wrap:anywhere]">
+                                                    {answer.feedback}
+                                                </p>
                                             </div>
                                         )}
                                     </div>

@@ -28,6 +28,7 @@ type ResultAnswer = {
   options?: string[];
   correctAnswer?: string;
   explanation?: string;
+  feedback?: string;
 };
 
 type ResultPayload = {
@@ -263,6 +264,10 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
         // Include explanation
         if (answer.question.explanation) {
           answerResult.explanation = answer.question.explanation;
+        }
+
+        if (answer.adminFeedback) {
+          answerResult.feedback = answer.adminFeedback;
         }
 
         return answerResult;

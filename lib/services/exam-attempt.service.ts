@@ -82,6 +82,10 @@ export interface AttemptWithAnswers {
     gradingStatus: GradingStatus;
     isCorrect: boolean | null;
     pointsAwarded: number | null;
+    aiSuggestedScore: number | null;
+    aiFeedback: string | null;
+    adminScore: number | null;
+    adminFeedback: string | null;
     question: {
       id: string;
       type: ExamQuestionType;
@@ -681,6 +685,10 @@ export class ExamAttemptService {
           gradingStatus: a.gradingStatus,
           isCorrect: a.isCorrect,
           pointsAwarded: a.pointsAwarded,
+          aiSuggestedScore: a.aiSuggestedScore,
+          aiFeedback: a.aiFeedback,
+          adminScore: a.adminScore,
+          adminFeedback: a.adminFeedback,
           question: {
             id: a.questionId,
             type: snapshot?.type ?? a.question.type,
