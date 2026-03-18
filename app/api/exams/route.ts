@@ -88,6 +88,16 @@ export const GET = withAuth(async (req: NextRequest, user) => {
         availableFrom: exam.availableFrom,
         deadline: exam.deadline,
         questionCount: exam._count.questions,
+        attemptResults: exam.attempts
+          .filter(a => a.status === 'SUBMITTED' || a.status === 'GRADED')
+          .map(a => ({
+            id: a.id,
+            attemptNumber: a.attemptNumber,
+            status: a.status,
+            percentageScore: a.percentageScore,
+            passed: a.passed,
+            submittedAt: a.submittedAt,
+          })),
         // User status
         userStatus: {
           completedAttempts,

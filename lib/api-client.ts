@@ -1039,6 +1039,14 @@ export class ApiClient {
             userAttempts: number
             bestScore: number | null
             hasPassed: boolean
+            attemptResults?: Array<{
+                id: string
+                attemptNumber: number
+                status: string
+                percentageScore: number | null
+                passed: boolean | null
+                submittedAt: string | null
+            }>
         }>
     }> {
         return this.request('/exams')

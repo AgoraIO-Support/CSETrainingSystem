@@ -18,6 +18,7 @@ import {
     Play,
     AlertCircle,
     Calendar,
+    Eye,
 } from 'lucide-react'
 import Link from 'next/link'
 import type { Exam } from '@/types'
@@ -37,6 +38,14 @@ type ExamListItem = Exam & {
     userAttempts?: number
     bestScore?: number | null
     hasPassed?: boolean
+    attemptResults?: Array<{
+        id: string
+        attemptNumber: number
+        status: string
+        percentageScore: number | null
+        passed: boolean | null
+        submittedAt: string | null
+    }>
 }
 
 type RawExamListItem = Exam & {
@@ -53,6 +62,14 @@ type RawExamListItem = Exam & {
     userAttempts?: number
     bestScore?: number | null
     hasPassed?: boolean
+    attemptResults?: Array<{
+        id: string
+        attemptNumber: number
+        status: string
+        percentageScore: number | null
+        passed: boolean | null
+        submittedAt: string | null
+    }>
 }
 
 export default function ExamsPage() {
@@ -83,6 +100,7 @@ export default function ExamsPage() {
                     userAttempts: attemptsUsed,
                     bestScore,
                     hasPassed,
+                    attemptResults: exam.attemptResults ?? [],
                     _count: exam._count ?? { questions: questionCount },
                 } as ExamListItem
             })
@@ -105,6 +123,17 @@ export default function ExamsPage() {
     const isDeadlinePassed = (deadline: string | Date | null | undefined) => {
         if (!deadline) return false
         return new Date(deadline) < new Date()
+    }
+
+    const formatAttemptSubmittedAt = (date: string | Date | null | undefined) => {
+        if (!date) return 'Pending grading'
+        return new Date(date).toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+        })
     }
 
     if (loading) {
@@ -190,7 +219,7 @@ export default function ExamsPage() {
                                 {exams.map(exam => (
                                     <div
                                         key={exam.id}
-                                        className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors"
+                                        className="flex items-start justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors"
                                     >
                                         <div className="flex-1">
                                             <div className="flex items-center gap-3 mb-2">
@@ -265,9 +294,58 @@ export default function ExamsPage() {
                                                     </Badge>
                                                 </div>
                                             )}
+
+                                            {exam.attemptResults && exam.attemptResults.length > 0 && (
+                                                <div className="mt-4 rounded-lg border bg-muted/30 p-3">
+                                                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                                        Attempt Results
+                                                    </p>
+                                                    <div className="mt-3 space-y-2">
+                                                        {exam.attemptResults.map((attempt) => (
+                                                            <div
+                                                                key={attempt.id}
+                                                                className="flex flex-col gap-2 rounded-md border bg-background px-3 py-2 md:flex-row md:items-center md:justify-between"
+                                                            >
+                                                                <div className="flex flex-wrap items-center gap-2 text-sm">
+                                                                    <span className="font-medium">
+                                                                        Attempt #{attempt.attemptNumber}
+                                                                    </span>
+                                                                    {attempt.passed === true ? (
+                                                                        <Badge className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-200">
+                                                                            Passed
+                                                                        </Badge>
+                                                                    ) : attempt.passed === false ? (
+                                                                        <Badge variant="secondary">
+                                                                            Not Passed
+                                                                        </Badge>
+                                                                    ) : (
+                                                                        <Badge variant="outline">
+                                                                            {attempt.status === 'GRADED' ? 'Graded' : 'Submitted'}
+                                                                        </Badge>
+                                                                    )}
+                                                                    {attempt.percentageScore !== null && (
+                                                                        <span className="text-muted-foreground">
+                                                                            Score: {attempt.percentageScore}%
+                                                                        </span>
+                                                                    )}
+                                                                    <span className="text-muted-foreground">
+                                                                        Submitted: {formatAttemptSubmittedAt(attempt.submittedAt)}
+                                                                    </span>
+                                                                </div>
+                                                                <Link href={`/exams/${exam.id}/result?attemptId=${attempt.id}`}>
+                                                                    <Button variant="outline" size="sm">
+                                                                        <Eye className="h-4 w-4 mr-2" />
+                                                                        Answer Review
+                                                                    </Button>
+                                                                </Link>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
 
-                                        <div className="ml-4">
+                                        <div className="ml-4 pt-1">
                                             <Link href={`/exams/${exam.id}`}>
                                                 <Button
                                                     disabled={isDeadlinePassed(exam.deadline) || (exam.userAttempts ?? 0) >= exam.maxAttempts && !exam.hasPassed}
@@ -323,9 +401,9 @@ export default function ExamsPage() {
                                                 </p>
                                             </div>
                                         </div>
-                                        <Link href={`/exams/${exam.id}/result`}>
+                                        <Link href={`/exams/${exam.id}`}>
                                             <Button variant="outline" size="sm">
-                                                View Certificate
+                                                View Exam
                                             </Button>
                                         </Link>
                                     </div>
