@@ -8,6 +8,7 @@ import { withAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
 import { FileService } from '@/lib/services/file.service'
 import { resolveRichTextAssetUrls } from '@/lib/rich-text'
+import { parseEssayAIGradingBreakdown, parseEssayGradingCriteria } from '@/lib/essay-grading'
 
 type RouteContext = {
     params: Promise<{ examId: string; attemptId: string }>
@@ -42,6 +43,7 @@ export const GET = withAdminAuth(async (_req: NextRequest, _user, context: Route
                                 maxWords: true,
                                 rubric: true,
                                 sampleAnswer: true,
+                                gradingCriteria: true,
                             },
                         },
                     },
@@ -91,6 +93,7 @@ export const GET = withAdminAuth(async (_req: NextRequest, _user, context: Route
                     pointsAwarded: a.pointsAwarded,
                     aiSuggestedScore: a.aiSuggestedScore,
                     aiFeedback: a.aiFeedback,
+                    aiGradingBreakdown: parseEssayAIGradingBreakdown(a.aiGradingBreakdown),
                     adminScore: a.adminScore,
                     adminFeedback: a.adminFeedback,
                     question: {
@@ -107,6 +110,9 @@ export const GET = withAdminAuth(async (_req: NextRequest, _user, context: Route
                         maxWords: snapshot?.maxWords ?? a.question.maxWords,
                         rubric: snapshot?.rubric ?? a.question.rubric,
                         sampleAnswer: snapshot?.sampleAnswer ?? a.question.sampleAnswer,
+                        gradingCriteria: parseEssayGradingCriteria(
+                            snapshot?.gradingCriteria ?? a.question.gradingCriteria
+                        ),
                     },
                 }
             })

@@ -18,6 +18,8 @@ import type {
     ExamStatus,
     ExamType,
     ExamQuestionType,
+    EssayAIGradingBreakdown,
+    EssayGradingCriterion,
 } from '@/types'
 
 // Types
@@ -679,6 +681,7 @@ export class ApiClient {
         maxWords?: number
         rubric?: string
         sampleAnswer?: string
+        gradingCriteria?: EssayGradingCriterion[] | null
         attachmentS3Key?: string | null
         attachmentFilename?: string | null
         attachmentMimeType?: string | null
@@ -701,6 +704,7 @@ export class ApiClient {
         maxWords: number
         rubric: string
         sampleAnswer: string
+        gradingCriteria: EssayGradingCriterion[] | null
         attachmentS3Key: string | null
         attachmentFilename: string | null
         attachmentMimeType: string | null
@@ -894,6 +898,7 @@ export class ApiClient {
                 pointsAwarded?: number | null
                 aiSuggestedScore?: number | null
                 aiFeedback?: string | null
+                aiGradingBreakdown?: EssayAIGradingBreakdown | null
                 adminScore?: number | null
                 adminFeedback?: string | null
                 question: ExamQuestion
@@ -926,8 +931,10 @@ export class ApiClient {
             points: number
             aiSuggestedScore?: number | null
             aiFeedback?: string | null
+            aiGradingBreakdown?: EssayAIGradingBreakdown | null
             rubric?: string | null
             sampleAnswer?: string | null
+            gradingCriteria?: EssayGradingCriterion[] | null
         }>
     }> {
         return this.request(`/admin/exams/${examId}/essays`)

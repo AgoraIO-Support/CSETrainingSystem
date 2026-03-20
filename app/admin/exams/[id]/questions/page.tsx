@@ -31,7 +31,7 @@ import {
     ExternalLink,
 } from 'lucide-react'
 import Link from 'next/link'
-import type { Exam, ExamQuestion, ExamQuestionType } from '@/types'
+import type { Exam, ExamQuestion, ExamQuestionType, EssayGradingCriterion } from '@/types'
 
 const questionTypeLabels: Record<ExamQuestionType, string> = {
     SINGLE_CHOICE: 'Single Choice',
@@ -78,6 +78,7 @@ interface QuestionForm {
     maxWords?: number
     rubric?: string
     sampleAnswer?: string
+    gradingCriteria: EssayGradingCriterion[]
     attachmentS3Key?: string
     attachmentFilename?: string
     attachmentMimeType?: string
@@ -93,7 +94,17 @@ const defaultQuestionForm: QuestionForm = {
     explanation: '',
     points: 10,
     difficulty: 'MEDIUM',
+    gradingCriteria: [],
 }
+
+const createEmptyCriterion = (): EssayGradingCriterion => ({
+    id: globalThis.crypto?.randomUUID?.() ?? `criterion-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    title: '',
+    description: '',
+    maxPoints: 1,
+    guidance: '',
+    required: false,
+})
 
 export default function ExamQuestionsPage({ params }: PageProps) {
     const { id: examId } = use(params)
@@ -228,6 +239,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
             maxWords: question.maxWords || undefined,
             rubric: question.rubric || undefined,
             sampleAnswer: question.sampleAnswer || undefined,
+            gradingCriteria: question.gradingCriteria || [],
             attachmentS3Key: question.attachmentS3Key || undefined,
             attachmentFilename: question.attachmentFilename || undefined,
             attachmentMimeType: question.attachmentMimeType || undefined,
@@ -324,6 +336,9 @@ export default function ExamQuestionsPage({ params }: PageProps) {
             if (!questionPlainText) {
                 throw new Error('Question text is required')
             }
+            if (form.type === 'ESSAY' && form.gradingCriteria.length > 0 && gradingCriteriaPoints !== form.points) {
+                throw new Error('The sum of key grading point scores must match the question points')
+            }
 
             const hasCorrectAnswer =
                 form.type === 'SINGLE_CHOICE' ||
@@ -361,6 +376,12 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                 maxWords: form.type === 'ESSAY' ? form.maxWords : undefined,
                 rubric: form.type === 'ESSAY' ? form.rubric : undefined,
                 sampleAnswer: form.type === 'ESSAY' ? form.sampleAnswer : undefined,
+                gradingCriteria:
+                    form.type === 'ESSAY'
+                        ? form.gradingCriteria
+                        : editingQuestion?.gradingCriteria?.length
+                            ? null
+                            : undefined,
                 attachmentS3Key:
                     form.type === 'ESSAY'
                         ? form.attachmentS3Key || undefined
@@ -418,6 +439,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                         maxWords: savedQuestion.maxWords || undefined,
                         rubric: savedQuestion.rubric || undefined,
                         sampleAnswer: savedQuestion.sampleAnswer || undefined,
+                        gradingCriteria: savedQuestion.gradingCriteria || [],
                         attachmentS3Key: savedQuestion.attachmentS3Key || undefined,
                         attachmentFilename: savedQuestion.attachmentFilename || undefined,
                         attachmentMimeType: savedQuestion.attachmentMimeType || undefined,
@@ -498,6 +520,33 @@ export default function ExamQuestionsPage({ params }: PageProps) {
         }))
     }
 
+    const updateCriterion = <K extends keyof EssayGradingCriterion>(
+        criterionId: string,
+        field: K,
+        value: EssayGradingCriterion[K]
+    ) => {
+        setForm((prev) => ({
+            ...prev,
+            gradingCriteria: prev.gradingCriteria.map((criterion) =>
+                criterion.id === criterionId ? { ...criterion, [field]: value } : criterion
+            ),
+        }))
+    }
+
+    const addCriterion = () => {
+        setForm((prev) => ({
+            ...prev,
+            gradingCriteria: [...prev.gradingCriteria, createEmptyCriterion()],
+        }))
+    }
+
+    const removeCriterion = (criterionId: string) => {
+        setForm((prev) => ({
+            ...prev,
+            gradingCriteria: prev.gradingCriteria.filter((criterion) => criterion.id !== criterionId),
+        }))
+    }
+
     const updateQuestionType = (nextType: ExamQuestionType) => {
         setForm(prev => ({
             ...prev,
@@ -505,6 +554,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
             ...(nextType === 'ESSAY'
                 ? {}
                 : {
+                    gradingCriteria: [],
                     attachmentS3Key: undefined,
                     attachmentFilename: undefined,
                     attachmentMimeType: undefined,
@@ -596,6 +646,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
     }
 
     const totalPoints = questions.reduce((sum, q) => sum + q.points, 0)
+    const gradingCriteriaPoints = form.gradingCriteria.reduce((sum, criterion) => sum + criterion.maxPoints, 0)
     const canEditQuestions = exam.status === 'DRAFT'
     const allSelected = questions.length > 0 && selectedQuestionIds.length === questions.length
     const hasSelection = selectedQuestionIds.length > 0
@@ -642,6 +693,13 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                     `Q${index + 1}. [${questionTypeLabels[question.type]}] ${stripRichTextToPlainText(question.question)}`,
                     `Answer: ${formatQuestionAnswer(question)}`,
                 ]
+                if (question.type === 'ESSAY' && question.gradingCriteria?.length) {
+                    lines.push(
+                        `Key Grading Points: ${question.gradingCriteria
+                            .map((criterion) => `${criterion.title} (${criterion.maxPoints})`)
+                            .join('; ')}`
+                    )
+                }
                 if (question.type === 'ESSAY' && question.rubric) {
                     lines.push(`Rubric: ${question.rubric}`)
                 }
@@ -980,6 +1038,104 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                                 rows={3}
                                                 placeholder="Describe the grading criteria..."
                                             />
+                                        </div>
+                                        <div className="space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <Label>Key Grading Points</Label>
+                                                    <p className="text-xs text-muted-foreground mt-1">
+                                                        AI will score against these criteria first, then Admin confirms or adjusts the final score.
+                                                    </p>
+                                                </div>
+                                                <Button type="button" variant="outline" size="sm" onClick={addCriterion}>
+                                                    <Plus className="h-4 w-4 mr-2" />
+                                                    Add Point
+                                                </Button>
+                                            </div>
+                                            {form.gradingCriteria.length > 0 ? (
+                                                <div className="space-y-3">
+                                                    {form.gradingCriteria.map((criterion, index) => (
+                                                        <div key={criterion.id} className="rounded-lg border p-4 space-y-3">
+                                                            <div className="flex items-center justify-between gap-4">
+                                                                <p className="text-sm font-medium">Point {index + 1}</p>
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    onClick={() => removeCriterion(criterion.id)}
+                                                                >
+                                                                    <Trash2 className="h-4 w-4 mr-2" />
+                                                                    Remove
+                                                                </Button>
+                                                            </div>
+                                                            <div className="grid gap-3 md:grid-cols-[1fr_140px]">
+                                                                <div className="space-y-2">
+                                                                    <Label>Title</Label>
+                                                                    <Input
+                                                                        value={criterion.title}
+                                                                        onChange={(e) => updateCriterion(criterion.id, 'title', e.target.value)}
+                                                                        placeholder="e.g., Root cause identified correctly"
+                                                                    />
+                                                                </div>
+                                                                <div className="space-y-2">
+                                                                    <Label>Max Points</Label>
+                                                                    <Input
+                                                                        type="number"
+                                                                        min={1}
+                                                                        value={criterion.maxPoints}
+                                                                        onChange={(e) =>
+                                                                            updateCriterion(
+                                                                                criterion.id,
+                                                                                'maxPoints',
+                                                                                Math.max(1, parseInt(e.target.value || '1', 10) || 1)
+                                                                            )
+                                                                        }
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                <Label>Description (optional)</Label>
+                                                                <Textarea
+                                                                    value={criterion.description || ''}
+                                                                    onChange={(e) => updateCriterion(criterion.id, 'description', e.target.value)}
+                                                                    rows={2}
+                                                                    placeholder="What should the reviewer look for?"
+                                                                />
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                <Label>Scoring Guidance (optional)</Label>
+                                                                <Textarea
+                                                                    value={criterion.guidance || ''}
+                                                                    onChange={(e) => updateCriterion(criterion.id, 'guidance', e.target.value)}
+                                                                    rows={2}
+                                                                    placeholder="How to distinguish full, partial, and zero credit."
+                                                                />
+                                                            </div>
+                                                            <label className="flex items-center gap-2 text-sm">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={criterion.required || false}
+                                                                    onChange={(e) => updateCriterion(criterion.id, 'required', e.target.checked)}
+                                                                />
+                                                                Required point
+                                                            </label>
+                                                        </div>
+                                                    ))}
+                                                    <div
+                                                        className={`rounded-md border px-3 py-2 text-sm ${
+                                                            gradingCriteriaPoints === form.points
+                                                                ? 'border-green-200 bg-green-50 text-green-700'
+                                                                : 'border-amber-200 bg-amber-50 text-amber-700'
+                                                        }`}
+                                                    >
+                                                        Criteria total: {gradingCriteriaPoints} / {form.points} points
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                                                    No key grading points yet. AI can still fall back to the rubric, but structured points are recommended.
+                                                </div>
+                                            )}
                                         </div>
                                         <div className="space-y-2">
                                             <Label>Sample Answer</Label>
@@ -1362,6 +1518,15 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                             ) : (
                                                 <p className="text-sm line-clamp-2">{question.question}</p>
                                             )}
+                                            {question.type === 'ESSAY' && question.gradingCriteria?.length ? (
+                                                <div className="mt-2 flex flex-wrap gap-2">
+                                                    {question.gradingCriteria.map((criterion) => (
+                                                        <Badge key={criterion.id} variant="secondary" className="text-xs">
+                                                            {criterion.title}: {criterion.maxPoints}
+                                                        </Badge>
+                                                    ))}
+                                                </div>
+                                            ) : null}
                                             {(question.type === 'SINGLE_CHOICE' || question.type === 'MULTIPLE_CHOICE') && question.options && (
                                                 <div className="mt-2 text-xs text-muted-foreground">
                                                     Options: {question.options.filter(o => o).join(', ')}
@@ -1451,6 +1616,27 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                                                 <span className="whitespace-pre-wrap">{question.rubric}</span>
                                             </div>
                                         )}
+                                        {question.type === 'ESSAY' && question.gradingCriteria?.length ? (
+                                            <div className="mt-2 text-sm">
+                                                <p className="font-medium">Key Grading Points:</p>
+                                                <div className="mt-2 space-y-2">
+                                                    {question.gradingCriteria.map((criterion) => (
+                                                        <div key={criterion.id} className="rounded-md border bg-muted/30 p-2">
+                                                            <div className="flex items-center justify-between gap-2">
+                                                                <span className="font-medium">{criterion.title}</span>
+                                                                <span>{criterion.maxPoints} pts</span>
+                                                            </div>
+                                                            {criterion.description ? (
+                                                                <p className="mt-1 text-muted-foreground">{criterion.description}</p>
+                                                            ) : null}
+                                                            {criterion.guidance ? (
+                                                                <p className="mt-1 text-muted-foreground">Guidance: {criterion.guidance}</p>
+                                                            ) : null}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ) : null}
                                         {question.type === 'ESSAY' && question.attachmentFilename && (
                                             <div className="mt-2 text-sm">
                                                 <span className="font-medium">Attachment: </span>

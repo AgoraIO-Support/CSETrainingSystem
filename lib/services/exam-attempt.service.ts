@@ -15,6 +15,7 @@ import {
 import { ExamGradingService } from '@/lib/services/exam-grading.service';
 import { FileService } from '@/lib/services/file.service';
 import { resolveRichTextAssetUrls } from '@/lib/rich-text';
+import { parseEssayAIGradingBreakdown, parseEssayGradingCriteria } from '@/lib/essay-grading';
 
 export interface StartAttemptResult {
   attemptId: string;
@@ -84,6 +85,7 @@ export interface AttemptWithAnswers {
     pointsAwarded: number | null;
     aiSuggestedScore: number | null;
     aiFeedback: string | null;
+    aiGradingBreakdown: ReturnType<typeof parseEssayAIGradingBreakdown>;
     adminScore: number | null;
     adminFeedback: string | null;
     question: {
@@ -94,6 +96,9 @@ export interface AttemptWithAnswers {
       correctAnswer: string | null;
       explanation: string | null;
       points: number;
+      rubric: string | null;
+      sampleAnswer: string | null;
+      gradingCriteria: ReturnType<typeof parseEssayGradingCriteria>;
       attachmentS3Key: string | null;
       attachmentFilename: string | null;
       attachmentMimeType: string | null;
@@ -349,6 +354,7 @@ export class ExamAttemptService {
         correctAnswer: q.correctAnswer,
         rubric: q.rubric,
         sampleAnswer: q.sampleAnswer,
+        gradingCriteria: q.gradingCriteria ?? Prisma.JsonNull,
         maxWords: q.maxWords,
         attachmentS3Key: q.attachmentS3Key,
         attachmentFilename: q.attachmentFilename,
@@ -605,7 +611,10 @@ export class ExamAttemptService {
     // Only Multiple Choice + True/False are auto-graded; other types remain pending.
     try {
       const gradingService = new ExamGradingService();
-      await gradingService.gradeAttempt(attemptId);
+      const gradingResult = await gradingService.gradeAttempt(attemptId);
+      if (gradingResult.pendingEssays > 0) {
+        await gradingService.batchGradeEssaysWithAI(attemptId);
+      }
     } catch (error) {
       // Do not fail submission if auto-grading fails; admins can re-run grading.
       console.error('Auto-grade on submit failed:', error);
@@ -687,6 +696,7 @@ export class ExamAttemptService {
           pointsAwarded: a.pointsAwarded,
           aiSuggestedScore: a.aiSuggestedScore,
           aiFeedback: a.aiFeedback,
+          aiGradingBreakdown: parseEssayAIGradingBreakdown(a.aiGradingBreakdown),
           adminScore: a.adminScore,
           adminFeedback: a.adminFeedback,
           question: {
@@ -700,6 +710,11 @@ export class ExamAttemptService {
               snapshot?.correctAnswer ?? a.question.correctAnswer,
             explanation: explanation ?? (snapshot?.explanation ?? a.question.explanation),
             points: snapshot?.points ?? a.question.points,
+            rubric: snapshot?.rubric ?? a.question.rubric,
+            sampleAnswer: snapshot?.sampleAnswer ?? a.question.sampleAnswer,
+            gradingCriteria: parseEssayGradingCriteria(
+              snapshot?.gradingCriteria ?? a.question.gradingCriteria
+            ),
             attachmentS3Key:
               snapshot?.attachmentS3Key ?? a.question.attachmentS3Key,
             attachmentFilename:

@@ -334,6 +334,32 @@ export type ExamQuestionType = 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE' | 'TRUE_FALSE
 export type ExamAttemptStatus = 'IN_PROGRESS' | 'SUBMITTED' | 'GRADED' | 'EXPIRED'
 export type GradingStatus = 'PENDING' | 'AUTO_GRADED' | 'AI_SUGGESTED' | 'MANUALLY_GRADED'
 
+export interface EssayGradingCriterion {
+    id: string
+    title: string
+    description?: string | null
+    maxPoints: number
+    guidance?: string | null
+    required?: boolean
+}
+
+export interface EssayAIGradingCriterionResult {
+    criterionId: string
+    criterionTitle?: string | null
+    suggestedPoints: number
+    reasoning: string
+    evidence?: string | null
+    met?: boolean | null
+}
+
+export interface EssayAIGradingBreakdown {
+    criteria: EssayAIGradingCriterionResult[]
+    overallFeedback?: string | null
+    rubricEvaluation?: string | null
+    confidence?: number | null
+    flags?: string[]
+}
+
 export interface Exam {
     id: string
     title: string
@@ -378,6 +404,7 @@ export interface ExamQuestion {
     maxWords?: number | null
     rubric?: string | null
     sampleAnswer?: string | null
+    gradingCriteria?: EssayGradingCriterion[] | null
     attachmentS3Key?: string | null
     attachmentFilename?: string | null
     attachmentMimeType?: string | null
@@ -430,6 +457,7 @@ export interface ExamAnswer {
     pointsAwarded?: number | null
     aiSuggestedScore?: number | null
     aiFeedback?: string | null
+    aiGradingBreakdown?: EssayAIGradingBreakdown | null
     adminScore?: number | null
     adminFeedback?: string | null
     question?: ExamQuestion

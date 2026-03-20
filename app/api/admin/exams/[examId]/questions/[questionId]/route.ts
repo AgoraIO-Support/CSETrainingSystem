@@ -31,6 +31,7 @@ export const PATCH = withAdminAuth(
         select: {
           id: true,
           type: true,
+          points: true,
         },
       });
 
@@ -50,6 +51,7 @@ export const PATCH = withAdminAuth(
       const data = updateExamQuestionSchema.parse({
         ...body,
         type: body.type ?? existingQuestion.type,
+        points: body.points ?? existingQuestion.points,
       });
 
       // Verify exam exists

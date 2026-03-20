@@ -1303,6 +1303,7 @@ model ExamQuestion {
   // For essay questions
   rubric       String? @db.Text // Grading criteria for essays
   sampleAnswer String? @db.Text // Reference answer for AI grading
+  gradingCriteria Json? // Structured grading criteria for AI-assisted essay grading
   maxWords     Int? // Word limit for essays
   attachmentS3Key String?
   attachmentFilename String?
@@ -1419,6 +1420,7 @@ model ExamAttemptQuestionSnapshot {
   correctAnswer String? @db.Text
   rubric       String? @db.Text
   sampleAnswer String? @db.Text
+  gradingCriteria Json?
   maxWords     Int?
   attachmentS3Key String?
   attachmentFilename String?
@@ -1465,6 +1467,7 @@ model ExamAnswer {
   // AI Grading (for essays)
   aiSuggestedScore Float?
   aiFeedback       String?   @db.Text
+  aiGradingBreakdown Json?
   aiGradedAt       DateTime?
 
   // Admin override

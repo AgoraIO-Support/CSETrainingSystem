@@ -2,6 +2,7 @@ import { LessonAssetType, ExamType, ExamQuestionType, DifficultyLevel, ExamStatu
 import { z } from 'zod'
 import { LessonCompletionRule, LessonType } from '@prisma/client'
 import { DEFAULT_EXAM_TIMEZONE, isValidExamTimeZone } from '@/lib/exam-timezone'
+import { slugifyCriterionTitle } from '@/lib/essay-grading'
 
 // User schemas
 export const registerSchema = z.object({
@@ -246,6 +247,23 @@ const examQuestionSchemaBase = z.object({
     correctAnswer: z.string().optional(),
     rubric: z.string().optional(),
     sampleAnswer: z.string().optional(),
+    gradingCriteria: z.array(
+        z.object({
+            id: z.string().trim().min(1).optional(),
+            title: z.string().trim().min(1, 'Criterion title is required'),
+            description: z.string().trim().optional().nullable(),
+            maxPoints: z.number().positive('Criterion max points must be greater than 0'),
+            guidance: z.string().trim().optional().nullable(),
+            required: z.boolean().optional(),
+        }).transform((criterion) => ({
+            id: criterion.id?.trim() || slugifyCriterionTitle(criterion.title),
+            title: criterion.title.trim(),
+            description: criterion.description?.trim() || null,
+            maxPoints: criterion.maxPoints,
+            guidance: criterion.guidance?.trim() || null,
+            required: criterion.required ?? false,
+        }))
+    ).optional().nullable(),
     maxWords: z.number().int().positive().optional(),
     attachmentS3Key: z.string().nullable().optional(),
     attachmentFilename: z.string().nullable().optional(),
@@ -297,6 +315,13 @@ const refineExerciseQuestionFields = (
             path: ['maxWords'],
         })
     }
+    if (Array.isArray(data.gradingCriteria) && data.gradingCriteria.length > 0) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Exercise questions do not support grading criteria',
+            path: ['gradingCriteria'],
+        })
+    }
 
     if (typeof data.attachmentS3Key === 'string' && data.attachmentS3Key.trim()) {
         ctx.addIssue({
@@ -334,13 +359,55 @@ const refineEssayAttachmentFields = (
     }
 }
 
+const refineEssayGradingCriteria = (
+    data: z.infer<typeof examQuestionSchemaBase> | Partial<z.infer<typeof examQuestionSchemaBase>>,
+    ctx: z.RefinementCtx
+) => {
+    const criteria = Array.isArray(data.gradingCriteria) ? data.gradingCriteria : []
+
+    if (criteria.length > 0 && data.type !== ExamQuestionType.ESSAY) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Only essay questions support grading criteria',
+            path: ['gradingCriteria'],
+        })
+        return
+    }
+
+    if (data.type !== ExamQuestionType.ESSAY || criteria.length === 0) return
+
+    const totalCriterionPoints = criteria.reduce((sum, criterion) => sum + criterion.maxPoints, 0)
+    if (typeof data.points === 'number' && totalCriterionPoints !== data.points) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'The sum of grading criteria points must match the question points',
+            path: ['gradingCriteria'],
+        })
+    }
+
+    const ids = new Set<string>()
+    criteria.forEach((criterion, index) => {
+        if (ids.has(criterion.id)) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'Each grading criterion must have a unique ID',
+                path: ['gradingCriteria', index, 'id'],
+            })
+            return
+        }
+        ids.add(criterion.id)
+    })
+}
+
 export const createExamQuestionSchema = examQuestionSchemaBase
     .superRefine(refineExerciseQuestionFields)
     .superRefine(refineEssayAttachmentFields)
+    .superRefine(refineEssayGradingCriteria)
 export const updateExamQuestionSchema = examQuestionSchemaBase
     .partial()
     .superRefine(refineExerciseQuestionFields)
     .superRefine(refineEssayAttachmentFields)
+    .superRefine(refineEssayGradingCriteria)
 
 export const reorderExamQuestionsSchema = z.object({
     questionIds: z.array(z.string().uuid()).nonempty(),

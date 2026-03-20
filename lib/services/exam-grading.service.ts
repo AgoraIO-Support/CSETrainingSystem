@@ -10,6 +10,7 @@ import {
   ExamAttemptStatus,
   AIPromptUseCase,
   AIResponseFormat,
+  Prisma,
 } from '@prisma/client';
 import OpenAI from 'openai';
 import { log, timeAsync } from '@/lib/logger';
@@ -17,6 +18,14 @@ import { CertificateService } from '@/lib/services/certificate.service';
 import { AIPromptResolverService } from '@/lib/services/ai-prompt-resolver.service';
 import { getChatCompletionsTokenBudget } from '@/lib/services/openai-models';
 import { stripRichTextToPlainText } from '@/lib/rich-text';
+import {
+  formatEssayGradingCriteriaForPrompt,
+  parseEssayAIGradingBreakdown,
+  parseEssayGradingCriteria,
+  type EssayAIGradingBreakdown,
+  type EssayAIGradingCriterionResult,
+  type EssayGradingCriterion,
+} from '@/lib/essay-grading';
 
 export interface GradingResult {
   attemptId: string;
@@ -34,6 +43,8 @@ export interface AIGradingResult {
   feedback: string;
   rubricEvaluation: string;
   confidence: number;
+  criteria: EssayAIGradingCriterionResult[];
+  flags: string[];
 }
 
 export interface FinalScoreResult {
@@ -360,6 +371,9 @@ export class ExamGradingService {
       question: snapshot?.question ?? answer.question.question,
       rubric: snapshot?.rubric ?? answer.question.rubric,
       sampleAnswer: snapshot?.sampleAnswer ?? answer.question.sampleAnswer,
+      gradingCriteria: parseEssayGradingCriteria(
+        snapshot?.gradingCriteria ?? answer.question.gradingCriteria
+      ),
       points: snapshot?.points ?? answer.question.points,
     };
 
@@ -379,6 +393,8 @@ export class ExamGradingService {
       resolvedQuestion.rubric || 'No specific rubric provided. Grade based on content accuracy, depth, clarity, and organization.';
     const sampleAnswerOrDefault = resolvedQuestion.sampleAnswer || 'No sample answer provided.';
     const userEssayOrDefault = userEssay || '[No response provided]';
+    const gradingCriteriaText = formatEssayGradingCriteriaForPrompt(resolvedQuestion.gradingCriteria);
+    const gradingCriteriaJson = JSON.stringify(resolvedQuestion.gradingCriteria, null, 2);
 
     const userPromptTemplate =
       promptConfig.userPrompt ??
@@ -386,6 +402,7 @@ export class ExamGradingService {
         resolvedQuestion.question,
         resolvedQuestion.rubric || '',
         resolvedQuestion.sampleAnswer || '',
+        resolvedQuestion.gradingCriteria,
         userEssay,
         resolvedQuestion.points
       );
@@ -396,6 +413,8 @@ export class ExamGradingService {
             question: resolvedQuestion.question,
             rubricOrDefault,
             sampleAnswerOrDefault,
+            gradingCriteriaText,
+            gradingCriteriaJson,
             userEssayOrDefault,
             maxPoints: resolvedQuestion.points,
           })
@@ -406,7 +425,7 @@ export class ExamGradingService {
       { role: 'user' as const, content: prompt },
     ];
     const budget = getChatCompletionsTokenBudget(promptConfig.model, promptConfig.maxTokens);
-    const request = {
+    const request: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming = {
       model: promptConfig.model,
       messages,
       ...(promptConfig.responseFormat === AIResponseFormat.JSON_OBJECT
@@ -433,17 +452,35 @@ export class ExamGradingService {
       'OpenAI',
       'exam-grading chat.completions response',
       { model: request.model },
-      () => this.openai.chat.completions.create(request as any)
+      () => this.openai.chat.completions.create(request)
     );
     if (logOpenAiContent) {
       log('OpenAI', 'debug', 'exam-grading chat.completions raw response', { response });
     }
 
     const result = JSON.parse(response.choices[0].message.content || '{}');
-
-    // Clamp score to valid range
-    const suggestedScore = Math.max(0, Math.min(result.score || 0, resolvedQuestion.points));
-    const confidence = Math.max(0, Math.min(result.confidence || 0.7, 1));
+    const breakdown = this.normalizeEssayAIResult(result, resolvedQuestion.gradingCriteria, resolvedQuestion.points);
+    if (answer.answer && /data-asset-key=|<img\b/i.test(answer.answer)) {
+      breakdown.flags = Array.from(new Set([...(breakdown.flags ?? []), 'answer_contains_uploaded_assets']));
+    }
+    const suggestedScore = breakdown.criteria.length > 0
+      ? breakdown.criteria.reduce((sum, criterion) => sum + criterion.suggestedPoints, 0)
+      : Math.max(0, Math.min(Number(result.score) || 0, resolvedQuestion.points));
+    const confidence = Math.max(
+      0,
+      Math.min(breakdown.confidence ?? (Number(result.confidence) || 0.7), 1)
+    );
+    const aiFeedback =
+      breakdown.overallFeedback ||
+      (typeof result.feedback === 'string' ? result.feedback : '') ||
+      '';
+    const rubricEvaluation =
+      breakdown.rubricEvaluation ||
+      (typeof result.rubricEvaluation === 'string' ? result.rubricEvaluation : '') ||
+      breakdown.criteria
+        .map((criterion) => `${criterion.criterionTitle || criterion.criterionId}: ${criterion.reasoning}`)
+        .filter(Boolean)
+        .join('\n');
 
     // Update the answer with AI grading
     await prisma.examAnswer.update({
@@ -451,7 +488,8 @@ export class ExamGradingService {
       data: {
         gradingStatus: GradingStatus.AI_SUGGESTED,
         aiSuggestedScore: suggestedScore,
-        aiFeedback: result.feedback,
+        aiFeedback: aiFeedback,
+        aiGradingBreakdown: breakdown as Prisma.InputJsonValue,
         aiGradedAt: new Date(),
       },
     });
@@ -460,9 +498,11 @@ export class ExamGradingService {
       answerId,
       suggestedScore,
       maxScore: resolvedQuestion.points,
-      feedback: result.feedback || '',
-      rubricEvaluation: result.rubricEvaluation || '',
+      feedback: aiFeedback,
+      rubricEvaluation,
       confidence,
+      criteria: breakdown.criteria,
+      flags: breakdown.flags ?? [],
     };
   }
 
@@ -494,6 +534,7 @@ Output format: JSON object with these fields:
     question: string,
     rubric: string,
     sampleAnswer: string,
+    gradingCriteria: EssayGradingCriterion[],
     userEssay: string,
     maxPoints: number
   ): string {
@@ -501,6 +542,9 @@ Output format: JSON object with these fields:
 
 QUESTION:
 ${question}
+
+KEY GRADING POINTS:
+${formatEssayGradingCriteriaForPrompt(gradingCriteria)}
 
 RUBRIC:
 ${rubric || 'No specific rubric provided. Grade based on content accuracy, depth, clarity, and organization.'}
@@ -513,7 +557,127 @@ MAXIMUM POINTS: ${maxPoints}
 STUDENT'S ESSAY:
 ${userEssay || '[No response provided]'}
 
+Return valid JSON with:
+- score: number
+- feedback: string
+- rubricEvaluation: string
+- confidence: number from 0 to 1
+- criteria: array of objects with criterionId, criterionTitle, suggestedPoints, reasoning, evidence, met
+- overallFeedback: string
+- flags: string[]
+
 Please evaluate this essay and provide a score out of ${maxPoints} points, along with detailed feedback.`;
+  }
+
+  private normalizeEssayAIResult(
+    result: Record<string, unknown>,
+    gradingCriteria: EssayGradingCriterion[],
+    maxPoints: number
+  ): EssayAIGradingBreakdown {
+    const rawCriteria = Array.isArray(result.criteria)
+      ? result.criteria.filter((criterion): criterion is Record<string, unknown> => !!criterion && typeof criterion === 'object')
+      : [];
+
+    const criteria: EssayAIGradingCriterionResult[] = gradingCriteria.map((criterion, index) => {
+      const raw =
+        rawCriteria.find((item) => {
+          const rawId =
+            typeof item.criterionId === 'string' && item.criterionId.trim()
+              ? item.criterionId.trim()
+              : '';
+          const rawTitle =
+            typeof item.criterionTitle === 'string' && item.criterionTitle.trim()
+              ? item.criterionTitle.trim()
+              : '';
+          return rawId === criterion.id || rawTitle === criterion.title;
+        }) ??
+        rawCriteria[index] ??
+        null;
+
+      const rawPoints = raw ? Number(raw.suggestedPoints ?? raw.points) : 0;
+      return {
+        criterionId: criterion.id,
+        criterionTitle: criterion.title,
+        suggestedPoints: Math.max(0, Math.min(Number.isFinite(rawPoints) ? rawPoints : 0, criterion.maxPoints)),
+        reasoning:
+          raw && typeof raw.reasoning === 'string' && raw.reasoning.trim()
+            ? raw.reasoning.trim()
+            : '',
+        evidence:
+          raw && typeof raw.evidence === 'string' && raw.evidence.trim()
+            ? raw.evidence.trim()
+            : null,
+        met:
+          raw && typeof raw.met === 'boolean'
+            ? raw.met
+            : null,
+      };
+    });
+
+    const hasCriterionSignal = criteria.some((criterion) => criterion.suggestedPoints > 0 || criterion.reasoning.length > 0);
+    const rawScore = Number(result.score);
+    const normalizedCriteria =
+      gradingCriteria.length > 0 && !hasCriterionSignal && Number.isFinite(rawScore)
+        ? this.distributeScoreAcrossCriteria(gradingCriteria, rawScore)
+        : criteria;
+
+    const normalizedScore = gradingCriteria.length > 0
+      ? normalizedCriteria.reduce((sum, criterion) => sum + criterion.suggestedPoints, 0)
+      : Math.max(0, Math.min(Number.isFinite(rawScore) ? rawScore : 0, maxPoints));
+
+    return {
+      criteria: normalizedCriteria,
+      overallFeedback:
+        typeof result.overallFeedback === 'string' && result.overallFeedback.trim()
+          ? result.overallFeedback.trim()
+          : typeof result.feedback === 'string' && result.feedback.trim()
+            ? result.feedback.trim()
+            : null,
+      rubricEvaluation:
+        typeof result.rubricEvaluation === 'string' && result.rubricEvaluation.trim()
+          ? result.rubricEvaluation.trim()
+          : null,
+      confidence:
+        typeof result.confidence === 'number'
+          ? Math.max(0, Math.min(result.confidence, 1))
+          : normalizedScore > 0
+            ? 0.7
+            : null,
+      flags: Array.isArray(result.flags)
+        ? result.flags.filter((flag): flag is string => typeof flag === 'string' && flag.trim().length > 0)
+        : [],
+    };
+  }
+
+  private distributeScoreAcrossCriteria(
+    gradingCriteria: EssayGradingCriterion[],
+    score: number
+  ): EssayAIGradingCriterionResult[] {
+    const totalAvailable = gradingCriteria.reduce((sum, criterion) => sum + criterion.maxPoints, 0);
+    const clampedScore = Math.max(0, Math.min(score, totalAvailable));
+    let assigned = 0;
+
+    return gradingCriteria.map((criterion, index) => {
+      const isLast = index === gradingCriteria.length - 1;
+      const weighted = totalAvailable > 0 ? (clampedScore * criterion.maxPoints) / totalAvailable : 0;
+      const suggestedPoints = Math.max(
+        0,
+        Math.min(
+          criterion.maxPoints,
+          isLast ? clampedScore - assigned : Number(weighted.toFixed(2))
+        )
+      );
+      assigned = Number((assigned + suggestedPoints).toFixed(2));
+
+      return {
+        criterionId: criterion.id,
+        criterionTitle: criterion.title,
+        suggestedPoints,
+        reasoning: 'AI returned only an overall score, so this criterion score was proportionally inferred.',
+        evidence: null,
+        met: null,
+      };
+    });
   }
 
   /**
@@ -669,10 +833,12 @@ Please evaluate this essay and provide a score out of ${maxPoints} points, along
     question: string;
     rubric: string | null;
     sampleAnswer: string | null;
+    gradingCriteria: EssayGradingCriterion[];
     maxPoints: number;
     userAnswer: string | null;
     aiSuggestedScore: number | null;
     aiFeedback: string | null;
+    aiGradingBreakdown: EssayAIGradingBreakdown | null;
     userName: string;
     submittedAt: Date | null;
   }>> {
@@ -718,10 +884,14 @@ Please evaluate this essay and provide a score out of ${maxPoints} points, along
           question: snapshot?.question ?? answer.question.question,
           rubric: snapshot?.rubric ?? answer.question.rubric,
           sampleAnswer: snapshot?.sampleAnswer ?? answer.question.sampleAnswer,
+          gradingCriteria: parseEssayGradingCriteria(
+            snapshot?.gradingCriteria ?? answer.question.gradingCriteria
+          ),
           maxPoints: snapshot?.points ?? answer.question.points,
           userAnswer: answer.answer,
           aiSuggestedScore: answer.aiSuggestedScore,
           aiFeedback: answer.aiFeedback,
+          aiGradingBreakdown: parseEssayAIGradingBreakdown(answer.aiGradingBreakdown),
           userName: answer.attempt.user.name || answer.attempt.user.email,
           submittedAt: answer.attempt.submittedAt,
         };
@@ -747,7 +917,11 @@ Please evaluate this essay and provide a score out of ${maxPoints} points, along
     for (const answer of answers) {
       const snapshot = answer.attempt.questionSnapshots.find((s) => s.questionId === answer.questionId);
       const type = snapshot?.type ?? answer.question.type;
-      if (type !== ExamQuestionType.ESSAY || answer.gradingStatus !== GradingStatus.PENDING) {
+      if (
+        type !== ExamQuestionType.ESSAY ||
+        (answer.gradingStatus !== GradingStatus.PENDING &&
+          answer.gradingStatus !== GradingStatus.AI_SUGGESTED)
+      ) {
         continue;
       }
       try {

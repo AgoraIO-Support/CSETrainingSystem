@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -82,6 +82,8 @@ interface AIChatPanelProps {
     lessonTitle?: string
     currentTime?: number
     onSeekToTimestamp?: (timestamp: string) => void
+    className?: string
+    headerActions?: ReactNode
 }
 
 const promptSuggestions = [
@@ -106,7 +108,15 @@ const mapServerMessage = (message: any): Message => ({
     sources: message.context?.sources || undefined,
 })
 
-export function AIChatPanel({ courseId, lessonId, lessonTitle, currentTime = 0, onSeekToTimestamp }: AIChatPanelProps) {
+export function AIChatPanel({
+    courseId,
+    lessonId,
+    lessonTitle,
+    currentTime = 0,
+    onSeekToTimestamp,
+    className,
+    headerActions,
+}: AIChatPanelProps) {
     const [messages, setMessages] = useState<Message[]>([introMessage])
     const [conversationId, setConversationId] = useState<string | null>(null)
     const [input, setInput] = useState('')
@@ -117,6 +127,7 @@ export function AIChatPanel({ courseId, lessonId, lessonTitle, currentTime = 0, 
     const [knowledgeLoading, setKnowledgeLoading] = useState(false)
     const [knowledgeReady, setKnowledgeReady] = useState(true)
     const [knowledgeError, setKnowledgeError] = useState<string | null>(null)
+    const [showFollowUpSuggestions, setShowFollowUpSuggestions] = useState(true)
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const knowledgeRetryCountRef = useRef(0)
     const knowledgeRetryTimerRef = useRef<number | null>(null)
@@ -290,26 +301,29 @@ export function AIChatPanel({ courseId, lessonId, lessonTitle, currentTime = 0, 
     const chatDisabled = loading || knowledgeLoading || !knowledgeReady
 
     return (
-        <Card className="h-full min-h-0 flex flex-col">
-            <CardHeader className="border-b">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-blue-500">
+        <Card className={cn("h-full min-h-0 flex flex-col", className)}>
+            <CardHeader className="border-b px-4 py-3">
+                <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center space-x-2.5 min-w-0">
+                        <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-blue-500">
                             <Bot className="h-5 w-5 text-white" />
                         </div>
-                        <div>
-                            <CardTitle className="text-lg">AI Assistant</CardTitle>
-                            <p className="text-xs text-muted-foreground">
+                        <div className="min-w-0">
+                            <CardTitle className="text-base leading-none">AI Assistant</CardTitle>
+                            <p className="mt-1 truncate text-[11px] text-muted-foreground">
                                 {lessonTitle ? `Context: ${lessonTitle}` : 'Understanding video context'}
                             </p>
                         </div>
                     </div>
-                    <Badge variant="secondary" className="flex items-center space-x-1">
-                        <Sparkles className="h-3 w-3" />
-                        <span>
-                            {loading ? 'Connecting' : knowledgeLoading ? 'Checking' : knowledgeReady ? 'Online' : 'Preparing'}
-                        </span>
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                        <Badge variant="secondary" className="flex items-center space-x-1">
+                            <Sparkles className="h-3 w-3" />
+                            <span>
+                                {loading ? 'Connecting' : knowledgeLoading ? 'Checking' : knowledgeReady ? 'Online' : 'Preparing'}
+                            </span>
+                        </Badge>
+                        {headerActions}
+                    </div>
                 </div>
             </CardHeader>
 
@@ -412,21 +426,34 @@ export function AIChatPanel({ courseId, lessonId, lessonTitle, currentTime = 0, 
                 )}
 
                 {!showSuggestions && followUpSuggestions.length > 0 && (
-                    <div className="border-t p-4">
-                        <p className="text-xs text-muted-foreground mb-2">Follow-up suggestions:</p>
-                        <div className="flex flex-wrap gap-2">
-                            {followUpSuggestions.map((suggestion, index) => (
-                                <Button
-                                    key={`followup-${index}-${suggestion.substring(0, 15)}`}
-                                    variant="outline"
-                                    size="sm"
-                                    className="text-xs h-auto py-2 px-3"
-                                    onClick={() => setInput(suggestion)}
-                                >
-                                    {suggestion}
-                                </Button>
-                            ))}
+                    <div className="border-t">
+                        <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                            <p className="text-xs text-muted-foreground">Follow-up suggestions</p>
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => setShowFollowUpSuggestions((current) => !current)}
+                            >
+                                {showFollowUpSuggestions ? 'Hide' : 'Show'}
+                            </Button>
                         </div>
+                        {showFollowUpSuggestions ? (
+                            <div className="flex flex-wrap gap-2 px-4 pb-4">
+                                {followUpSuggestions.map((suggestion, index) => (
+                                    <Button
+                                        key={`followup-${index}-${suggestion.substring(0, 15)}`}
+                                        variant="outline"
+                                        size="sm"
+                                        className="text-xs h-auto py-2 px-3"
+                                        onClick={() => setInput(suggestion)}
+                                    >
+                                        {suggestion}
+                                    </Button>
+                                ))}
+                            </div>
+                        ) : null}
                     </div>
                 )}
 

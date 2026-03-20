@@ -16,13 +16,18 @@ import {
     Save,
     CheckCircle,
     XCircle,
-    Clock,
     Sparkles,
     User,
     FileText,
 } from 'lucide-react'
 import Link from 'next/link'
-import type { ExamQuestion, ExamQuestionType, GradingStatus } from '@/types'
+import type {
+    EssayAIGradingBreakdown,
+    EssayGradingCriterion,
+    ExamQuestion,
+    ExamQuestionType,
+    GradingStatus,
+} from '@/types'
 
 const questionTypeLabels: Record<ExamQuestionType, string> = {
     SINGLE_CHOICE: 'Single Choice',
@@ -91,6 +96,7 @@ interface AttemptDetail {
         pointsAwarded: number | null
         aiSuggestedScore: number | null
         aiFeedback: string | null
+        aiGradingBreakdown: EssayAIGradingBreakdown | null
         adminScore: number | null
         adminFeedback: string | null
         question: ExamQuestion
@@ -280,6 +286,11 @@ export default function AttemptDetailPage({ params }: PageProps) {
         }
         return answer.answer || 'No answer provided'
     }
+
+    const getCriterionSuggestion = (
+        breakdown: EssayAIGradingBreakdown | null,
+        criterion: EssayGradingCriterion
+    ) => breakdown?.criteria.find((item) => item.criterionId === criterion.id)
 
     if (loading) {
         return (
@@ -595,6 +606,47 @@ export default function AttemptDetailPage({ params }: PageProps) {
                                             </div>
                                         )}
 
+                                        {answer.question.gradingCriteria?.length ? (
+                                            <div>
+                                                <p className="text-sm text-muted-foreground mb-2">Key Grading Points</p>
+                                                <div className="space-y-3">
+                                                    {answer.question.gradingCriteria.map((criterion) => {
+                                                        const suggestion = getCriterionSuggestion(answer.aiGradingBreakdown, criterion)
+                                                        return (
+                                                            <div key={criterion.id} className="rounded-lg border p-3">
+                                                                <div className="flex items-center justify-between gap-2">
+                                                                    <div>
+                                                                        <p className="font-medium">{criterion.title}</p>
+                                                                        {criterion.required ? (
+                                                                            <p className="text-xs text-amber-600">Required point</p>
+                                                                        ) : null}
+                                                                    </div>
+                                                                    <div className="text-sm font-medium">
+                                                                        {suggestion ? `${suggestion.suggestedPoints}/${criterion.maxPoints}` : `0/${criterion.maxPoints}`}
+                                                                    </div>
+                                                                </div>
+                                                                {criterion.description ? (
+                                                                    <p className="mt-2 text-sm text-muted-foreground">{criterion.description}</p>
+                                                                ) : null}
+                                                                {criterion.guidance ? (
+                                                                    <p className="mt-2 text-sm text-muted-foreground">Guidance: {criterion.guidance}</p>
+                                                                ) : null}
+                                                                {suggestion?.reasoning ? (
+                                                                    <div className="mt-3 rounded-md bg-muted/40 p-3 text-sm">
+                                                                        <p className="font-medium mb-1">AI reasoning</p>
+                                                                        <p>{suggestion.reasoning}</p>
+                                                                        {suggestion.evidence ? (
+                                                                            <p className="mt-2 text-muted-foreground">Evidence: {suggestion.evidence}</p>
+                                                                        ) : null}
+                                                                    </div>
+                                                                ) : null}
+                                                            </div>
+                                                        )
+                                                    })}
+                                                </div>
+                                            </div>
+                                        ) : null}
+
                                         {answer.question.sampleAnswer && (
                                             <div>
                                                 <p className="text-sm text-muted-foreground mb-1">Sample Answer</p>
@@ -615,9 +667,21 @@ export default function AttemptDetailPage({ params }: PageProps) {
                                                         Suggested Score: <strong>{answer.aiSuggestedScore}/{answer.question.points}</strong>
                                                     </p>
                                                 )}
+                                                {answer.aiGradingBreakdown?.confidence !== null && answer.aiGradingBreakdown?.confidence !== undefined ? (
+                                                    <p className="text-sm mb-1 text-muted-foreground">
+                                                        Confidence: {Math.round(answer.aiGradingBreakdown.confidence * 100)}%
+                                                    </p>
+                                                ) : null}
                                                 {answer.aiFeedback && (
                                                     <p className="text-sm text-muted-foreground">{answer.aiFeedback}</p>
                                                 )}
+                                                {answer.aiGradingBreakdown?.flags?.length ? (
+                                                    <div className="mt-3 flex flex-wrap gap-2">
+                                                        {answer.aiGradingBreakdown.flags.map((flag) => (
+                                                            <Badge key={flag} variant="outline">{flag}</Badge>
+                                                        ))}
+                                                    </div>
+                                                ) : null}
                                             </div>
                                         )}
                                     </>

@@ -25,6 +25,9 @@ import {
     X,
     List,
     LogOut,
+    Maximize2,
+    Minimize2,
+    Minus,
     PanelLeftClose,
     PanelLeft,
 } from 'lucide-react'
@@ -64,8 +67,15 @@ export default function LessonPage({
     const maxWatchedRef = useRef(0)
     const videoPlayerRef = useRef<any>(null)
 
+    const DEFAULT_SIDEBAR_WIDTH = 320
+    const SIDEBAR_WIDTH_STORAGE_KEY = 'cse.lessonSidebarWidth'
+    const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
+    const [isResizingSidebar, setIsResizingSidebar] = useState(false)
+    const sidebarResizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null)
+
     const DEFAULT_AI_PANEL_WIDTH = 384
     const AI_PANEL_WIDTH_STORAGE_KEY = 'cse.aiPanelWidth'
+    const [aiPanelMode, setAiPanelMode] = useState<'default' | 'maximized' | 'minimized'>('default')
     const [aiPanelWidth, setAiPanelWidth] = useState(DEFAULT_AI_PANEL_WIDTH)
     const [isResizingAiPanel, setIsResizingAiPanel] = useState(false)
     const aiPanelResizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null)
@@ -83,6 +93,26 @@ export default function LessonPage({
             cancelled = true
         }
     }, [])
+
+    useEffect(() => {
+        try {
+            const stored = localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY)
+            const parsed = stored ? Number.parseInt(stored, 10) : NaN
+            if (Number.isFinite(parsed) && parsed >= 260 && parsed <= 520) {
+                setSidebarWidth(parsed)
+            }
+        } catch {
+            // ignore
+        }
+    }, [])
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(sidebarWidth))
+        } catch {
+            // ignore
+        }
+    }, [sidebarWidth])
 
     useEffect(() => {
         try {
@@ -105,7 +135,42 @@ export default function LessonPage({
     }, [aiPanelWidth])
 
     useEffect(() => {
-        if (!isResizingAiPanel) return
+        if (!isResizingSidebar) return
+
+        const prevCursor = document.body.style.cursor
+        const prevUserSelect = document.body.style.userSelect
+        document.body.style.cursor = 'col-resize'
+        document.body.style.userSelect = 'none'
+
+        const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
+        const onMove = (e: PointerEvent) => {
+            const s = sidebarResizeStateRef.current
+            if (!s) return
+            const minWidth = 260
+            const maxWidth = clamp(window.innerWidth * 0.45, 300, 520)
+            const next = clamp(s.startWidth + (e.clientX - s.startX), minWidth, maxWidth)
+            setSidebarWidth(next)
+        }
+
+        const onUp = () => {
+            sidebarResizeStateRef.current = null
+            setIsResizingSidebar(false)
+        }
+
+        window.addEventListener('pointermove', onMove)
+        window.addEventListener('pointerup', onUp)
+        window.addEventListener('pointercancel', onUp)
+        return () => {
+            window.removeEventListener('pointermove', onMove)
+            window.removeEventListener('pointerup', onUp)
+            window.removeEventListener('pointercancel', onUp)
+            document.body.style.cursor = prevCursor
+            document.body.style.userSelect = prevUserSelect
+        }
+    }, [isResizingSidebar])
+
+    useEffect(() => {
+        if (!isResizingAiPanel || aiPanelMode !== 'default') return
 
         const prevCursor = document.body.style.cursor
         const prevUserSelect = document.body.style.userSelect
@@ -137,7 +202,32 @@ export default function LessonPage({
             document.body.style.cursor = prevCursor
             document.body.style.userSelect = prevUserSelect
         }
-    }, [isResizingAiPanel])
+    }, [aiPanelMode, isResizingAiPanel])
+
+    const handleOpenAIChat = () => {
+        setShowAIChat(true)
+        setAiPanelMode('default')
+    }
+
+    const handleCloseAIChat = () => {
+        setShowAIChat(false)
+        setAiPanelMode('default')
+    }
+
+    const handleMinimizeAIChat = () => {
+        setShowAIChat(true)
+        setAiPanelMode('minimized')
+    }
+
+    const handleMaximizeAIChat = () => {
+        setShowAIChat(true)
+        setAiPanelMode('maximized')
+    }
+
+    const handleRestoreAIChat = () => {
+        setShowAIChat(true)
+        setAiPanelMode('default')
+    }
 
     useEffect(() => {
         let cancelled = false
@@ -513,7 +603,7 @@ export default function LessonPage({
                         <Button
                             variant="ghost"
                             size="icon"
-                            className="lg:hidden"
+                            title={showSidebar ? 'Hide course content' : 'Show course content'}
                             onClick={() => setShowSidebar(!showSidebar)}
                         >
                             {showSidebar ? <PanelLeftClose className="h-5 w-5" /> : <PanelLeft className="h-5 w-5" />}
@@ -545,7 +635,17 @@ export default function LessonPage({
                             <Button
                                 variant={showAIChat ? "default" : "outline"}
                                 size="sm"
-                                onClick={() => setShowAIChat(!showAIChat)}
+                                onClick={() => {
+                                    if (!showAIChat) {
+                                        handleOpenAIChat()
+                                        return
+                                    }
+                                    if (aiPanelMode === 'minimized') {
+                                        handleRestoreAIChat()
+                                        return
+                                    }
+                                    handleCloseAIChat()
+                                }}
                             >
                                 <MessageSquare className="h-4 w-4" />
                                 <span className="hidden sm:inline ml-1">AI Assistant</span>
@@ -578,10 +678,35 @@ export default function LessonPage({
                 {/* Sidebar - Course Content Panel */}
                 <div
                     className={cn(
-                        "w-80 flex-shrink-0 border-r bg-card overflow-hidden transition-all duration-300",
-                        showSidebar ? "translate-x-0" : "-translate-x-full lg:translate-x-0 lg:w-0 lg:border-0"
+                        "relative flex-shrink-0 border-r bg-card overflow-hidden transition-[transform,width] duration-300",
+                        isResizingSidebar ? "transition-none" : null,
+                        showSidebar ? "translate-x-0" : "-translate-x-full lg:translate-x-0 lg:border-0"
                     )}
+                    style={{ width: showSidebar ? sidebarWidth : 0 }}
                 >
+                    {showSidebar && (
+                        <div
+                            role="separator"
+                            aria-label="Resize course content panel"
+                            aria-orientation="vertical"
+                            tabIndex={0}
+                            className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-border/60 focus:outline-none focus:ring-2 focus:ring-ring"
+                            onPointerDown={(e) => {
+                                if (e.button !== 0) return
+                                sidebarResizeStateRef.current = { startX: e.clientX, startWidth: sidebarWidth }
+                                setIsResizingSidebar(true)
+                            }}
+                            onKeyDown={(e) => {
+                                const delta = e.key === 'ArrowLeft' ? -20 : e.key === 'ArrowRight' ? 20 : 0
+                                if (!delta) return
+                                e.preventDefault()
+                                const minWidth = 260
+                                const maxWidth = Math.max(300, Math.min(520, Math.round(window.innerWidth * 0.45)))
+                                const next = Math.max(minWidth, Math.min(maxWidth, sidebarWidth + delta))
+                                setSidebarWidth(next)
+                            }}
+                        />
+                    )}
                     <CourseContentPanel
                         chapters={course.chapters || []}
                         currentLessonId={lesson.id}
@@ -665,55 +790,140 @@ export default function LessonPage({
 
                 {/* AI Chat Panel - Slide-in */}
                 {course?.aiAssistantEnabled !== false && (
-                    <div
-                        className={cn(
-                            "relative flex-shrink-0 border-l bg-card overflow-hidden transition-[transform,width] duration-300",
-                            isResizingAiPanel ? "transition-none" : null,
-                            showAIChat ? "translate-x-0" : "translate-x-full border-0"
-                        )}
-                        style={{ width: showAIChat ? aiPanelWidth : 0 }}
-                    >
-                        {showAIChat && (
+                    <>
+                        {showAIChat && aiPanelMode === 'maximized' ? (
+                            <>
+                                <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px]" />
+                                <div className="fixed inset-x-4 bottom-4 top-20 z-50">
+                                    <AIChatPanel
+                                        className="h-full overflow-hidden rounded-xl border shadow-2xl"
+                                        courseId={courseId}
+                                        lessonId={lesson.id}
+                                        lessonTitle={lesson.title}
+                                        currentTime={currentTime}
+                                        onSeekToTimestamp={handleSeekToTimestamp}
+                                        headerActions={
+                                            <>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-8 w-8"
+                                                    onClick={handleRestoreAIChat}
+                                                    title="Restore panel"
+                                                >
+                                                    <Minimize2 className="h-4 w-4" />
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-8 w-8"
+                                                    onClick={handleMinimizeAIChat}
+                                                    title="Minimize panel"
+                                                >
+                                                    <Minus className="h-4 w-4" />
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-8 w-8"
+                                                    onClick={handleCloseAIChat}
+                                                    title="Close panel"
+                                                >
+                                                    <X className="h-4 w-4" />
+                                                </Button>
+                                            </>
+                                        }
+                                    />
+                                </div>
+                            </>
+                        ) : (
                             <div
-                                role="separator"
-                                aria-label="Resize AI panel"
-                                aria-orientation="vertical"
-                                tabIndex={0}
-                                className="absolute left-0 top-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-border/60 focus:outline-none focus:ring-2 focus:ring-ring"
-                                onPointerDown={(e) => {
-                                    if (e.button !== 0) return
-                                    aiPanelResizeStateRef.current = { startX: e.clientX, startWidth: aiPanelWidth }
-                                    setIsResizingAiPanel(true)
-                                }}
-                                onKeyDown={(e) => {
-                                    const delta = e.key === 'ArrowLeft' ? 20 : e.key === 'ArrowRight' ? -20 : 0
-                                    if (!delta) return
-                                    e.preventDefault()
-                                    const minWidth = 320
-                                    const maxWidth = Math.max(360, Math.min(800, window.innerWidth - 360))
-                                    const next = Math.max(minWidth, Math.min(maxWidth, aiPanelWidth + delta))
-                                    setAiPanelWidth(next)
-                                }}
-                            />
+                                className={cn(
+                                    "relative flex-shrink-0 border-l bg-card overflow-hidden transition-[transform,width] duration-300",
+                                    isResizingAiPanel ? "transition-none" : null,
+                                    showAIChat && aiPanelMode === 'default' ? "translate-x-0" : "translate-x-full border-0"
+                                )}
+                                style={{ width: showAIChat && aiPanelMode === 'default' ? aiPanelWidth : 0 }}
+                            >
+                                {showAIChat && aiPanelMode === 'default' && (
+                                    <div
+                                        role="separator"
+                                        aria-label="Resize AI panel"
+                                        aria-orientation="vertical"
+                                        tabIndex={0}
+                                        className="absolute left-0 top-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-border/60 focus:outline-none focus:ring-2 focus:ring-ring"
+                                        onPointerDown={(e) => {
+                                            if (e.button !== 0) return
+                                            aiPanelResizeStateRef.current = { startX: e.clientX, startWidth: aiPanelWidth }
+                                            setIsResizingAiPanel(true)
+                                        }}
+                                        onKeyDown={(e) => {
+                                            const delta = e.key === 'ArrowLeft' ? 20 : e.key === 'ArrowRight' ? -20 : 0
+                                            if (!delta) return
+                                            e.preventDefault()
+                                            const minWidth = 320
+                                            const maxWidth = Math.max(360, Math.min(800, window.innerWidth - 360))
+                                            const next = Math.max(minWidth, Math.min(maxWidth, aiPanelWidth + delta))
+                                            setAiPanelWidth(next)
+                                        }}
+                                    />
+                                )}
+                                <div className="h-full min-h-0 overflow-hidden">
+                                    <AIChatPanel
+                                        className="h-full rounded-none border-0 shadow-none"
+                                        courseId={courseId}
+                                        lessonId={lesson.id}
+                                        lessonTitle={lesson.title}
+                                        currentTime={currentTime}
+                                        onSeekToTimestamp={handleSeekToTimestamp}
+                                        headerActions={
+                                            <>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-8 w-8"
+                                                    onClick={handleMaximizeAIChat}
+                                                    title="Maximize panel"
+                                                >
+                                                    <Maximize2 className="h-4 w-4" />
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-8 w-8"
+                                                    onClick={handleMinimizeAIChat}
+                                                    title="Minimize panel"
+                                                >
+                                                    <Minus className="h-4 w-4" />
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-8 w-8"
+                                                    onClick={handleCloseAIChat}
+                                                    title="Close panel"
+                                                >
+                                                    <X className="h-4 w-4" />
+                                                </Button>
+                                            </>
+                                        }
+                                    />
+                                </div>
+                            </div>
                         )}
-                        <div className="h-full min-h-0 flex flex-col">
-                            <div className="p-3 border-b flex items-center justify-between">
-                                <h3 className="font-semibold text-sm">AI Learning Assistant</h3>
-                                <Button variant="ghost" size="icon" onClick={() => setShowAIChat(false)}>
-                                    <X className="h-4 w-4" />
+
+                        {showAIChat && aiPanelMode === 'minimized' ? (
+                            <div className="fixed bottom-4 right-4 z-40">
+                                <Button
+                                    className="h-11 rounded-full px-4 shadow-lg"
+                                    onClick={handleRestoreAIChat}
+                                >
+                                    <MessageSquare className="mr-2 h-4 w-4" />
+                                    Restore AI Assistant
                                 </Button>
                             </div>
-                            <div className="flex-1 min-h-0 overflow-hidden">
-                                <AIChatPanel
-                                    courseId={courseId}
-                                    lessonId={lesson.id}
-                                    lessonTitle={lesson.title}
-                                    currentTime={currentTime}
-                                    onSeekToTimestamp={handleSeekToTimestamp}
-                                />
-                            </div>
-                        </div>
-                    </div>
+                        ) : null}
+                    </>
                 )}
             </div>
         </div>

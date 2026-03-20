@@ -14,6 +14,7 @@ import {
 import { FileService } from '@/lib/services/file.service';
 import { ASSET_S3_BUCKET_NAME, S3_BUCKET_NAME } from '@/lib/aws-s3';
 import { resolveRichTextAssetUrls } from '@/lib/rich-text';
+import type { EssayGradingCriterion } from '@/lib/essay-grading';
 
 // Input types
 export interface CreateExamInput {
@@ -60,6 +61,7 @@ export interface CreateQuestionInput {
   correctAnswer?: string;
   rubric?: string;
   sampleAnswer?: string;
+  gradingCriteria?: EssayGradingCriterion[] | null;
   maxWords?: number;
   attachmentS3Key?: string | null;
   attachmentFilename?: string | null;
@@ -759,6 +761,7 @@ export class ExamService {
           correctAnswer: data.correctAnswer,
           rubric: data.rubric,
           sampleAnswer: data.sampleAnswer,
+          gradingCriteria: data.gradingCriteria ?? undefined,
           maxWords: data.maxWords,
           attachmentS3Key: data.attachmentS3Key,
           attachmentFilename: data.attachmentFilename,
@@ -808,6 +811,10 @@ export class ExamService {
           ...(data.correctAnswer !== undefined && { correctAnswer: data.correctAnswer }),
           ...(data.rubric !== undefined && { rubric: data.rubric }),
           ...(data.sampleAnswer !== undefined && { sampleAnswer: data.sampleAnswer }),
+          ...(data.gradingCriteria !== undefined && {
+            gradingCriteria:
+              data.gradingCriteria === null ? Prisma.JsonNull : data.gradingCriteria,
+          }),
           ...(data.maxWords !== undefined && { maxWords: data.maxWords }),
           ...(data.attachmentS3Key !== undefined && { attachmentS3Key: data.attachmentS3Key }),
           ...(data.attachmentFilename !== undefined && { attachmentFilename: data.attachmentFilename }),
