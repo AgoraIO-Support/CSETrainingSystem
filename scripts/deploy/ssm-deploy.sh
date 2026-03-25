@@ -57,9 +57,7 @@ git rev-parse --short HEAD
 git status --porcelain || true
 
 echo "==> Build images"
-podman build -t localhost/cselearning-web:latest -f Containerfile .
-podman build --target migrator -t localhost/cselearning-migrator:latest -f Containerfile .
-podman build --target worker -t localhost/cselearning-worker:latest -f Containerfile .
+./scripts/podman/build-images.sh --profile prod --platform linux/amd64 --latest-alias
 
 echo "==> Run DB migrations"
 podman run --rm --env-file "${ENV_FILE}" localhost/cselearning-migrator:latest
@@ -104,4 +102,3 @@ aws ssm get-command-invocation \
   --instance-id "${EC2_INSTANCE_ID}" \
   --query "{Status:Status,ResponseCode:ResponseCode,Stdout:StandardOutputContent,Stderr:StandardErrorContent}" \
   --output json
-

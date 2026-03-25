@@ -281,3 +281,94 @@ podman run -d --name cselearning-worker --network cselearning \
 podman logs -f cselearning-web
 podman logs -f cselearning-worker
 ```
+
+## Appendix: Apple Silicon Local Build Workflow
+
+If you are developing on a MacBook Pro M2/M-series machine, use the platform-aware build script instead of raw `podman build` commands. This keeps local builds on `linux/arm64` and avoids mixing them up with Ubuntu production `linux/amd64` images.
+
+### Recommended local image tags
+
+- Web: `localhost/cselearning-web:dev-arm64`
+- Worker: `localhost/cselearning-worker:dev-arm64`
+- Migrator: `localhost/cselearning-migrator:dev-arm64`
+
+`localhost/cselearning-*:latest` can still be used locally as a convenience alias when you build with `--latest-alias`.
+
+### Build local images on Apple Silicon
+
+Build all three local images:
+
+```bash
+./scripts/podman/build-images.sh --profile dev --platform linux/arm64 --latest-alias
+```
+
+Build only one image when iterating:
+
+```bash
+# web only
+./scripts/podman/build-images.sh --profile dev --platform linux/arm64 --web-only --latest-alias
+
+# worker only
+./scripts/podman/build-images.sh --profile dev --platform linux/arm64 --worker-only --latest-alias
+
+# migrator only
+./scripts/podman/build-images.sh --profile dev --platform linux/arm64 --migrator-only --latest-alias
+```
+
+If you prefer to use the explicit architecture tags instead of `:latest`, the matching images are:
+
+```bash
+localhost/cselearning-web:dev-arm64
+localhost/cselearning-worker:dev-arm64
+localhost/cselearning-migrator:dev-arm64
+```
+
+### Recommended local run sequence
+
+```bash
+# 1) Start postgres
+podman machine start
+podman network create cselearning || true
+podman volume create cselearning-pgdata || true
+
+podman rm -f cselearning-postgres || true
+podman run -d --name cselearning-postgres --network cselearning \
+  -e POSTGRES_DB='cselearning-database' \
+  -e POSTGRES_USER='postgres' \
+  -e POSTGRES_PASSWORD='postgres' \
+  -v cselearning-pgdata:/var/lib/postgresql/data \
+  docker.io/pgvector/pgvector:pg16
+
+# 2) Build local arm64 images
+./scripts/podman/build-images.sh --profile dev --platform linux/arm64 --latest-alias
+
+# 3) Run migrations
+podman run --rm --network cselearning --env-file tmp/podman/local.env \
+  localhost/cselearning-migrator:latest
+
+# 4) Start web
+podman rm -f cselearning-web || true
+podman run -d --name cselearning-web --network cselearning -p 3000:3000 \
+  --env-file tmp/podman/local.env \
+  -v "$HOME/.aws:/root/.aws:ro" \
+  -e CSE_LOG=api,db,s3,knowledgecontext,openai,worker,transcriptprocessing \
+  -e CSE_WECOM_LOG_CONTENT=1 \
+  -e AWS_PROFILE=default \
+  -e AWS_SDK_LOAD_CONFIG=1 \
+  localhost/cselearning-web:latest
+
+# 5) Start worker
+podman rm -f cselearning-worker || true
+podman run -d --name cselearning-worker --network cselearning \
+  --env-file tmp/podman/local.env \
+  -v "$HOME/.aws:/root/.aws:ro" \
+  -e AWS_PROFILE=default \
+  -e AWS_SDK_LOAD_CONFIG=1 \
+  -e CSE_LOG=api,db,s3,knowledgecontext,openai,worker,transcriptprocessing \
+  -e CSE_OPENAI_LOG_CONTENT=1 \
+  localhost/cselearning-worker:latest
+```
+
+### Important note about production builds
+
+Your local Apple Silicon machine should build `linux/arm64` for local testing only. Ubuntu production is `x86_64`, which means production images must be built as `linux/amd64`, ideally on Ubuntu or CI rather than through local cross-architecture emulation on the M2.

@@ -44,27 +44,49 @@ COPY prisma ./prisma
 COPY tsconfig.json ./
 CMD ["npx", "prisma", "migrate", "deploy"]
 
+# Minimal build-time dependencies for the bundled transcript worker.
+FROM base AS worker-build-deps
+WORKDIR /app
+COPY scripts/worker-build/package.json ./package.json
+COPY scripts/worker-build/package-lock.json ./package-lock.json
+ENV NPM_CONFIG_FETCH_RETRIES=5 \
+  NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=20000 \
+  NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=120000 \
+  NPM_CONFIG_AUDIT=false \
+  NPM_CONFIG_FUND=false \
+  NPM_CONFIG_UPDATE_NOTIFIER=false
+RUN npm ci --no-audit --no-fund
+
 # Worker image for background job processing (transcript/knowledge context)
-FROM deps AS worker-build
+FROM worker-build-deps AS worker-build
 COPY lib ./lib
 COPY types ./types
 COPY scripts/transcript-worker.ts ./scripts/
 COPY scripts/build-worker.mjs ./scripts/
 RUN node scripts/build-worker.mjs
 
-# Prepare minimal node_modules for worker (only externalized dependencies)
-FROM deps AS worker-deps
-RUN rm -rf node_modules && npm ci --omit=dev --no-audit --no-fund
-# Ensure Prisma client is generated for production
+# Prepare only the Prisma runtime needed by the bundled worker.
+FROM base AS worker-prisma-deps
+WORKDIR /app
+COPY scripts/worker-runtime/package.json ./package.json
+COPY scripts/worker-runtime/package-lock.json ./package-lock.json
+COPY prisma ./prisma
+ENV NPM_CONFIG_FETCH_RETRIES=5 \
+  NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=20000 \
+  NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=120000 \
+  NPM_CONFIG_AUDIT=false \
+  NPM_CONFIG_FUND=false \
+  NPM_CONFIG_UPDATE_NOTIFIER=false
+RUN npm ci --no-audit --no-fund
 RUN npx prisma generate
 
 FROM base AS worker
 WORKDIR /app
 ENV NODE_ENV=production
-# Copy only production dependencies (much smaller than full node_modules)
-COPY --from=worker-deps /app/node_modules ./node_modules
+# Copy only the generated Prisma runtime required by the bundled worker.
+COPY --from=worker-prisma-deps /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=worker-prisma-deps /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=worker-build /app/dist-worker ./dist-worker
-COPY prisma ./prisma
 CMD ["node", "dist-worker/scripts/transcript-worker.js"]
 
 # Runtime image (standalone output)

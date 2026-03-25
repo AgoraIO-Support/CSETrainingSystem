@@ -15,12 +15,6 @@ const external = [
     // Prisma client has native bindings that must be external
     '@prisma/client',
     '.prisma/client',
-    // AWS SDK v3 is large but tree-shakeable; keeping external reduces bundle complexity
-    // and avoids potential issues with dynamic imports
-    '@aws-sdk/*',
-    '@smithy/*',
-    // OpenAI SDK
-    'openai',
     // Node built-ins
     'node:*',
 ]

@@ -83,3 +83,55 @@ podman run -d --name cselearning-worker --env-file /home/ubuntu/cselearning.env 
 
 podman logs --tail 50 cselearning-worker
 podman logs --tail 50 cselearning-web
+
+## Appendix: Platform-aware build tags
+
+Use this new build flow in addition to the commands above when you want explicit architecture-specific images.
+
+Recommended tag rules:
+
+- Local Apple Silicon test builds:
+  - Web: `localhost/cselearning-web:dev-arm64`
+  - Worker: `localhost/cselearning-worker:dev-arm64`
+  - Migrator: `localhost/cselearning-migrator:dev-arm64`
+- Ubuntu x86_64 production builds:
+  - Web: `localhost/cselearning-web:prod-amd64`
+  - Worker: `localhost/cselearning-worker:prod-amd64`
+  - Migrator: `localhost/cselearning-migrator:prod-amd64`
+- `:latest` is only an alias for the current runtime target. Add it intentionally with `--latest-alias`.
+
+Local MacBook Pro M2:
+
+```bash
+./scripts/podman/build-images.sh --profile dev --platform linux/arm64 --latest-alias
+```
+
+Ubuntu production host or CI:
+
+```bash
+# build web + worker + migrator for Ubuntu x86_64
+./scripts/podman/build-images.sh --profile prod --platform linux/amd64 --latest-alias
+```
+
+Build only one production image when needed:
+
+```bash
+# web only
+./scripts/podman/build-images.sh --profile prod --platform linux/amd64 --web-only --latest-alias
+
+# worker only
+./scripts/podman/build-images.sh --profile prod --platform linux/amd64 --worker-only --latest-alias
+
+# migrator only
+./scripts/podman/build-images.sh --profile prod --platform linux/amd64 --migrator-only --latest-alias
+```
+
+If you want to reference the explicit architecture tags directly instead of `:latest`, use:
+
+```bash
+localhost/cselearning-web:prod-amd64
+localhost/cselearning-worker:prod-amd64
+localhost/cselearning-migrator:prod-amd64
+```
+
+Production images should be built on Ubuntu or CI, not on the M2 laptop, to avoid slow cross-architecture emulation and QEMU instability during `next build`.
