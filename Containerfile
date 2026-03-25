@@ -10,7 +10,6 @@ RUN apt-get update \
 # Install dependencies (includes dev deps; needed for `next build` + Prisma generate).
 FROM base AS deps
 COPY package.json package-lock.json ./
-COPY prisma ./prisma
 
 # Make `npm ci` more resilient in Podman/VM networking environments (macOS Podman machine can be flaky).
 ENV NPM_CONFIG_FETCH_RETRIES=5 \
@@ -22,8 +21,13 @@ ENV NPM_CONFIG_FETCH_RETRIES=5 \
 
 RUN npm ci --no-audit --no-fund
 
+# Add Prisma schema only after dependency install so schema-only changes do not invalidate npm ci.
+FROM deps AS deps-with-prisma
+COPY prisma ./prisma
+RUN npx prisma generate
+
 # Build Next.js (production build enables standalone output via `next.config.js`).
-FROM deps AS build
+FROM deps-with-prisma AS build
 COPY app ./app
 COPY components ./components
 COPY lib ./lib
@@ -39,8 +43,7 @@ ENV NODE_OPTIONS=--max-old-space-size=4096
 RUN npm run build
 
 # A tooling image to run Prisma commands (migrations) in the same network as the DB.
-FROM deps AS migrator
-COPY prisma ./prisma
+FROM deps-with-prisma AS migrator
 COPY tsconfig.json ./
 CMD ["npx", "prisma", "migrate", "deploy"]
 
