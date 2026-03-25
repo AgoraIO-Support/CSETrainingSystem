@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAdminAuth } from '@/lib/auth-middleware';
 import { PrismaClient } from '@prisma/client';
+import { getPrimaryAiTranscriptTrack } from '@/lib/transcript-tracks';
 
 const prisma = new PrismaClient();
 
@@ -27,12 +28,19 @@ export const GET = withAdminAuth(async (
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1', 10);
     const pageSize = parseInt(searchParams.get('pageSize') || '20', 10);
+    const transcriptId = searchParams.get('transcriptId');
 
     // 2. Get lesson with transcript
     const lesson = await prisma.lesson.findUnique({
       where: { id: lessonId },
       include: {
-        transcripts: true,
+        transcripts: {
+          where: {
+            isActive: true,
+            archivedAt: null,
+          },
+          orderBy: [{ isPrimaryForAI: 'desc' }, { isDefaultSubtitle: 'desc' }, { createdAt: 'asc' }],
+        },
       },
     });
 
@@ -40,7 +48,11 @@ export const GET = withAdminAuth(async (
       return NextResponse.json({ error: 'Lesson not found' }, { status: 404 });
     }
 
-    const transcript = lesson.transcripts[0];
+    const requestedTranscript = transcriptId ? lesson.transcripts.find((track) => track.id === transcriptId) ?? null : null;
+    if (transcriptId && !requestedTranscript) {
+      return NextResponse.json({ error: 'Requested transcript track not found' }, { status: 404 });
+    }
+    const transcript = requestedTranscript ?? getPrimaryAiTranscriptTrack(lesson.transcripts);
 
     if (!transcript) {
       return NextResponse.json({ error: 'Transcript not found' }, { status: 404 });

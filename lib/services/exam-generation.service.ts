@@ -20,6 +20,7 @@ import s3Client, { ASSET_S3_BUCKET_NAME } from '@/lib/aws-s3';
 import { createHash } from 'crypto';
 import { AIPromptResolverService, type ResolvedAIPrompt } from '@/lib/services/ai-prompt-resolver.service';
 import { getChatCompletionsTokenBudget } from '@/lib/services/openai-models';
+import { getPrimaryAiTranscriptTrack } from '@/lib/transcript-tracks';
 
 export interface GenerationConfig {
   questionCounts: {
@@ -113,8 +114,11 @@ export class ExamGenerationService {
                       orderBy: { sequenceIndex: 'asc' },
                     },
                     transcripts: {
-                      orderBy: { updatedAt: 'desc' },
-                      take: 1,
+                      where: {
+                        isActive: true,
+                        archivedAt: null,
+                      },
+                      orderBy: [{ isPrimaryForAI: 'desc' }, { isDefaultSubtitle: 'desc' }, { createdAt: 'asc' }],
                     },
                   },
                 },
@@ -434,7 +438,13 @@ export class ExamGenerationService {
         chapter: { include: { course: true } },
         knowledgeContext: true,
         knowledgeAnchors: { orderBy: { sequenceIndex: 'asc' } },
-        transcripts: { orderBy: { updatedAt: 'desc' }, take: 1 },
+        transcripts: {
+          where: {
+            isActive: true,
+            archivedAt: null,
+          },
+          orderBy: [{ isPrimaryForAI: 'desc' }, { isDefaultSubtitle: 'desc' }, { createdAt: 'asc' }],
+        },
       },
     });
 
@@ -527,7 +537,7 @@ export class ExamGenerationService {
       let missingReason: string | null = null;
 
       if (!xml) {
-        const transcript = lesson.transcripts[0];
+        const transcript = getPrimaryAiTranscriptTrack(lesson.transcripts);
         if (transcript?.s3Key) {
           try {
             const command = new GetObjectCommand({ Bucket: ASSET_S3_BUCKET_NAME, Key: transcript.s3Key });
@@ -599,7 +609,7 @@ export class ExamGenerationService {
         requestedLessons: sorted.map((lesson) => ({
           lessonId: lesson.id,
           title: lesson.title,
-          hasTranscript: Boolean(lesson.transcripts[0]?.s3Key),
+          hasTranscript: Boolean(getPrimaryAiTranscriptTrack(lesson.transcripts)?.s3Key),
           knowledgeStatus: lesson.knowledgeContext?.status ?? 'MISSING',
         })),
         skippedLessons,

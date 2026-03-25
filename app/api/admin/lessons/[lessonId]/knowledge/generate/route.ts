@@ -9,6 +9,7 @@ import prisma from '@/lib/prisma';
 import { KnowledgeContextService } from '@/lib/services/knowledge-context.service';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import s3Client, { ASSET_S3_BUCKET_NAME } from '@/lib/aws-s3';
+import { getPrimaryAiTranscriptTrack } from '@/lib/transcript-tracks';
 
 /**
  * POST /api/admin/lessons/[lessonId]/knowledge/generate
@@ -22,6 +23,7 @@ export const POST = withAdminAuth(async (
   try {
     const params = await context.params;
     const { lessonId } = params;
+    const body = await request.json().catch(() => ({} as Record<string, unknown>));
 
     // Get lesson with full context
     const lesson = await prisma.lesson.findUnique({
@@ -33,8 +35,11 @@ export const POST = withAdminAuth(async (
           },
         },
         transcripts: {
-          orderBy: { updatedAt: 'desc' },
-          take: 1,
+          where: {
+            isActive: true,
+            archivedAt: null,
+          },
+          orderBy: [{ isPrimaryForAI: 'desc' }, { isDefaultSubtitle: 'desc' }, { createdAt: 'asc' }],
         },
       },
     });
@@ -43,7 +48,14 @@ export const POST = withAdminAuth(async (
       return NextResponse.json({ error: 'Lesson not found' }, { status: 404 });
     }
 
-    const transcript = lesson.transcripts[0];
+    const requestedTranscript =
+      typeof body?.transcriptId === 'string'
+        ? lesson.transcripts.find((track) => track.id === body.transcriptId) ?? null
+        : null;
+    if (typeof body?.transcriptId === 'string' && !requestedTranscript) {
+      return NextResponse.json({ error: 'Requested transcript track not found' }, { status: 404 });
+    }
+    const transcript = requestedTranscript ?? getPrimaryAiTranscriptTrack(lesson.transcripts);
     if (!transcript) {
       return NextResponse.json(
         { error: 'No transcript found. Please upload a VTT file first.' },

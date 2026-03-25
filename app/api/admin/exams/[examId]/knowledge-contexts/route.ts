@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
 import { KnowledgeContextStatus } from '@prisma/client'
+import { getPrimaryAiTranscriptTrack } from '@/lib/transcript-tracks'
 
 type RouteContext = {
     params: Promise<{ examId: string }>
@@ -29,8 +30,11 @@ export const GET = withAdminAuth(async (_req: NextRequest, _user, context: Route
                                     include: {
                                         knowledgeContext: true,
                                         transcripts: {
-                                            orderBy: { updatedAt: 'desc' },
-                                            take: 1,
+                                            where: {
+                                                isActive: true,
+                                                archivedAt: null,
+                                            },
+                                            orderBy: [{ isPrimaryForAI: 'desc' }, { isDefaultSubtitle: 'desc' }, { createdAt: 'asc' }],
                                         },
                                         knowledgeAnchors: {
                                             orderBy: { sequenceIndex: 'asc' },
@@ -68,8 +72,11 @@ export const GET = withAdminAuth(async (_req: NextRequest, _user, context: Route
                     chapter: { include: { course: true } },
                     knowledgeContext: true,
                     transcripts: {
-                        orderBy: { updatedAt: 'desc' },
-                        take: 1,
+                        where: {
+                            isActive: true,
+                            archivedAt: null,
+                        },
+                        orderBy: [{ isPrimaryForAI: 'desc' }, { isDefaultSubtitle: 'desc' }, { createdAt: 'asc' }],
                     },
                     knowledgeAnchors: {
                         orderBy: { sequenceIndex: 'asc' },
@@ -91,9 +98,9 @@ export const GET = withAdminAuth(async (_req: NextRequest, _user, context: Route
                     knowledgeStatus: lesson.knowledgeContext?.status ?? 'MISSING',
                     anchorCount: lesson.knowledgeContext?.anchorCount ?? 0,
                     processedAt: lesson.knowledgeContext?.processedAt?.toISOString() ?? null,
-                    hasTranscript: Boolean(lesson.transcripts?.[0]?.s3Key),
-                    transcriptId: lesson.transcripts?.[0]?.id ?? null,
-                    transcriptFilename: lesson.transcripts?.[0]?.filename ?? null,
+                    hasTranscript: Boolean(getPrimaryAiTranscriptTrack(lesson.transcripts)?.s3Key),
+                    transcriptId: getPrimaryAiTranscriptTrack(lesson.transcripts)?.id ?? null,
+                    transcriptFilename: getPrimaryAiTranscriptTrack(lesson.transcripts)?.filename ?? null,
                 }))
 
             const rank = (s: string) =>
@@ -132,9 +139,9 @@ export const GET = withAdminAuth(async (_req: NextRequest, _user, context: Route
             knowledgeStatus: lesson.knowledgeContext?.status ?? 'MISSING',
             anchorCount: lesson.knowledgeContext?.anchorCount ?? 0,
             processedAt: lesson.knowledgeContext?.processedAt?.toISOString() ?? null,
-            hasTranscript: Boolean(lesson.transcripts?.[0]?.s3Key),
-            transcriptId: lesson.transcripts?.[0]?.id ?? null,
-            transcriptFilename: lesson.transcripts?.[0]?.filename ?? null,
+            hasTranscript: Boolean(getPrimaryAiTranscriptTrack(lesson.transcripts)?.s3Key),
+            transcriptId: getPrimaryAiTranscriptTrack(lesson.transcripts)?.id ?? null,
+            transcriptFilename: getPrimaryAiTranscriptTrack(lesson.transcripts)?.filename ?? null,
         }))
         )
 

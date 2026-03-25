@@ -167,12 +167,22 @@ export interface Lesson {
     order?: number
     videoUrl?: string // legacy
     subtitleUrl?: string // legacy
+    subtitleTracks?: SubtitleTrack[]
     transcript?: string // legacy
     lessonType?: 'VIDEO' | 'DOC' | 'QUIZ' | 'OTHER'
     learningObjectives?: string[]
     completionRule?: 'VIEW_ASSETS' | 'MANUAL' | 'QUIZ'
     assets?: CourseAsset[]
     completed?: boolean
+}
+
+export interface SubtitleTrack {
+    id: string
+    src: string
+    srclang: string
+    label: string
+    default?: boolean
+    isPrimaryForAI?: boolean
 }
 
 export interface Chapter {

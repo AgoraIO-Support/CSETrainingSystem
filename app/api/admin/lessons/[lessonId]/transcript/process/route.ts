@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAdminAuth } from '@/lib/auth-middleware';
 import prisma from '@/lib/prisma';
 import { TranscriptJobService } from '@/lib/services/transcript-job.service';
+import { getPrimaryAiTranscriptTrack } from '@/lib/transcript-tracks';
 
 /**
  * POST /api/admin/lessons/[lessonId]/transcript/process
@@ -32,9 +33,14 @@ export const POST = withAdminAuth(async (
           },
         },
         transcripts: {
+          where: {
+            isActive: true,
+            archivedAt: null,
+          },
           include: {
             videoAsset: true,
           },
+          orderBy: [{ isPrimaryForAI: 'desc' }, { isDefaultSubtitle: 'desc' }, { createdAt: 'asc' }],
         },
       },
     });
@@ -43,14 +49,19 @@ export const POST = withAdminAuth(async (
       return NextResponse.json({ error: 'Lesson not found' }, { status: 404 });
     }
 
-    // 3. Get transcript
-    const transcript = lesson.transcripts[0];
+    const body = await request.json().catch(() => ({} as Record<string, unknown>));
+    const requestedTranscript =
+      typeof body?.transcriptId === 'string'
+        ? lesson.transcripts.find((track) => track.id === body.transcriptId) ?? null
+        : null;
+    if (typeof body?.transcriptId === 'string' && !requestedTranscript) {
+      return NextResponse.json({ error: 'Requested transcript track not found' }, { status: 404 });
+    }
+    const transcript = requestedTranscript ?? getPrimaryAiTranscriptTrack(lesson.transcripts);
 
     if (!transcript) {
       return NextResponse.json({ error: 'Transcript not found' }, { status: 404 });
     }
-
-    const body = await request.json().catch(() => ({} as any));
     const force = Boolean(body?.force);
 
     const jobService = new TranscriptJobService(prisma);

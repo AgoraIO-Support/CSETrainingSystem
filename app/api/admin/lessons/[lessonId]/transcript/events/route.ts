@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
+import { getPrimaryAiTranscriptTrack } from '@/lib/transcript-tracks'
 
 export const GET = withAdminAuth(async (
     request: NextRequest,
@@ -15,11 +16,25 @@ export const GET = withAdminAuth(async (
     try {
         const params = await context.params
         const { lessonId } = params
+        const { searchParams } = new URL(request.url)
+        const transcriptId = searchParams.get('transcriptId')
 
-        const transcript = await prisma.transcriptAsset.findFirst({
-            where: { lessonId },
-            orderBy: { createdAt: 'desc' },
+        const tracks = await prisma.transcriptAsset.findMany({
+            where: {
+                lessonId,
+                isActive: true,
+                archivedAt: null,
+            },
+            orderBy: [{ isPrimaryForAI: 'desc' }, { isDefaultSubtitle: 'desc' }, { createdAt: 'asc' }],
         })
+
+        const transcript =
+            (transcriptId ? tracks.find((track) => track.id === transcriptId) : null) ??
+            getPrimaryAiTranscriptTrack(tracks)
+
+        if (transcriptId && !tracks.find((track) => track.id === transcriptId)) {
+            return NextResponse.json({ error: 'Requested transcript track not found' }, { status: 404 })
+        }
 
         if (!transcript) {
             return NextResponse.json({
@@ -68,4 +83,3 @@ export const GET = withAdminAuth(async (
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 })
-

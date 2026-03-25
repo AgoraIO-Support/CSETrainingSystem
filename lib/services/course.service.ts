@@ -1,6 +1,7 @@
 import prisma from '@/lib/prisma'
 import { CourseLevel, CourseStatus, Prisma } from '@prisma/client'
 import { FileService } from './file.service'
+import { getActiveTranscriptTracks, getDefaultSubtitleTrack, getTranscriptLabel } from '@/lib/transcript-tracks'
 
 const ABSOLUTE_URL_REGEX = /^https?:\/\//i
 const isAbsoluteUrl = (value?: string | null) => typeof value === 'string' && ABSOLUTE_URL_REGEX.test(value)
@@ -116,9 +117,21 @@ export class CourseService {
                                     orderBy: { createdAt: 'asc' },
                                 },
                                 transcripts: {
-                                    select: { s3Key: true, url: true, language: true },
-                                    orderBy: { createdAt: 'desc' },
-                                    take: 1,
+                                    where: {
+                                        isActive: true,
+                                        archivedAt: null,
+                                    },
+                                    select: {
+                                        id: true,
+                                        s3Key: true,
+                                        url: true,
+                                        language: true,
+                                        label: true,
+                                        isDefaultSubtitle: true,
+                                        isPrimaryForAI: true,
+                                        createdAt: true,
+                                    },
+                                    orderBy: [{ isDefaultSubtitle: 'desc' }, { isPrimaryForAI: 'desc' }, { createdAt: 'asc' }],
                                 },
                             },
                             orderBy: { order: 'asc' },
@@ -162,11 +175,27 @@ export class CourseService {
             course.chapters.map(async (ch) => {
                 const lessons = await Promise.all(
                     ch.lessons.map(async (lesson) => {
-                        // Prefer transcript asset if available; otherwise fall back to legacy subtitle fields.
-                        const transcriptAsset = lesson.transcripts?.[0]
+                        const transcriptTracks = getActiveTranscriptTracks(lesson.transcripts ?? [])
+                        const subtitleTracks = await Promise.all(
+                            transcriptTracks.map(async (track) => ({
+                                id: track.id,
+                                src: track.s3Key
+                                    ? await FileService.getAssetAccessUrl(track.s3Key)
+                                    : track.url
+                                        ? isAbsoluteUrl(track.url)
+                                            ? track.url
+                                            : await FileService.getAssetAccessUrl(track.url)
+                                        : '',
+                                srclang: track.language,
+                                label: getTranscriptLabel(track),
+                                default: track.isDefaultSubtitle,
+                                isPrimaryForAI: track.isPrimaryForAI,
+                            }))
+                        )
 
-                        const subtitleUrl = transcriptAsset?.s3Key
-                            ? await FileService.getAssetAccessUrl(transcriptAsset.s3Key)
+                        const defaultSubtitleTrack = getDefaultSubtitleTrack(transcriptTracks)
+                        const subtitleUrl = defaultSubtitleTrack?.s3Key
+                            ? await FileService.getAssetAccessUrl(defaultSubtitleTrack.s3Key)
                             : lesson.subtitleKey
                                 ? await FileService.getAssetAccessUrl(lesson.subtitleKey)
                                 : lesson.subtitleUrl
@@ -203,6 +232,7 @@ export class CourseService {
                             ...lesson,
                             videoUrl,
                             subtitleUrl,
+                            subtitleTracks: subtitleTracks.filter((track) => Boolean(track.src)),
                             assets,
                         }
                     })

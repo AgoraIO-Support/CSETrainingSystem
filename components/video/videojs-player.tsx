@@ -53,7 +53,13 @@ const registerSeekButtons = () => {
 
 interface VideoJSPlayerProps {
     videoUrl: string
-    subtitleUrl?: string
+    subtitleTracks?: Array<{
+        id?: string
+        src: string
+        srclang: string
+        label: string
+        default?: boolean
+    }>
     posterUrl?: string
     onTimeUpdate?: (currentTime: number) => void
     onEnded?: () => void
@@ -64,7 +70,7 @@ interface VideoJSPlayerProps {
 
 export function VideoJSPlayer({
     videoUrl,
-    subtitleUrl,
+    subtitleTracks = [],
     posterUrl,
     onTimeUpdate,
     onEnded,
@@ -136,13 +142,13 @@ export function VideoJSPlayer({
                 src: videoUrl,
                 type: getSourceType(videoUrl)
             }],
-            tracks: subtitleUrl ? [{
+            tracks: subtitleTracks.map((track) => ({
                 kind: 'subtitles',
-                label: 'English',
-                srclang: 'en',
-                src: subtitleUrl,
-                default: false,
-            }] : [],
+                label: track.label,
+                srclang: track.srclang,
+                src: track.src,
+                default: track.default ?? false,
+            })),
             html5: {
                 vhs: {
                     overrideNative: true
@@ -236,17 +242,16 @@ export function VideoJSPlayer({
             player.removeRemoteTextTrack(existingTracks[i])
         }
 
-        // Add subtitle track if provided
-        if (subtitleUrl) {
+        subtitleTracks.forEach((track) => {
             player.addRemoteTextTrack({
                 kind: 'subtitles',
-                label: 'English',
-                srclang: 'en',
-                src: subtitleUrl,
-                default: false
+                label: track.label,
+                srclang: track.srclang,
+                src: track.src,
+                default: track.default ?? false
             }, false)
-        }
-    }, [subtitleUrl, isReady])
+        })
+    }, [subtitleTracks, isReady])
 
     return (
         <div className="relative rounded-lg overflow-hidden bg-black">

@@ -523,7 +523,30 @@ export default function LessonPage({
         subtitleCandidates.find((a: any) => (videoBasename ? getAssetBasename(a) === videoBasename : false)) ??
         subtitleCandidates[0]
     const resolvedVideoUrl = videoAsset?.url || lesson.videoUrl || null
-    const resolvedSubtitleUrl = subtitleAsset?.url || lesson.subtitleUrl
+    const resolvedSubtitleTracks =
+        lesson.subtitleTracks && lesson.subtitleTracks.length > 0
+            ? lesson.subtitleTracks
+            : subtitleAsset?.url
+                ? [
+                    {
+                        id: 'legacy-subtitle',
+                        src: subtitleAsset.url,
+                        srclang: 'en',
+                        label: 'English',
+                        default: true,
+                    },
+                ]
+                : lesson.subtitleUrl
+                    ? [
+                        {
+                            id: 'legacy-subtitle',
+                            src: lesson.subtitleUrl,
+                            srclang: 'en',
+                            label: 'English',
+                            default: true,
+                        },
+                    ]
+                    : []
 
     const handleMarkComplete = async () => {
         setLessonCompleted(true)
@@ -564,7 +587,7 @@ export default function LessonPage({
                 <div className="space-y-4">
                     <VideoJSPlayer
                         videoUrl={resolvedVideoUrl}
-                        subtitleUrl={resolvedSubtitleUrl}
+                        subtitleTracks={resolvedSubtitleTracks}
                         onTimeUpdate={setCurrentTime}
                         initialTime={initialTimestamp}
                         onReady={handleVideoReady}

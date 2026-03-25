@@ -7,10 +7,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
 import { KnowledgeContextJobService } from '@/lib/services/knowledge-context-job.service'
+import { getPrimaryAiTranscriptTrack } from '@/lib/transcript-tracks'
 
 /**
  * POST /api/admin/lessons/[lessonId]/knowledge/process
- * Enqueue Knowledge Context generation from latest VTT transcript
+ * Enqueue Knowledge Context generation from the selected or primary VTT transcript
  */
 export const POST = withAdminAuth(async (
     request: NextRequest,
@@ -19,14 +20,18 @@ export const POST = withAdminAuth(async (
 ) => {
     try {
         const { lessonId } = await context.params
+        const body = await request.json().catch(() => ({} as Record<string, unknown>))
 
         const lesson = await prisma.lesson.findUnique({
             where: { id: lessonId },
             include: {
                 chapter: { include: { course: true } },
                 transcripts: {
-                    orderBy: { updatedAt: 'desc' },
-                    take: 1,
+                    where: {
+                        isActive: true,
+                        archivedAt: null,
+                    },
+                    orderBy: [{ isPrimaryForAI: 'desc' }, { isDefaultSubtitle: 'desc' }, { createdAt: 'asc' }],
                 },
             },
         })
@@ -35,7 +40,15 @@ export const POST = withAdminAuth(async (
             return NextResponse.json({ error: 'Lesson not found' }, { status: 404 })
         }
 
-        const transcript = lesson.transcripts[0] ?? null
+        const requestedTranscript =
+            typeof body?.transcriptId === 'string'
+                ? lesson.transcripts.find((track) => track.id === body.transcriptId) ?? null
+                : null
+        if (typeof body?.transcriptId === 'string' && !requestedTranscript) {
+            return NextResponse.json({ error: 'Requested transcript track not found' }, { status: 404 })
+        }
+        const transcript = requestedTranscript ?? getPrimaryAiTranscriptTrack(lesson.transcripts)
+
         if (!transcript) {
             return NextResponse.json(
                 { error: 'No transcript found. Please upload a VTT file first.' },
@@ -43,7 +56,6 @@ export const POST = withAdminAuth(async (
             )
         }
 
-        const body = await request.json().catch(() => ({} as any))
         const force = Boolean(body?.force)
         // Support both old field name (promptTemplateId) and new field names (knowledgePromptTemplateId, anchorsPromptTemplateId)
         const knowledgePromptTemplateId = typeof body?.knowledgePromptTemplateId === 'string' ? body.knowledgePromptTemplateId
@@ -116,4 +128,3 @@ export const POST = withAdminAuth(async (
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 })
-

@@ -9,6 +9,7 @@ import prisma from '@/lib/prisma';
 import { KnowledgeContextService } from '@/lib/services/knowledge-context.service';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import s3Client, { ASSET_S3_BUCKET_NAME } from '@/lib/aws-s3';
+import { getPrimaryAiTranscriptTrack } from '@/lib/transcript-tracks';
 
 const PROCESSING_STALE_MS = 3 * 60 * 1000;
 
@@ -67,13 +68,16 @@ export const GET = withAuth(async (
           include: {
             chapter: { include: { course: true } },
             transcripts: {
-              orderBy: { updatedAt: 'desc' },
-              take: 1,
+              where: {
+                isActive: true,
+                archivedAt: null,
+              },
+              orderBy: [{ isPrimaryForAI: 'desc' }, { isDefaultSubtitle: 'desc' }, { createdAt: 'asc' }],
             },
           },
         });
 
-        const transcript = lesson?.transcripts?.[0] ?? null;
+        const transcript = lesson ? getPrimaryAiTranscriptTrack(lesson.transcripts) : null;
         if (!lesson) {
           return NextResponse.json(
             {
