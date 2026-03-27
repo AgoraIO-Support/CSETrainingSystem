@@ -62,6 +62,10 @@ export const changePasswordSchema = z.object({
     newPassword: z.string().min(8, 'Password must be at least 8 characters'),
 })
 
+export const adminResetUserPasswordSchema = z.object({
+    newPassword: z.string().min(8, 'Password must be at least 8 characters'),
+})
+
 // Course schemas
 export const createCourseSchema = z.object({
     title: z.string().min(1, 'Title is required'),

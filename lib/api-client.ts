@@ -444,6 +444,13 @@ export class ApiClient {
         })
     }
 
+    static async resetUserPassword(userId: string, payload: { newPassword: string }): Promise<{ success: boolean }> {
+        return this.request(`/admin/users/${userId}/password`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
     static async getAnalytics(params: Record<string, string | number | undefined> = {}): Promise<{
         success: boolean
         data: AdminAnalyticsSummary

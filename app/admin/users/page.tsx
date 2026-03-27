@@ -17,6 +17,7 @@ import type { AdminUser, AdminUserStats } from '@/types'
 import { formatDate } from '@/lib/utils'
 import {
     Activity,
+    KeyRound,
     Loader2,
     Pencil,
     RefreshCcw,
@@ -96,6 +97,14 @@ export default function AdminUsersPage() {
         wecomUserId: '',
         department: '',
         title: '',
+    })
+    const [resetPasswordOpen, setResetPasswordOpen] = useState(false)
+    const [resetPasswordUser, setResetPasswordUser] = useState<Pick<AdminUser, 'id' | 'name' | 'email'> | null>(null)
+    const [resetPasswordSaving, setResetPasswordSaving] = useState(false)
+    const [resetPasswordError, setResetPasswordError] = useState<string | null>(null)
+    const [resetPasswordForm, setResetPasswordForm] = useState({
+        newPassword: '',
+        confirmPassword: '',
     })
 
     useEffect(() => {
@@ -245,6 +254,20 @@ export default function AdminUsersPage() {
         setEditOpen(true)
     }
 
+    const handleOpenResetPassword = (user: AdminUser) => {
+        setResetPasswordUser({
+            id: user.id,
+            name: user.name,
+            email: user.email,
+        })
+        setResetPasswordForm({
+            newPassword: '',
+            confirmPassword: '',
+        })
+        setResetPasswordError(null)
+        setResetPasswordOpen(true)
+    }
+
     const resetEditForm = () => {
         setEditForm({
             id: '',
@@ -255,6 +278,15 @@ export default function AdminUsersPage() {
             title: '',
         })
         setEditError(null)
+    }
+
+    const resetResetPasswordForm = () => {
+        setResetPasswordForm({
+            newPassword: '',
+            confirmPassword: '',
+        })
+        setResetPasswordError(null)
+        setResetPasswordUser(null)
     }
 
     const handleEditSubmit = async (event: React.FormEvent) => {
@@ -293,6 +325,39 @@ export default function AdminUsersPage() {
             setEditError(err instanceof Error ? err.message : 'Failed to update user')
         } finally {
             setEditingUserId(null)
+        }
+    }
+
+    const handleResetPasswordSubmit = async (event: React.FormEvent) => {
+        event.preventDefault()
+        setResetPasswordError(null)
+
+        if (!resetPasswordUser?.id) {
+            setResetPasswordError('Invalid user')
+            return
+        }
+
+        if (resetPasswordForm.newPassword.length < 8) {
+            setResetPasswordError('Password must be at least 8 characters')
+            return
+        }
+
+        if (resetPasswordForm.newPassword !== resetPasswordForm.confirmPassword) {
+            setResetPasswordError('Passwords do not match')
+            return
+        }
+
+        setResetPasswordSaving(true)
+        try {
+            await ApiClient.resetUserPassword(resetPasswordUser.id, {
+                newPassword: resetPasswordForm.newPassword,
+            })
+            setResetPasswordOpen(false)
+            resetResetPasswordForm()
+        } catch (err) {
+            setResetPasswordError(err instanceof Error ? err.message : 'Failed to reset password')
+        } finally {
+            setResetPasswordSaving(false)
         }
     }
 
@@ -567,6 +632,66 @@ export default function AdminUsersPage() {
                     </DialogContent>
                 </Dialog>
 
+                <Dialog
+                    open={resetPasswordOpen}
+                    onOpenChange={(open) => {
+                        setResetPasswordOpen(open)
+                        if (!open) resetResetPasswordForm()
+                    }}
+                >
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Reset password</DialogTitle>
+                            <DialogDescription>
+                                Set a new password for {resetPasswordUser?.name || 'this user'} ({resetPasswordUser?.email || 'unknown user'}).
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <form className="space-y-4" onSubmit={handleResetPasswordSubmit}>
+                            {resetPasswordError && (
+                                <Alert variant="destructive">
+                                    <AlertDescription>{resetPasswordError}</AlertDescription>
+                                </Alert>
+                            )}
+
+                            <div className="grid gap-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="reset-user-password">New password</Label>
+                                    <Input
+                                        id="reset-user-password"
+                                        type="password"
+                                        value={resetPasswordForm.newPassword}
+                                        onChange={(e) => setResetPasswordForm(prev => ({ ...prev, newPassword: e.target.value }))}
+                                        autoComplete="new-password"
+                                        required
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="reset-user-confirm-password">Confirm new password</Label>
+                                    <Input
+                                        id="reset-user-confirm-password"
+                                        type="password"
+                                        value={resetPasswordForm.confirmPassword}
+                                        onChange={(e) => setResetPasswordForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                                        autoComplete="new-password"
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            <DialogFooter>
+                                <Button type="button" variant="ghost" onClick={() => setResetPasswordOpen(false)} disabled={resetPasswordSaving}>
+                                    Cancel
+                                </Button>
+                                <Button type="submit" disabled={resetPasswordSaving}>
+                                    {resetPasswordSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                                    Reset password
+                                </Button>
+                            </DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
+
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                     {[
                         {
@@ -762,6 +887,15 @@ export default function AdminUsersPage() {
                                                     </td>
                                                     <td className="py-3">
                                                         <div className="flex items-center justify-end space-x-2">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => handleOpenResetPassword(user)}
+                                                                disabled={actionUserId === user.id || resetPasswordSaving}
+                                                            >
+                                                                <KeyRound className="h-4 w-4 mr-2" />
+                                                                Reset password
+                                                            </Button>
                                                             <Button
                                                                 variant="ghost"
                                                                 size="sm"

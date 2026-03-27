@@ -220,6 +220,37 @@ export class AuthService {
         }
     }
 
+    static async adminResetPassword(userId: string, newPassword: string) {
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: {
+                id: true,
+                supabaseId: true,
+            },
+        })
+
+        if (!user) {
+            throw new Error('USER_NOT_FOUND')
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10)
+
+        await prisma.user.update({
+            where: { id: userId },
+            data: { password: hashedPassword },
+        })
+
+        if (!IS_LOCAL_AUTH && user.supabaseId) {
+            try {
+                await supabaseAdmin.auth.admin.updateUserById(user.supabaseId, {
+                    password: newPassword,
+                })
+            } catch (error) {
+                console.warn('Supabase admin password reset failed; local password updated', error)
+            }
+        }
+    }
+
     /**
      * Get current user by ID (Local) or Supabase ID
      */
