@@ -8,15 +8,20 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ApiClient } from '@/lib/api-client'
 import { Users, BookOpen, TrendingUp, Plus, RefreshCcw } from 'lucide-react'
+import type { AdminAnalyticsSummary, AdminUser, Course } from '@/types'
+
+type RecentCourse = Pick<Course, 'id' | 'title' | 'status'> & {
+    createdAt?: string | Date
+}
 
 export default function AdminDashboardPage() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [refreshIndex, setRefreshIndex] = useState(0)
 
-    const [summary, setSummary] = useState<any | null>(null)
-    const [recentCourses, setRecentCourses] = useState<any[]>([])
-    const [recentUsers, setRecentUsers] = useState<any[]>([])
+    const [summary, setSummary] = useState<AdminAnalyticsSummary | null>(null)
+    const [recentCourses, setRecentCourses] = useState<RecentCourse[]>([])
+    const [recentUsers, setRecentUsers] = useState<AdminUser[]>([])
 
     useEffect(() => {
         let cancelled = false
@@ -70,14 +75,22 @@ export default function AdminDashboardPage() {
 
     return (
         <DashboardLayout>
-            <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-                        <p className="text-muted-foreground mt-1">
-                            Manage your training system and monitor performance
-                        </p>
-                    </div>
+            <div className="space-y-8">
+                <div className="grid gap-6 xl:grid-cols-[1.7fr_1fr]">
+                    <Card className="overflow-hidden">
+                        <CardContent className="p-7 md:p-8">
+                            <div className="space-y-4">
+                                <Badge className="w-fit">Admin Workspace</Badge>
+                                <div className="space-y-3">
+                                    <h1 className="text-3xl font-semibold tracking-[-0.04em] md:text-4xl">Admin dashboard</h1>
+                                    <p className="max-w-2xl text-sm leading-7 text-muted-foreground md:text-base">
+                                        Monitor operational health, review recent activity, and manage courses, users, and training analytics from one executive view.
+                                    </p>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
                     <div className="flex space-x-2">
                         <Button
                             variant="outline"
@@ -97,7 +110,7 @@ export default function AdminDashboardPage() {
                 </div>
 
                 {error && (
-                    <div className="p-4 bg-destructive/10 text-destructive rounded-lg">
+                    <div className="rounded-2xl border border-destructive/15 bg-destructive/5 p-4 text-destructive">
                         {error}
                     </div>
                 )}
@@ -105,45 +118,45 @@ export default function AdminDashboardPage() {
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-sm font-medium">Total Users</CardTitle>
-                            <Users className="h-4 w-4 text-muted-foreground" />
+                            <CardTitle className="text-sm font-semibold">Total Users</CardTitle>
+                            <Users className="h-4 w-4 text-primary" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">{stats.totalUsers.toLocaleString()}</div>
-                            <p className="text-xs text-muted-foreground mt-1">All accounts</p>
+                            <div className="text-3xl font-semibold tracking-[-0.04em]">{stats.totalUsers.toLocaleString()}</div>
+                            <p className="mt-2 text-sm text-muted-foreground">All accounts</p>
                         </CardContent>
                     </Card>
 
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-sm font-medium">Courses</CardTitle>
-                            <BookOpen className="h-4 w-4 text-muted-foreground" />
+                            <CardTitle className="text-sm font-semibold">Courses</CardTitle>
+                            <BookOpen className="h-4 w-4 text-primary" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">{stats.totalCourses.toLocaleString()}</div>
-                            <p className="text-xs text-muted-foreground mt-1">Total courses</p>
+                            <div className="text-3xl font-semibold tracking-[-0.04em]">{stats.totalCourses.toLocaleString()}</div>
+                            <p className="mt-2 text-sm text-muted-foreground">Total courses</p>
                         </CardContent>
                     </Card>
 
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-sm font-medium">Enrollments</CardTitle>
-                            <Users className="h-4 w-4 text-muted-foreground" />
+                            <CardTitle className="text-sm font-semibold">Enrollments</CardTitle>
+                            <Users className="h-4 w-4 text-primary" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">{stats.totalEnrollments.toLocaleString()}</div>
-                            <p className="text-xs text-muted-foreground mt-1">Active + completed</p>
+                            <div className="text-3xl font-semibold tracking-[-0.04em]">{stats.totalEnrollments.toLocaleString()}</div>
+                            <p className="mt-2 text-sm text-muted-foreground">Active + completed</p>
                         </CardContent>
                     </Card>
 
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-sm font-medium">Completion Rate</CardTitle>
-                            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                            <CardTitle className="text-sm font-semibold">Completion Rate</CardTitle>
+                            <TrendingUp className="h-4 w-4 text-primary" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">{stats.completionRate}%</div>
-                            <p className="text-xs text-muted-foreground mt-1">Completed enrollments</p>
+                            <div className="text-3xl font-semibold tracking-[-0.04em]">{stats.completionRate}%</div>
+                            <p className="mt-2 text-sm text-muted-foreground">Completed enrollments</p>
                         </CardContent>
                     </Card>
                 </div>
@@ -219,25 +232,25 @@ export default function AdminDashboardPage() {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Quick Actions</CardTitle>
+                        <CardTitle>Quick actions</CardTitle>
                         <CardDescription>Common administrative tasks</CardDescription>
                     </CardHeader>
                     <CardContent>
                         <div className="grid gap-4 md:grid-cols-3">
                             <Link href="/admin/courses/create">
-                                <Button variant="outline" className="w-full h-auto py-4 flex flex-col">
+                                <Button variant="outline" className="flex h-auto w-full flex-col py-5">
                                     <BookOpen className="h-6 w-6 mb-2" />
                                     <span>Create New Course</span>
                                 </Button>
                             </Link>
                             <Link href="/admin/users">
-                                <Button variant="outline" className="w-full h-auto py-4 flex flex-col">
+                                <Button variant="outline" className="flex h-auto w-full flex-col py-5">
                                     <Users className="h-6 w-6 mb-2" />
                                     <span>Manage Users</span>
                                 </Button>
                             </Link>
                             <Link href="/admin/analytics">
-                                <Button variant="outline" className="w-full h-auto py-4 flex flex-col">
+                                <Button variant="outline" className="flex h-auto w-full flex-col py-5">
                                     <TrendingUp className="h-6 w-6 mb-2" />
                                     <span>View Analytics</span>
                                 </Button>
@@ -249,4 +262,3 @@ export default function AdminDashboardPage() {
         </DashboardLayout>
     )
 }
-

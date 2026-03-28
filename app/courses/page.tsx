@@ -153,16 +153,17 @@ export default function CoursesPage() {
 
     return (
         <DashboardLayout>
-            <div className="space-y-6">
-                <div>
-                    <div className="flex items-center space-x-3 mb-2">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <div className="space-y-8">
+                <div className="rounded-[1.6rem] border border-slate-200/60 bg-white p-7 shadow-sm">
+                    <div className="mb-3 flex items-center gap-3">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#006688_0%,#00c2ff_100%)] text-primary-foreground shadow-lg shadow-[#006688]/15">
                             <BookOpen className="h-6 w-6" />
                         </div>
-                        <h1 className="text-3xl font-bold">Course Library</h1>
+                        <Badge className="w-fit">Course Library</Badge>
                     </div>
-                    <p className="text-muted-foreground text-lg">
-                        Explore our comprehensive collection of training courses
+                    <h1 className="text-3xl font-semibold tracking-[-0.04em] md:text-4xl">Explore course content</h1>
+                    <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground md:text-base">
+                        Browse structured learning tracks, filter by category or level, and review progress-oriented content in one place.
                     </p>
                 </div>
 
@@ -321,11 +322,11 @@ export default function CoursesPage() {
                         ))}
                     </div>
                 ) : (
-                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <div className="flex flex-col items-center justify-center rounded-[1.35rem] border border-dashed border-border bg-secondary/35 py-12 text-center">
                         <BookOpen className="h-12 w-12 text-muted-foreground mb-4" />
                         <h3 className="text-lg font-semibold mb-2">No courses found</h3>
                         <p className="text-muted-foreground">
-                            Try adjusting your search or filters to find what you're looking for
+                            Try adjusting your search or filters to find what you&apos;re looking for
                         </p>
                     </div>
                 )}

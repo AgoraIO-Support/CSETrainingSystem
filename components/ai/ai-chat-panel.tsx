@@ -44,7 +44,7 @@ function parseTimestampLinks(
             <button
                 key={key}
                 onClick={() => onTimestampClick?.(timestamp)}
-                className="inline-flex items-center gap-1 px-2 py-0.5 mx-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-md hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors cursor-pointer"
+                className="mx-0.5 inline-flex cursor-pointer items-center gap-1 rounded-md bg-[#e8f8ff] px-2 py-0.5 text-xs font-medium text-[#006688] transition-colors hover:bg-[#d6f3ff]"
                 title={`Jump to ${timestamp}`}
             >
                 <Play className="h-3 w-3" />
@@ -301,22 +301,22 @@ export function AIChatPanel({
     const chatDisabled = loading || knowledgeLoading || !knowledgeReady
 
     return (
-        <Card className={cn("h-full min-h-0 flex flex-col", className)}>
-            <CardHeader className="border-b px-4 py-3">
+        <Card className={cn("h-full min-h-0 flex flex-col overflow-hidden border border-slate-200 bg-white shadow-none", className)}>
+            <CardHeader className="border-b border-slate-200 bg-white px-4 py-3">
                 <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center space-x-2.5 min-w-0">
-                        <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-blue-500">
+                        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-[#006688]">
                             <Bot className="h-5 w-5 text-white" />
                         </div>
                         <div className="min-w-0">
-                            <CardTitle className="text-base leading-none">AI Assistant</CardTitle>
-                            <p className="mt-1 truncate text-[11px] text-muted-foreground">
+                            <CardTitle className="text-base leading-none text-slate-950">AI Assistant</CardTitle>
+                            <p className="mt-1 truncate text-[11px] text-slate-500">
                                 {lessonTitle ? `Context: ${lessonTitle}` : 'Understanding video context'}
                             </p>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <Badge variant="secondary" className="flex items-center space-x-1">
+                        <Badge variant="secondary" className="flex items-center space-x-1 rounded-full border border-slate-200 bg-slate-50 text-slate-600">
                             <Sparkles className="h-3 w-3" />
                             <span>
                                 {loading ? 'Connecting' : knowledgeLoading ? 'Checking' : knowledgeReady ? 'Online' : 'Preparing'}
@@ -328,7 +328,7 @@ export function AIChatPanel({
             </CardHeader>
 
             <CardContent className="flex-1 min-h-0 flex flex-col p-0">
-                <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
+                <div className="flex-1 min-h-0 space-y-4 overflow-y-auto bg-slate-50/40 p-4">
                     {!loading && !knowledgeLoading && !knowledgeReady && (
                         <Alert>
                             <AlertDescription>
@@ -354,18 +354,18 @@ export function AIChatPanel({
                             <Avatar className="h-8 w-8">
                                 <AvatarFallback className={cn(
                                     message.role === 'assistant'
-                                        ? 'bg-gradient-to-br from-purple-500 to-blue-500 text-white'
-                                        : 'bg-primary text-primary-foreground'
+                                        ? 'bg-[#006688] text-white'
+                                        : 'bg-slate-900 text-white'
                                 )}>
                                     {message.role === 'assistant' ? <Bot className="h-4 w-4" /> : <User className="h-4 w-4" />}
                                 </AvatarFallback>
                             </Avatar>
                             <div
                                 className={cn(
-                                    "max-w-[80%] rounded-lg p-3",
+                                    "max-w-[80%] rounded-2xl border p-3 shadow-sm",
                                     message.role === 'assistant'
-                                        ? "bg-muted"
-                                        : "bg-primary text-primary-foreground"
+                                        ? "border-slate-200 bg-white text-slate-800"
+                                        : "border-[#006688] bg-[#006688] text-white"
                                 )}
                             >
                                 <p className="text-sm whitespace-pre-line">
@@ -389,15 +389,15 @@ export function AIChatPanel({
                     {isAssistantTyping && (
                         <div className="flex items-start space-x-3">
                             <Avatar className="h-8 w-8">
-                                <AvatarFallback className="bg-gradient-to-br from-purple-500 to-blue-500 text-white">
+                                <AvatarFallback className="bg-[#006688] text-white">
                                     <Bot className="h-4 w-4" />
                                 </AvatarFallback>
                             </Avatar>
-                            <div className="bg-muted rounded-lg p-3">
+                            <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
                                 <div className="flex space-x-1">
-                                    <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" />
-                                    <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce delay-100" />
-                                    <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce delay-200" />
+                                    <div className="h-2 w-2 animate-bounce rounded-full bg-slate-400" />
+                                    <div className="h-2 w-2 animate-bounce rounded-full bg-slate-400 delay-100" />
+                                    <div className="h-2 w-2 animate-bounce rounded-full bg-slate-400 delay-200" />
                                 </div>
                             </div>
                         </div>
@@ -407,15 +407,15 @@ export function AIChatPanel({
                 </div>
 
                 {showSuggestions && (
-                    <div className="border-t p-4">
-                        <p className="text-xs text-muted-foreground mb-2">Suggested prompts:</p>
+                    <div className="border-t border-slate-200 bg-white p-4">
+                        <p className="mb-2 text-xs font-medium text-slate-500">Suggested prompts:</p>
                         <div className="grid grid-cols-2 gap-2">
                             {promptSuggestions.map((suggestion, index) => (
                                 <Button
                                     key={`prompt-${index}-${suggestion.substring(0, 10)}`}
                                     variant="outline"
                                     size="sm"
-                                    className="text-xs h-auto py-2 text-left justify-start"
+                                    className="h-auto justify-start rounded-xl border-slate-200 bg-slate-50 py-2 text-left text-xs text-slate-700 hover:border-[#b8ecff] hover:bg-[#f8fdff] hover:text-[#006688]"
                                     onClick={() => handleSuggestionClick(suggestion)}
                                 >
                                     {suggestion}
@@ -426,9 +426,9 @@ export function AIChatPanel({
                 )}
 
                 {!showSuggestions && followUpSuggestions.length > 0 && (
-                    <div className="border-t">
+                    <div className="border-t border-slate-200 bg-white">
                         <div className="flex items-center justify-between gap-3 px-4 py-2.5">
-                            <p className="text-xs text-muted-foreground">Follow-up suggestions</p>
+                            <p className="text-xs font-medium text-slate-500">Follow-up suggestions</p>
                             <Button
                                 type="button"
                                 variant="ghost"
@@ -446,7 +446,7 @@ export function AIChatPanel({
                                         key={`followup-${index}-${suggestion.substring(0, 15)}`}
                                         variant="outline"
                                         size="sm"
-                                        className="text-xs h-auto py-2 px-3"
+                                        className="h-auto rounded-xl border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 hover:border-[#b8ecff] hover:bg-[#f8fdff] hover:text-[#006688]"
                                         onClick={() => setInput(suggestion)}
                                     >
                                         {suggestion}
@@ -457,7 +457,7 @@ export function AIChatPanel({
                     </div>
                 )}
 
-                <div className="border-t p-4">
+                <div className="border-t border-slate-200 bg-white p-4">
                     <div className="flex items-center space-x-2">
                         <Input
                             placeholder="Ask anything about this lesson..."
@@ -471,7 +471,7 @@ export function AIChatPanel({
                             size="icon"
                             onClick={handleSend}
                             disabled={!input.trim() || chatDisabled || isAssistantTyping}
-                            className="flex-shrink-0"
+                            className="flex-shrink-0 bg-[#006688] text-white hover:bg-[#0a7696]"
                         >
                             <Send className="h-4 w-4" />
                         </Button>

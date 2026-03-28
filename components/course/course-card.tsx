@@ -27,21 +27,21 @@ export function CourseCard({ course, progress, showProgress = false, actions }: 
     const defaultThumbnail = 'https://placehold.co/800x450/0f172a/ffffff?text=Course'
 
     return (
-        <Card className="overflow-hidden hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
-            <div className="aspect-video relative overflow-hidden">
+        <Card className="group relative overflow-hidden border border-transparent transition-all duration-300 hover:border-[#00c2ff]/10 hover:shadow-xl hover:shadow-[#006688]/5">
+            <div className="relative aspect-video overflow-hidden rounded-t-2xl bg-slate-100">
                 <img
                     src={course.thumbnail || defaultThumbnail}
                     alt={course.title}
                     className="object-cover w-full h-full hover:scale-105 transition-transform duration-300"
                 />
                 <div className="absolute top-2 right-2">
-                    <Badge variant="secondary" className="bg-white/90 backdrop-blur-sm">
+                    <Badge variant="secondary" className="bg-white/90">
                         {levelLabel}
                     </Badge>
                 </div>
             </div>
 
-            <CardHeader>
+            <CardHeader className="space-y-3">
                 <div className="flex items-start justify-between gap-2">
                     <Badge variant="outline">{course.category}</Badge>
                     <div className="flex items-center text-sm">
@@ -49,7 +49,7 @@ export function CourseCard({ course, progress, showProgress = false, actions }: 
                         <span className="font-medium">{course.rating}</span>
                     </div>
                 </div>
-                <CardTitle className="text-xl line-clamp-2 mt-2">{course.title}</CardTitle>
+                <CardTitle className="mt-1 line-clamp-2 text-xl group-hover:text-[#006688]">{course.title}</CardTitle>
                 <CardDescription className="line-clamp-2">{course.description}</CardDescription>
             </CardHeader>
 

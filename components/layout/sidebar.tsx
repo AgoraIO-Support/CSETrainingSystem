@@ -53,23 +53,31 @@ export function Sidebar({ user }: SidebarProps) {
     const isAdmin = user?.role === 'ADMIN'
 
     return (
-        <div className="flex h-screen w-64 flex-col border-r bg-card">
-            <div className="flex h-16 items-center border-b px-6">
-                <Link href="/" className="flex items-center space-x-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+        <div className="hidden h-screen w-64 flex-col border-r border-slate-200/30 bg-slate-50 pt-20 lg:flex">
+            <div className="mb-8 px-4">
+                <h2 className="mb-4 px-2 text-[11px] font-bold uppercase tracking-[0.22em] text-muted-foreground/70">
+                    {isAdmin ? 'Admin Workspace' : 'Learning Workspace'}
+                </h2>
+                <Link href="/" className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#006688_0%,#00c2ff_100%)] text-primary-foreground shadow-lg shadow-[#006688]/15">
                         <GraduationCap className="h-5 w-5" />
                     </div>
-                    <span className="font-bold text-lg">CSE Training</span>
+                    <div>
+                        <span className="block text-sm font-bold tracking-[-0.02em] text-[#006688]">CSE Training</span>
+                        <span className="block text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                            {isAdmin ? 'Master Admin' : 'Team Member'}
+                        </span>
+                    </div>
                 </Link>
             </div>
 
-            <div className="flex-1 overflow-y-auto py-4">
-                <nav className="space-y-1 px-3">
+            <div className="flex-1 overflow-y-auto px-4 pb-6">
+                <nav className="space-y-5">
                     <div className="mb-4">
-                        <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                             Main
                         </p>
-                        <div className="mt-2 space-y-1">
+                        <div className="mt-3 space-y-1.5">
                             {navItems.map((item) => {
                                 const Icon = item.icon
                                 const isActive =
@@ -80,10 +88,10 @@ export function Sidebar({ user }: SidebarProps) {
                                         key={item.href}
                                         href={item.href}
                                         className={cn(
-                                            'flex items-center space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                                            'group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200',
                                             isActive
-                                                ? 'bg-primary text-primary-foreground'
-                                                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                                                ? 'border-r-2 border-[#006688] bg-white/70 font-semibold text-[#006688]'
+                                                : 'text-muted-foreground hover:bg-white/50 hover:text-[#006688]'
                                         )}
                                     >
                                         <Icon className="h-5 w-5" />
@@ -95,11 +103,11 @@ export function Sidebar({ user }: SidebarProps) {
                     </div>
 
                     {isAdmin && (
-                        <div className="mt-6">
-                            <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        <div className="mt-8">
+                            <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                                 Admin
                             </p>
-                            <div className="mt-2 space-y-1">
+                            <div className="mt-3 space-y-1.5">
                                 {adminNavItems.map((item) => {
                                     const Icon = item.icon
                                     const isActive =
@@ -108,12 +116,12 @@ export function Sidebar({ user }: SidebarProps) {
                                     return (
                                         <Link
                                             key={item.href}
-                                            href={item.href}
-                                            className={cn(
-                                                'flex items-center space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                                        href={item.href}
+                                        className={cn(
+                                                'group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200',
                                                 isActive
-                                                    ? 'bg-primary text-primary-foreground'
-                                                    : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                                                    ? 'border-r-2 border-[#006688] bg-white/70 font-semibold text-[#006688]'
+                                                    : 'text-muted-foreground hover:bg-white/50 hover:text-[#006688]'
                                             )}
                                         >
                                             <Icon className="h-5 w-5" />
@@ -127,10 +135,10 @@ export function Sidebar({ user }: SidebarProps) {
                 </nav>
             </div>
 
-            <div className="border-t p-4">
+            <div className="mt-auto border-t border-slate-200/60 p-4">
                 <Link
                     href="/settings"
-                    className="flex items-center space-x-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                    className="group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-muted-foreground transition-all hover:bg-white/50 hover:text-[#006688]"
                 >
                     <Settings className="h-5 w-5" />
                     <span>Settings</span>

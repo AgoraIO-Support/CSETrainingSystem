@@ -137,13 +137,18 @@ export default function AdminAnalyticsPage() {
         <DashboardLayout>
             <div className="space-y-6">
                 <div className="flex items-center justify-between flex-wrap gap-4">
-                    <div>
-                        <h1 className="text-3xl font-bold">Analytics Overview</h1>
-                        <p className="text-muted-foreground mt-1">Monitor platform health and engagement trends</p>
+                    <div className="space-y-2">
+                        <div className="inline-flex items-center rounded-full border border-[#b8ecff] bg-[#effbff] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[#006688]">
+                            Operations Overview
+                        </div>
+                        <div>
+                            <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Analytics Overview</h1>
+                            <p className="mt-1 text-sm text-slate-500">Monitor platform health, engagement signals, and learner progress trends.</p>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-sm">
                         <Select value={range} onValueChange={setRange}>
-                            <SelectTrigger className="w-36">
+                            <SelectTrigger className="w-36 border-slate-200 bg-slate-50">
                                 <SelectValue placeholder="Select range" />
                             </SelectTrigger>
                             <SelectContent>
@@ -154,7 +159,7 @@ export default function AdminAnalyticsPage() {
                                 ))}
                             </SelectContent>
                         </Select>
-                        <Button variant="outline" onClick={handleRefresh} disabled={loading}>
+                        <Button variant="outline" className="border-slate-200 bg-slate-50 text-slate-700 hover:border-[#b8ecff] hover:bg-[#f8fdff] hover:text-[#006688]" onClick={handleRefresh} disabled={loading}>
                             <RefreshCcw className="h-4 w-4 mr-2" />
                             Refresh
                         </Button>
@@ -162,13 +167,13 @@ export default function AdminAnalyticsPage() {
                 </div>
 
                 {loading && (
-                    <div className="flex items-center justify-center py-16">
+                    <div className="flex items-center justify-center rounded-3xl border border-slate-200 bg-white py-16 shadow-sm">
                         <Loader2 className="h-8 w-8 animate-spin text-primary" />
                     </div>
                 )}
 
                 {!loading && error && (
-                    <Card>
+                    <Card className="border border-slate-200 bg-white shadow-sm">
                         <CardContent className="py-10 text-center">
                             <p className="font-medium mb-2">Unable to load analytics</p>
                             <p className="text-sm text-muted-foreground mb-4">{error}</p>
@@ -180,64 +185,72 @@ export default function AdminAnalyticsPage() {
                 {!loading && !error && summary && (
                     <div className="space-y-6">
                         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                            <Card>
+                            <Card className="border border-slate-200 bg-white shadow-sm">
                                 <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                    <CardTitle className="text-sm font-medium">Total Users</CardTitle>
-                                    <Users className="h-4 w-4 text-muted-foreground" />
+                                    <CardTitle className="text-sm font-medium text-slate-600">Total Users</CardTitle>
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-[#006688]">
+                                        <Users className="h-4 w-4" />
+                                    </div>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="text-2xl font-bold">{summary.totalUsers.toLocaleString()}</div>
-                                    <p className="text-xs text-muted-foreground">Overall learner accounts</p>
+                                    <div className="text-3xl font-semibold tracking-tight text-slate-950">{summary.totalUsers.toLocaleString()}</div>
+                                    <p className="text-xs text-slate-500">Overall learner accounts</p>
                                 </CardContent>
                             </Card>
-                            <Card>
+                            <Card className="border border-slate-200 bg-white shadow-sm">
                                 <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                    <CardTitle className="text-sm font-medium">Active Users</CardTitle>
-                                    <Activity className="h-4 w-4 text-muted-foreground" />
+                                    <CardTitle className="text-sm font-medium text-slate-600">Active Users</CardTitle>
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-[#006688]">
+                                        <Activity className="h-4 w-4" />
+                                    </div>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="text-2xl font-bold">{summary.activeUsers.toLocaleString()}</div>
-                                    <p className="text-xs text-muted-foreground">Currently active accounts</p>
+                                    <div className="text-3xl font-semibold tracking-tight text-slate-950">{summary.activeUsers.toLocaleString()}</div>
+                                    <p className="text-xs text-slate-500">Currently active accounts</p>
                                 </CardContent>
                             </Card>
-                            <Card>
+                            <Card className="border border-slate-200 bg-white shadow-sm">
                                 <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                    <CardTitle className="text-sm font-medium">Published Courses</CardTitle>
-                                    <BookOpen className="h-4 w-4 text-muted-foreground" />
+                                    <CardTitle className="text-sm font-medium text-slate-600">Published Courses</CardTitle>
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-[#006688]">
+                                        <BookOpen className="h-4 w-4" />
+                                    </div>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="text-2xl font-bold">{summary.totalCourses.toLocaleString()}</div>
-                                    <p className="text-xs text-muted-foreground">Live training programs</p>
+                                    <div className="text-3xl font-semibold tracking-tight text-slate-950">{summary.totalCourses.toLocaleString()}</div>
+                                    <p className="text-xs text-slate-500">Live training programs</p>
                                 </CardContent>
                             </Card>
-                            <Card>
+                            <Card className="border border-slate-200 bg-white shadow-sm">
                                 <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                    <CardTitle className="text-sm font-medium">Completion Rate</CardTitle>
-                                    <Target className="h-4 w-4 text-muted-foreground" />
+                                    <CardTitle className="text-sm font-medium text-slate-600">Completion Rate</CardTitle>
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-[#006688]">
+                                        <Target className="h-4 w-4" />
+                                    </div>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="text-2xl font-bold">{summary.completionRate}%</div>
-                                    <p className="text-xs text-muted-foreground">Share of completed enrollments</p>
+                                    <div className="text-3xl font-semibold tracking-tight text-slate-950">{summary.completionRate}%</div>
+                                    <p className="text-xs text-slate-500">Share of completed enrollments</p>
                                 </CardContent>
                             </Card>
                         </div>
 
                         <div className="grid gap-6 lg:grid-cols-7">
-                            <Card className="lg:col-span-4">
+                            <Card className="border border-slate-200 bg-white shadow-sm lg:col-span-4">
                                 <CardHeader>
-                                    <CardTitle>Engagement Trend</CardTitle>
-                                    <CardDescription>Active users and enrollments over time</CardDescription>
+                                    <CardTitle className="text-slate-950">Engagement Trend</CardTitle>
+                                    <CardDescription className="text-slate-500">Active users and enrollments over time</CardDescription>
                                 </CardHeader>
                                 <CardContent className="h-[320px]">
                                     {activityData.length ? (
                                         <ResponsiveContainer width="100%" height="100%">
                                             <LineChart data={activityData}>
-                                                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                                                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                                                 <XAxis dataKey="date" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
                                                 <YAxis tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
                                                 <RechartsTooltip cursor={{ strokeDasharray: '4 4' }} />
-                                                <Line type="monotone" dataKey="activeUsers" stroke="#0ea5e9" strokeWidth={2} dot={false} />
-                                                <Line type="monotone" dataKey="newEnrollments" stroke="#16a34a" strokeWidth={2} dot={false} />
+                                                <Line type="monotone" dataKey="activeUsers" stroke="#006688" strokeWidth={2.5} dot={false} />
+                                                <Line type="monotone" dataKey="newEnrollments" stroke="#00c2ff" strokeWidth={2.5} dot={false} />
                                             </LineChart>
                                         </ResponsiveContainer>
                                     ) : (
@@ -248,21 +261,21 @@ export default function AdminAnalyticsPage() {
                                 </CardContent>
                             </Card>
 
-                            <Card className="lg:col-span-3">
+                            <Card className="border border-slate-200 bg-white shadow-sm lg:col-span-3">
                                 <CardHeader>
-                                    <CardTitle>AI & Platform Usage</CardTitle>
-                                    <CardDescription>Daily AI interactions vs. total views</CardDescription>
+                                    <CardTitle className="text-slate-950">AI & Platform Usage</CardTitle>
+                                    <CardDescription className="text-slate-500">Daily AI interactions vs. total views</CardDescription>
                                 </CardHeader>
                                 <CardContent className="h-[320px]">
                                     {activityData.length ? (
                                         <ResponsiveContainer width="100%" height="100%">
                                             <BarChart data={activityData}>
-                                                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                                                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                                                 <XAxis dataKey="date" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
                                                 <YAxis tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
                                                 <RechartsTooltip />
-                                                <Bar dataKey="totalViews" fill="#2563eb" radius={[4, 4, 0, 0]} />
-                                                <Bar dataKey="aiInteractions" fill="#a855f7" radius={[4, 4, 0, 0]} />
+                                                <Bar dataKey="totalViews" fill="#006688" radius={[6, 6, 0, 0]} />
+                                                <Bar dataKey="aiInteractions" fill="#00c2ff" radius={[6, 6, 0, 0]} />
                                             </BarChart>
                                         </ResponsiveContainer>
                                     ) : (
@@ -275,54 +288,54 @@ export default function AdminAnalyticsPage() {
                         </div>
 
                         <div className="grid gap-6 lg:grid-cols-2">
-                            <Card>
+                            <Card className="border border-slate-200 bg-white shadow-sm">
                                 <CardHeader>
                                     <div className="flex items-center justify-between">
                                         <div>
-                                            <CardTitle>Latest Snapshot</CardTitle>
-                                            <CardDescription>Most recent analytics record</CardDescription>
+                                            <CardTitle className="text-slate-950">Latest Snapshot</CardTitle>
+                                            <CardDescription className="text-slate-500">Most recent analytics record</CardDescription>
                                         </div>
                                         {latestActivity && (
-                                            <p className="text-xs text-muted-foreground">{formatDate(latestActivity.date)}</p>
+                                            <p className="text-xs text-slate-500">{formatDate(latestActivity.date)}</p>
                                         )}
                                     </div>
                                 </CardHeader>
                                 <CardContent>
                                     {latestActivity ? (
                                         <div className="grid grid-cols-2 gap-4 text-sm">
-                                            <div className="flex items-center space-x-3 border rounded-lg p-3">
-                                                <Users className="h-4 w-4 text-primary" />
+                                            <div className="flex items-center space-x-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                                                <Users className="h-4 w-4 text-[#006688]" />
                                                 <div>
-                                                    <p className="text-xs text-muted-foreground">Active Users</p>
-                                                    <p className="font-semibold">{latestActivity.activeUsers.toLocaleString()}</p>
+                                                    <p className="text-xs text-slate-500">Active Users</p>
+                                                    <p className="font-semibold text-slate-950">{latestActivity.activeUsers.toLocaleString()}</p>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center space-x-3 border rounded-lg p-3">
-                                                <BookOpen className="h-4 w-4 text-primary" />
+                                            <div className="flex items-center space-x-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                                                <BookOpen className="h-4 w-4 text-[#006688]" />
                                                 <div>
-                                                    <p className="text-xs text-muted-foreground">New Enrollments</p>
-                                                    <p className="font-semibold">{latestActivity.newEnrollments.toLocaleString()}</p>
+                                                    <p className="text-xs text-slate-500">New Enrollments</p>
+                                                    <p className="font-semibold text-slate-950">{latestActivity.newEnrollments.toLocaleString()}</p>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center space-x-3 border rounded-lg p-3">
-                                                <Target className="h-4 w-4 text-primary" />
+                                            <div className="flex items-center space-x-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                                                <Target className="h-4 w-4 text-[#006688]" />
                                                 <div>
-                                                    <p className="text-xs text-muted-foreground">Completed Courses</p>
-                                                    <p className="font-semibold">{latestActivity.completedCourses.toLocaleString()}</p>
+                                                    <p className="text-xs text-slate-500">Completed Courses</p>
+                                                    <p className="font-semibold text-slate-950">{latestActivity.completedCourses.toLocaleString()}</p>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center space-x-3 border rounded-lg p-3">
-                                                <Laptop className="h-4 w-4 text-primary" />
+                                            <div className="flex items-center space-x-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                                                <Laptop className="h-4 w-4 text-[#006688]" />
                                                 <div>
-                                                    <p className="text-xs text-muted-foreground">Total Views</p>
-                                                    <p className="font-semibold">{latestActivity.totalViews.toLocaleString()}</p>
+                                                    <p className="text-xs text-slate-500">Total Views</p>
+                                                    <p className="font-semibold text-slate-950">{latestActivity.totalViews.toLocaleString()}</p>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center space-x-3 border rounded-lg p-3 col-span-2">
-                                                <Cpu className="h-4 w-4 text-primary" />
+                                            <div className="col-span-2 flex items-center space-x-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                                                <Cpu className="h-4 w-4 text-[#006688]" />
                                                 <div>
-                                                    <p className="text-xs text-muted-foreground">AI Interactions</p>
-                                                    <p className="font-semibold">{latestActivity.aiInteractions.toLocaleString()}</p>
+                                                    <p className="text-xs text-slate-500">AI Interactions</p>
+                                                    <p className="font-semibold text-slate-950">{latestActivity.aiInteractions.toLocaleString()}</p>
                                                 </div>
                                             </div>
                                         </div>
@@ -332,28 +345,28 @@ export default function AdminAnalyticsPage() {
                                 </CardContent>
                             </Card>
 
-                            <Card>
+                            <Card className="border border-slate-200 bg-white shadow-sm">
                                 <CardHeader>
-                                    <CardTitle>Recent Activity</CardTitle>
-                                    <CardDescription>Chronological view of analytics entries</CardDescription>
+                                    <CardTitle className="text-slate-950">Recent Activity</CardTitle>
+                                    <CardDescription className="text-slate-500">Chronological view of analytics entries</CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     <div className="space-y-3 max-h-72 overflow-y-auto pr-2">
                                         {recentActivityData.map(entry => (
                                             <div
                                                 key={entry.id}
-                                                className="flex items-center justify-between rounded-lg border p-3 text-sm"
+                                                className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm"
                                             >
                                                 <div>
-                                                    <p className="font-medium">{formatDate(entry.date)}</p>
-                                                    <p className="text-xs text-muted-foreground">
+                                                    <p className="font-medium text-slate-900">{formatDate(entry.date)}</p>
+                                                    <p className="text-xs text-slate-500">
                                                         {entry.newEnrollments.toLocaleString()} new enrollments ·{' '}
                                                         {entry.aiInteractions.toLocaleString()} AI requests
                                                     </p>
                                                 </div>
                                                 <div className="text-right">
-                                                    <p className="font-semibold">{entry.activeUsers.toLocaleString()} active</p>
-                                                    <p className="text-xs text-muted-foreground">
+                                                    <p className="font-semibold text-slate-950">{entry.activeUsers.toLocaleString()} active</p>
+                                                    <p className="text-xs text-slate-500">
                                                         {entry.completedCourses.toLocaleString()} completions
                                                     </p>
                                                 </div>
@@ -367,22 +380,22 @@ export default function AdminAnalyticsPage() {
                             </Card>
                         </div>
 
-                        <Card>
+                        <Card className="border border-slate-200 bg-white shadow-sm">
                             <CardHeader>
                                 <div className="flex items-center justify-between gap-4 flex-wrap">
                                     <div>
-                                        <CardTitle>Learner Progress</CardTitle>
-                                        <CardDescription>
+                                        <CardTitle className="text-slate-950">Learner Progress</CardTitle>
+                                        <CardDescription className="text-slate-500">
                                             Review each learner&apos;s enrolled courses and per-course completion progress
                                         </CardDescription>
                                     </div>
                                     <div className="relative w-full sm:w-80">
-                                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                                         <Input
                                             value={learnerSearch}
                                             onChange={(event) => setLearnerSearch(event.target.value)}
                                             placeholder="Search learner or course"
-                                            className="pl-9"
+                                            className="border-slate-200 bg-slate-50 pl-9"
                                         />
                                     </div>
                                 </div>
@@ -397,33 +410,33 @@ export default function AdminAnalyticsPage() {
                                         {filteredLearnerProgress.map((learner) => (
                                             <details
                                                 key={learner.userId}
-                                                className="rounded-lg border bg-card p-4"
+                                                className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4"
                                                 open={filteredLearnerProgress.length <= 3}
                                             >
                                                 <summary className="cursor-pointer list-none">
                                                     <div className="flex items-start justify-between gap-4">
                                                         <div className="space-y-1">
                                                             <div className="flex items-center gap-2 flex-wrap">
-                                                                <p className="font-semibold">{learner.name}</p>
-                                                                <Badge variant="outline">{learner.status}</Badge>
+                                                                <p className="font-semibold text-slate-950">{learner.name}</p>
+                                                                <Badge variant="outline" className="border-slate-200 bg-white text-slate-600">{learner.status}</Badge>
                                                             </div>
-                                                            <p className="text-sm text-muted-foreground">{learner.email}</p>
-                                                            <p className="text-xs text-muted-foreground">
+                                                            <p className="text-sm text-slate-500">{learner.email}</p>
+                                                            <p className="text-xs text-slate-500">
                                                                 Last login: {learner.lastLoginAt ? formatDate(learner.lastLoginAt) : 'No login yet'}
                                                             </p>
                                                         </div>
                                                         <div className="grid gap-3 text-sm sm:grid-cols-3">
                                                             <div>
-                                                                <p className="text-xs text-muted-foreground">Enrollments</p>
-                                                                <p className="font-semibold">{learner.enrollmentCount}</p>
+                                                                <p className="text-xs text-slate-500">Enrollments</p>
+                                                                <p className="font-semibold text-slate-950">{learner.enrollmentCount}</p>
                                                             </div>
                                                             <div>
-                                                                <p className="text-xs text-muted-foreground">Completed</p>
-                                                                <p className="font-semibold">{learner.completedCourses}</p>
+                                                                <p className="text-xs text-slate-500">Completed</p>
+                                                                <p className="font-semibold text-slate-950">{learner.completedCourses}</p>
                                                             </div>
                                                             <div>
-                                                                <p className="text-xs text-muted-foreground">Average progress</p>
-                                                                <p className="font-semibold">{learner.averageProgress}%</p>
+                                                                <p className="text-xs text-slate-500">Average progress</p>
+                                                                <p className="font-semibold text-slate-950">{learner.averageProgress}%</p>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -436,23 +449,23 @@ export default function AdminAnalyticsPage() {
                                                         learner.courses.map((course) => (
                                                             <div
                                                                 key={`${learner.userId}-${course.courseId}`}
-                                                                className="rounded-md border p-3"
+                                                                className="rounded-2xl border border-slate-200 bg-white p-3"
                                                             >
                                                                 <div className="flex items-start justify-between gap-3">
                                                                     <div className="min-w-0 flex-1">
                                                                         <div className="flex items-center gap-2 flex-wrap">
-                                                                            <p className="font-medium">{course.title}</p>
-                                                                            <Badge variant="secondary">{course.status}</Badge>
+                                                                            <p className="font-medium text-slate-900">{course.title}</p>
+                                                                            <Badge variant="secondary" className="rounded-full border border-slate-200 bg-slate-50 text-slate-600">{course.status}</Badge>
                                                                         </div>
                                                                         <div className="mt-2">
-                                                                            <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+                                                                            <div className="mb-1 flex items-center justify-between text-xs text-slate-500">
                                                                                 <span>Progress</span>
                                                                                 <span>{course.progress}%</span>
                                                                             </div>
-                                                                            <Progress value={course.progress} className="h-2" />
+                                                                            <Progress value={course.progress} className="h-2 bg-slate-200" />
                                                                         </div>
                                                                     </div>
-                                                                    <div className="text-right text-xs text-muted-foreground">
+                                                                    <div className="text-right text-xs text-slate-500">
                                                                         <p>Enrolled {formatDate(course.enrolledAt)}</p>
                                                                         <p>
                                                                             Last active {course.lastAccessedAt ? formatDate(course.lastAccessedAt) : 'N/A'}

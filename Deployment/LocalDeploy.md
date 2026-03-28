@@ -372,3 +372,64 @@ podman run -d --name cselearning-worker --network cselearning \
 ### Important note about production builds
 
 Your local Apple Silicon machine should build `linux/arm64` for local testing only. Ubuntu production is `x86_64`, which means production images must be built as `linux/amd64`, ideally on Ubuntu or CI rather than through local cross-architecture emulation on the M2.
+
+## Appendix: Faster Local Web Iteration
+
+If you are only changing frontend or API code locally, you do **not** need to rebuild the `web` image every time. The fastest workflow is to run the Next.js dev server inside a Podman container with your source mounted into `/app`.
+
+### Option A: Hot reload web development container
+
+Use this when iterating on UI or web logic and you want changes to apply without rebuilding `localhost/cselearning-web:latest`.
+
+1) Create a persistent volume for `node_modules` and install dependencies once:
+
+```bash
+podman volume create cselearning-web-node_modules || true
+
+podman run --rm --network cselearning \
+  --env-file tmp/podman/local.env \
+  -v "$PWD:/app" \
+  -v cselearning-web-node_modules:/app/node_modules \
+  -w /app \
+  localhost/cselearning-migrator:latest \
+  npm ci --no-audit --no-fund
+```
+
+2) Start the hot reload dev server:
+
+```bash
+podman rm -f cselearning-web-dev || true
+podman run -d --name cselearning-web-dev --network cselearning -p 3000:3000 \
+  --env-file tmp/podman/local.env \
+  -v "$PWD:/app" \
+  -v cselearning-web-node_modules:/app/node_modules \
+  -w /app \
+  -e CSE_LOG=api,db,s3,knowledgecontext,openai,worker,transcriptprocessing \
+  -e CSE_WECOM_LOG_CONTENT=1 \
+  localhost/cselearning-migrator:latest \
+  npm run dev
+```
+
+3) Useful commands:
+
+```bash
+# watch logs
+podman logs -f cselearning-web-dev
+
+# stop the dev container
+podman rm -f cselearning-web-dev
+```
+
+Notes:
+- Re-run the `npm ci` step only when `package-lock.json` changes.
+- This is usually much faster than rebuilding the web image for every local change.
+
+### Option B: Build only the web image when you really need an image
+
+If you specifically need to verify production-like container behavior, build only the web target instead of rebuilding all images:
+
+```bash
+./scripts/podman/build-images.sh --profile dev --platform linux/arm64 --web-only --latest-alias
+```
+
+This is still slower than Option A, but faster than rebuilding `web`, `worker`, and `migrator` together.

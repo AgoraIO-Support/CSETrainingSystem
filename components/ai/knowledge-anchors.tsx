@@ -38,26 +38,26 @@ const anchorTypeConfig = {
     CONCEPT: {
         icon: Lightbulb,
         label: 'Concept',
-        color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
-        borderColor: 'border-l-blue-500',
+        color: 'bg-[#e8f8ff] text-[#006688]',
+        borderColor: 'border-l-[#00c2ff]',
     },
     EXAMPLE: {
         icon: Code,
         label: 'Example',
-        color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
-        borderColor: 'border-l-green-500',
+        color: 'bg-[#eef7f8] text-[#0f5f73]',
+        borderColor: 'border-l-[#0f5f73]',
     },
     DEMO: {
         icon: PlayCircle,
         label: 'Demo',
-        color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
-        borderColor: 'border-l-purple-500',
+        color: 'bg-[#eff6ff] text-[#1d4d8f]',
+        borderColor: 'border-l-[#1d4d8f]',
     },
     KEY_TAKEAWAY: {
         icon: Star,
         label: 'Key Takeaway',
-        color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
-        borderColor: 'border-l-amber-500',
+        color: 'bg-[#fff5dc] text-[#9a6a00]',
+        borderColor: 'border-l-[#d9a300]',
     },
 }
 
@@ -134,13 +134,15 @@ export function KnowledgeAnchors({
     }
 
     return (
-        <Card>
-            <CardHeader className="pb-3">
+        <Card className="overflow-hidden border border-slate-200 bg-white shadow-sm">
+            <CardHeader className="border-b border-slate-200 bg-white pb-3">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                        <Star className="h-5 w-5 text-amber-500" />
-                        <CardTitle className="text-base">Key Moments</CardTitle>
-                        <Badge variant="secondary" className="text-xs">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-[#006688]">
+                            <Star className="h-4 w-4" />
+                        </div>
+                        <CardTitle className="text-base font-semibold text-slate-900">Key Moments</CardTitle>
+                        <Badge variant="secondary" className="rounded-full border border-slate-200 bg-slate-50 text-[11px] text-slate-600">
                             {anchors.length}
                         </Badge>
                     </div>
@@ -164,7 +166,7 @@ export function KnowledgeAnchors({
                     {loading && (
                         <div className="space-y-2">
                             {[1, 2, 3, 4].map(i => (
-                                <Skeleton key={i} className="h-9 w-full" />
+                                <Skeleton key={i} className="h-11 w-full rounded-xl" />
                             ))}
                         </div>
                     )}
@@ -201,15 +203,15 @@ export function KnowledgeAnchors({
                                         onClick={() => handleAnchorClick(anchor)}
                                         title={tooltip}
                                         className={cn(
-                                            'w-full rounded-md border px-2.5 py-2 text-left transition-colors',
-                                            'hover:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-ring',
-                                            isCurrent && 'bg-muted/50 ring-1 ring-ring/30'
+                                            'w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-left transition-colors',
+                                            'hover:border-[#b8ecff] hover:bg-[#f8fdff] focus:outline-none focus:ring-2 focus:ring-[#00c2ff]/25',
+                                            isCurrent && 'border-[#7ddfff] bg-[#effbff] ring-1 ring-[#00c2ff]/20'
                                         )}
                                     >
                                         <div className="flex items-start gap-2 min-w-0">
                                             <Badge
                                                 variant="outline"
-                                                className={cn('shrink-0 text-[10px] px-1.5 py-0.5', config.color)}
+                                                className={cn('shrink-0 border-0 px-1.5 py-0.5 text-[10px]', config.color)}
                                             >
                                                 <span className="inline-flex items-center gap-1">
                                                     <Icon className="h-3 w-3" />
@@ -217,19 +219,19 @@ export function KnowledgeAnchors({
                                                 </span>
                                             </Badge>
 
-                                            <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                                            <span className="shrink-0 text-xs text-slate-500 tabular-nums">
                                                 <span className="inline-flex items-center gap-1">
                                                     <Clock className="h-3 w-3" />
                                                     {anchor.timestampStr}
                                                 </span>
                                             </span>
 
-                                            <span className="min-w-0 flex-1 whitespace-normal break-words text-sm font-medium leading-5">
+                                            <span className="min-w-0 flex-1 whitespace-normal break-words text-sm font-medium leading-5 text-slate-800">
                                                 {safeTitle}
                                             </span>
 
                                             {isCurrent && (
-                                                <Badge variant="default" className="shrink-0 text-[10px] px-1.5 py-0.5">
+                                                <Badge variant="default" className="shrink-0 bg-[#006688] px-1.5 py-0.5 text-[10px] text-white">
                                                     Now
                                                 </Badge>
                                             )}

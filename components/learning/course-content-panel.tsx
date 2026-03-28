@@ -124,22 +124,26 @@ export function CourseContentPanel({
     const progressPercent = totalLessons > 0 ? (completedCount / totalLessons) * 100 : 0
 
     return (
-        <Card className={cn("h-full flex flex-col", className)}>
-            <CardHeader className="border-b flex-shrink-0 space-y-3">
+        <Card className={cn("h-full flex flex-col rounded-none border-0 bg-slate-50 shadow-none", className)}>
+            <CardHeader className="flex-shrink-0 space-y-4 border-b border-slate-200 bg-slate-50 px-5 py-5">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                        <BookOpen className="h-5 w-5" />
-                        <CardTitle>Course Content</CardTitle>
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-[#006688]">
+                            <BookOpen className="h-4 w-4" />
+                        </div>
+                        <div>
+                            <CardTitle className="text-xl font-semibold tracking-tight text-slate-950">Course Content</CardTitle>
+                        </div>
                     </div>
-                    <Badge variant="secondary">
+                    <Badge variant="secondary" className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700">
                         {completedCount}/{totalLessons} completed
                     </Badge>
                 </div>
-                <Progress value={progressPercent} className="h-2" />
+                <Progress value={progressPercent} className="h-1.5 rounded-full bg-slate-200" />
             </CardHeader>
 
             <CardContent className="flex-1 overflow-y-auto p-0">
-                <div className="divide-y">
+                <div className="divide-y divide-slate-200">
                     {chapters.map((chapter, chapterIdx) => {
                         const isChapterExpanded = expandedChapters.has(chapter.id)
                         const chapterLessonsCompleted = chapter.lessons.filter(
@@ -154,18 +158,19 @@ export function CourseContentPanel({
                                 {/* Chapter Header */}
                                 <button
                                     onClick={() => toggleChapter(chapter.id)}
-                                    className="w-full flex items-center justify-between p-4 hover:bg-accent transition-colors text-left"
+                                    className="w-full text-left transition-colors hover:bg-white/70"
                                 >
+                                    <div className="flex items-center justify-between gap-3 px-5 py-4">
                                     <div className="flex items-center gap-3 flex-1 min-w-0">
                                         <div className="flex-shrink-0">
                                             {isChapterExpanded ? (
-                                                <ChevronDown className="h-4 w-4" />
+                                                <ChevronDown className="h-4 w-4 text-slate-500" />
                                             ) : (
-                                                <ChevronRight className="h-4 w-4" />
+                                                <ChevronRight className="h-4 w-4 text-slate-500" />
                                             )}
                                         </div>
-                                        <FolderOpen className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-                                        <span className="font-medium truncate">
+                                        <FolderOpen className="h-4 w-4 flex-shrink-0 text-[#006688]" />
+                                        <span className="truncate font-medium text-slate-900">
                                             {chapterIdx + 1}. {chapter.title}
                                         </span>
                                     </div>
@@ -173,16 +178,17 @@ export function CourseContentPanel({
                                         {chapterProgress === 100 ? (
                                             <CheckCircle className="h-4 w-4 text-green-500" />
                                         ) : (
-                                            <Badge variant="outline" className="text-xs">
+                                            <Badge variant="outline" className="rounded-full border-slate-200 bg-white text-[11px] text-slate-600">
                                                 {chapterLessonsCompleted}/{chapter.lessons.length}
                                             </Badge>
                                         )}
+                                    </div>
                                     </div>
                                 </button>
 
                                 {/* Lessons */}
                                 {isChapterExpanded && (
-                                    <div className="bg-muted/30">
+                                    <div className="bg-white/65">
                                         {chapter.lessons.map((lesson) => {
                                             const isLessonExpanded = expandedLessons.has(lesson.id)
                                             const isCurrentLesson = lesson.id === currentLessonId
@@ -194,10 +200,10 @@ export function CourseContentPanel({
                                                     {/* Lesson Header */}
                                                     <div
                                                         className={cn(
-                                                            "flex items-center pl-8 pr-4 py-3 border-l-2 transition-colors",
+                                                            "flex items-center border-l-[3px] pl-8 pr-4 py-3 transition-colors",
                                                             isCurrentLesson
-                                                                ? "border-l-primary bg-primary/5"
-                                                                : "border-l-transparent hover:bg-accent"
+                                                                ? "border-l-[#00c2ff] bg-[#eefbff]"
+                                                                : "border-l-transparent hover:bg-slate-50"
                                                         )}
                                                     >
                                                         <button
@@ -213,12 +219,12 @@ export function CourseContentPanel({
                                                                 {isCompleted ? (
                                                                     <CheckCircle className="h-4 w-4 text-green-500" />
                                                                 ) : (
-                                                                    <PlayCircle className="h-4 w-4 text-muted-foreground" />
+                                                                    <PlayCircle className="h-4 w-4 text-slate-400" />
                                                                 )}
                                                             </div>
                                                             <span className={cn(
-                                                                "text-sm truncate",
-                                                                isCurrentLesson && "font-medium"
+                                                                "truncate text-sm text-slate-700",
+                                                                isCurrentLesson && "font-medium text-[#006688]"
                                                             )}>
                                                                 {lesson.title}
                                                             </span>
@@ -246,7 +252,7 @@ export function CourseContentPanel({
 
                                                     {/* Lesson Assets */}
                                                     {isLessonExpanded && hasAssets && (
-                                                        <div className="pl-16 pr-4 pb-2 space-y-1 bg-muted/20">
+                                                        <div className="space-y-1 bg-slate-50/80 pb-3 pl-16 pr-4">
                                                             {lesson.assets?.map((asset) => {
                                                                 const isCurrentAsset = asset.id === currentAssetId
 
@@ -255,19 +261,24 @@ export function CourseContentPanel({
                                                                         key={asset.id}
                                                                         onClick={() => onAssetSelect(asset, lesson)}
                                                                         className={cn(
-                                                                            "w-full flex items-center gap-2 p-2 rounded text-left transition-colors",
+                                                                            "flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left transition-colors",
                                                                             isCurrentAsset
-                                                                                ? "bg-primary/10 text-primary"
-                                                                                : "hover:bg-accent"
+                                                                                ? "border-[#b8ecff] bg-[#e9f9ff] text-[#006688]"
+                                                                                : "border-transparent bg-white text-slate-600 hover:border-slate-200 hover:bg-white"
                                                                         )}
                                                                     >
                                                                         {getAssetIcon(asset.type)}
-                                                                        <span className="text-xs truncate flex-1">
+                                                                        <span className="flex-1 truncate text-xs font-medium">
                                                                             {asset.title}
                                                                         </span>
                                                                         <Badge
                                                                             variant={isCurrentAsset ? "default" : "outline"}
-                                                                            className="text-[10px] px-1.5"
+                                                                            className={cn(
+                                                                                "px-1.5 text-[10px]",
+                                                                                isCurrentAsset
+                                                                                    ? "bg-[#006688] text-white"
+                                                                                    : "border-slate-200 bg-slate-50 text-slate-500"
+                                                                            )}
                                                                         >
                                                                             {asset.type}
                                                                         </Badge>

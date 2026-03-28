@@ -618,39 +618,40 @@ export default function LessonPage({
     }
 
     return (
-        <div className="h-screen flex flex-col bg-background">
+        <div className="flex h-screen flex-col bg-[#f8f9fa] text-slate-900">
             {/* Header */}
-            <div className="border-b bg-card flex-shrink-0">
-                <div className="flex items-center justify-between p-3">
+            <div className="flex-shrink-0 border-b border-slate-200 bg-white">
+                <div className="flex items-center justify-between gap-4 px-4 py-3">
                     <div className="flex items-center space-x-3">
                         <Button
                             variant="ghost"
                             size="icon"
+                            className="text-slate-600 hover:bg-slate-100 hover:text-[#006688]"
                             title={showSidebar ? 'Hide course content' : 'Show course content'}
                             onClick={() => setShowSidebar(!showSidebar)}
                         >
                             {showSidebar ? <PanelLeftClose className="h-5 w-5" /> : <PanelLeft className="h-5 w-5" />}
                         </Button>
                         <Link href="/">
-                            <Button variant="ghost" size="icon">
+                            <Button variant="ghost" size="icon" className="text-slate-600 hover:bg-slate-100 hover:text-[#006688]">
                                 <Home className="h-5 w-5" />
                             </Button>
                         </Link>
                         <Link href={`/courses/${course?.slug ?? courseId}`}>
-                            <Button variant="ghost" size="sm">
+                            <Button variant="ghost" size="sm" className="text-slate-700 hover:bg-slate-100 hover:text-[#006688]">
                                 <List className="h-4 w-4 mr-2" />
                                 Course Home
                             </Button>
                         </Link>
                         <div className="hidden sm:block">
-                            <h1 className="font-semibold text-sm line-clamp-1">{lesson.title}</h1>
-                            <p className="text-xs text-muted-foreground line-clamp-1">{course.title}</p>
+                            <h1 className="line-clamp-1 text-sm font-semibold text-slate-950">{lesson.title}</h1>
+                            <p className="line-clamp-1 text-xs text-slate-500">{course.title}</p>
                         </div>
                     </div>
                     <div className="flex items-center space-x-3">
                         <div className="hidden md:flex items-center space-x-2">
-                            <Progress value={progressPercent} className="w-24" />
-                            <span className="text-xs font-medium">{Math.round(progressPercent)}%</span>
+                            <Progress value={progressPercent} className="w-24 bg-slate-200" />
+                            <span className="text-xs font-medium text-slate-700">{Math.round(progressPercent)}%</span>
                         </div>
 
                         {/* AI Chat toggle */}
@@ -658,6 +659,11 @@ export default function LessonPage({
                             <Button
                                 variant={showAIChat ? "default" : "outline"}
                                 size="sm"
+                                className={cn(
+                                    showAIChat
+                                        ? "bg-[#006688] text-white hover:bg-[#0a7696]"
+                                        : "border-slate-200 bg-slate-50 text-slate-700 hover:border-[#b8ecff] hover:bg-[#f8fdff] hover:text-[#006688]"
+                                )}
                                 onClick={() => {
                                     if (!showAIChat) {
                                         handleOpenAIChat()
@@ -677,18 +683,18 @@ export default function LessonPage({
 
                         {/* Lesson completion status */}
                         {lessonCompleted ? (
-                            <Badge className="bg-green-500 hidden sm:flex">
+                            <Badge className="hidden bg-green-600 text-white sm:flex">
                                 <CheckCircle className="h-3 w-3 mr-1" />
                                 Completed
                             </Badge>
                         ) : (
-                            <Button size="sm" variant="outline" onClick={handleMarkComplete}>
+                            <Button size="sm" variant="outline" className="border-slate-200 bg-slate-50 text-slate-700 hover:border-[#b8ecff] hover:bg-[#f8fdff] hover:text-[#006688]" onClick={handleMarkComplete}>
                                 <CheckCircle className="h-4 w-4 mr-1" />
                                 <span className="hidden sm:inline">Mark Complete</span>
                             </Button>
                         )}
 
-                        <Button variant="outline" size="sm" onClick={() => ApiClient.logout()}>
+                        <Button variant="outline" size="sm" className="border-slate-200 bg-slate-50 text-slate-700 hover:border-[#b8ecff] hover:bg-[#f8fdff] hover:text-[#006688]" onClick={() => ApiClient.logout()}>
                             <LogOut className="h-4 w-4 mr-1" />
                             <span className="hidden sm:inline">Logout</span>
                         </Button>
@@ -701,7 +707,7 @@ export default function LessonPage({
                 {/* Sidebar - Course Content Panel */}
                 <div
                     className={cn(
-                        "relative flex-shrink-0 border-r bg-card overflow-hidden transition-[transform,width] duration-300",
+                        "relative flex-shrink-0 overflow-hidden border-r border-slate-200 bg-slate-50 transition-[transform,width] duration-300",
                         isResizingSidebar ? "transition-none" : null,
                         showSidebar ? "translate-x-0" : "-translate-x-full lg:translate-x-0 lg:border-0"
                     )}
@@ -713,7 +719,7 @@ export default function LessonPage({
                             aria-label="Resize course content panel"
                             aria-orientation="vertical"
                             tabIndex={0}
-                            className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-border/60 focus:outline-none focus:ring-2 focus:ring-ring"
+                            className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-slate-300/70 focus:outline-none focus:ring-2 focus:ring-[#00c2ff]/30"
                             onPointerDown={(e) => {
                                 if (e.button !== 0) return
                                 sidebarResizeStateRef.current = { startX: e.clientX, startWidth: sidebarWidth }
@@ -744,7 +750,7 @@ export default function LessonPage({
                 {/* Main Content Area */}
                 <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
                     <div className="flex-1 overflow-y-auto">
-                        <div className="p-4 lg:p-6 space-y-4">
+                        <div className="space-y-5 p-4 lg:p-6">
                             {progressError && (
                                 <Alert variant="destructive">
                                     <AlertDescription>{progressError}</AlertDescription>
@@ -755,7 +761,7 @@ export default function LessonPage({
                             <div className="flex items-center justify-between">
                                 {prevLesson ? (
                                     <Link href={`/learn/${courseId}/${prevLesson.id}`}>
-                                        <Button variant="outline" size="sm">
+                                        <Button variant="outline" size="sm" className="border-slate-200 bg-white text-slate-700 hover:border-[#b8ecff] hover:bg-[#f8fdff] hover:text-[#006688]">
                                             <ChevronLeft className="h-4 w-4 mr-1" />
                                             <span className="hidden sm:inline">Previous</span>
                                         </Button>
@@ -765,7 +771,7 @@ export default function LessonPage({
                                 )}
                                 {nextLesson ? (
                                     <Link href={`/learn/${courseId}/${nextLesson.id}`}>
-                                        <Button variant="outline" size="sm">
+                                        <Button variant="outline" size="sm" className="border-slate-200 bg-white text-slate-700 hover:border-[#b8ecff] hover:bg-[#f8fdff] hover:text-[#006688]">
                                             <span className="hidden sm:inline">Next</span>
                                             <ChevronRight className="h-4 w-4 ml-1" />
                                         </Button>
@@ -776,35 +782,37 @@ export default function LessonPage({
                             </div>
 
                             {/* Main Content (Video/Asset Viewer) */}
-                            <div className="rounded-lg overflow-hidden">
+                            <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
                                 {renderMainContent()}
                             </div>
 
                             {/* Lesson Info */}
-                            <div className="space-y-2">
+                            <div className="rounded-[24px] border border-slate-200 bg-white p-6 shadow-sm">
+                                <div className="space-y-4">
                                 <div className="flex items-start justify-between gap-4">
                                     <div>
-                                        <h2 className="text-xl font-bold">{lesson.title}</h2>
-                                        <p className="text-sm text-muted-foreground">
+                                        <h2 className="text-2xl font-semibold tracking-tight text-slate-950">{lesson.title}</h2>
+                                        <p className="text-sm text-slate-500">
                                             {course.chapters?.find(ch => ch.lessons.some(l => l.id === lesson.id))?.title}
                                         </p>
                                     </div>
                                 </div>
 
                                 {lesson.description && (
-                                    <p className="text-muted-foreground text-sm">{lesson.description}</p>
+                                    <p className="text-sm leading-6 text-slate-600">{lesson.description}</p>
                                 )}
 
                                 {lesson.learningObjectives && lesson.learningObjectives.length > 0 && (
                                     <div className="mt-4">
-                                        <h3 className="text-sm font-semibold mb-2">Learning Objectives</h3>
-                                        <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
+                                        <h3 className="mb-2 text-sm font-semibold uppercase tracking-[0.16em] text-[#006688]">Learning Objectives</h3>
+                                        <ul className="list-disc list-inside space-y-1 text-sm text-slate-600">
                                             {lesson.learningObjectives.map((obj, idx) => (
                                                 <li key={`objective-${idx}-${obj.substring(0, 20)}`}>{obj}</li>
                                             ))}
                                         </ul>
                                     </div>
                                 )}
+                                </div>
                             </div>
 
                         </div>
@@ -816,10 +824,10 @@ export default function LessonPage({
                     <>
                         {showAIChat && aiPanelMode === 'maximized' ? (
                             <>
-                                <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px]" />
+                                <div className="fixed inset-0 z-40 bg-slate-900/16" />
                                 <div className="fixed inset-x-4 bottom-4 top-20 z-50">
                                     <AIChatPanel
-                                        className="h-full overflow-hidden rounded-xl border shadow-2xl"
+                                        className="h-full overflow-hidden rounded-[28px] border border-slate-200 shadow-2xl"
                                         courseId={courseId}
                                         lessonId={lesson.id}
                                         lessonTitle={lesson.title}
@@ -862,7 +870,7 @@ export default function LessonPage({
                         ) : (
                             <div
                                 className={cn(
-                                    "relative flex-shrink-0 border-l bg-card overflow-hidden transition-[transform,width] duration-300",
+                                    "relative flex-shrink-0 overflow-hidden border-l border-slate-200 bg-white transition-[transform,width] duration-300",
                                     isResizingAiPanel ? "transition-none" : null,
                                     showAIChat && aiPanelMode === 'default' ? "translate-x-0" : "translate-x-full border-0"
                                 )}
@@ -874,7 +882,7 @@ export default function LessonPage({
                                         aria-label="Resize AI panel"
                                         aria-orientation="vertical"
                                         tabIndex={0}
-                                        className="absolute left-0 top-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-border/60 focus:outline-none focus:ring-2 focus:ring-ring"
+                                        className="absolute left-0 top-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-slate-300/70 focus:outline-none focus:ring-2 focus:ring-[#00c2ff]/30"
                                         onPointerDown={(e) => {
                                             if (e.button !== 0) return
                                             aiPanelResizeStateRef.current = { startX: e.clientX, startWidth: aiPanelWidth }
@@ -938,7 +946,7 @@ export default function LessonPage({
                         {showAIChat && aiPanelMode === 'minimized' ? (
                             <div className="fixed bottom-4 right-4 z-40">
                                 <Button
-                                    className="h-11 rounded-full px-4 shadow-lg"
+                                    className="h-11 rounded-full bg-[#006688] px-4 text-white shadow-lg hover:bg-[#0a7696]"
                                     onClick={handleRestoreAIChat}
                                 >
                                     <MessageSquare className="mr-2 h-4 w-4" />

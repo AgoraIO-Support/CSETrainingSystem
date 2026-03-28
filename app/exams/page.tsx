@@ -152,65 +152,95 @@ export default function ExamsPage() {
 
     return (
         <DashboardLayout>
-            <div className="space-y-6">
-                <div>
-                    <h1 className="text-3xl font-bold">My Exams</h1>
-                    <p className="text-muted-foreground mt-1">
-                        View available exams and track your progress
-                    </p>
+            <div className="space-y-8">
+                <div className="grid gap-6 xl:grid-cols-[1.75fr_1fr]">
+                    <Card className="overflow-hidden">
+                        <CardContent className="p-7 md:p-8">
+                            <div className="space-y-4">
+                                <Badge className="w-fit">Assessment Workspace</Badge>
+                                <div className="space-y-3">
+                                    <h1 className="text-3xl font-semibold tracking-[-0.04em] md:text-4xl">
+                                        My exams
+                                    </h1>
+                                    <p className="max-w-2xl text-sm leading-7 text-muted-foreground md:text-base">
+                                        Review assigned assessments, track attempts, and open graded results from one streamlined queue.
+                                    </p>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader className="pb-3">
+                            <CardTitle className="text-lg">Current status</CardTitle>
+                            <CardDescription>Snapshot of your exam workload</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            <div className="rounded-2xl border border-slate-200/70 bg-slate-50 p-4">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                    Available now
+                                </p>
+                                <p className="mt-2 text-3xl font-semibold tracking-[-0.04em]">{availableExams.length}</p>
+                            </div>
+                            <div className="rounded-2xl border border-slate-200/70 bg-slate-50 p-4">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                    Passed
+                                </p>
+                                <p className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-emerald-700">{passedCount}</p>
+                            </div>
+                        </CardContent>
+                    </Card>
                 </div>
 
                 {error && (
-                    <div className="p-4 bg-destructive/10 text-destructive rounded-lg flex items-center gap-2">
+                    <div className="flex items-center gap-2 rounded-2xl border border-destructive/15 bg-destructive/5 p-4 text-destructive">
                         <XCircle className="h-4 w-4" />
                         {error}
                     </div>
                 )}
 
-                {/* Stats */}
                 <div className="grid gap-4 md:grid-cols-3">
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-sm font-medium">Available Exams</CardTitle>
-                            <FileQuestion className="h-4 w-4 text-muted-foreground" />
+                            <CardTitle className="text-sm font-semibold">Available Exams</CardTitle>
+                            <FileQuestion className="h-4 w-4 text-primary" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">{availableExams.length}</div>
+                            <div className="text-3xl font-semibold tracking-[-0.04em]">{availableExams.length}</div>
                         </CardContent>
                     </Card>
 
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-sm font-medium">Exams Passed</CardTitle>
-                            <Trophy className="h-4 w-4 text-muted-foreground" />
+                            <CardTitle className="text-sm font-semibold">Exams Passed</CardTitle>
+                            <Trophy className="h-4 w-4 text-primary" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold text-green-600">{passedCount}</div>
+                            <div className="text-3xl font-semibold tracking-[-0.04em] text-emerald-700">{passedCount}</div>
                         </CardContent>
                     </Card>
 
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-sm font-medium">Total Attempts</CardTitle>
-                            <Play className="h-4 w-4 text-muted-foreground" />
+                            <CardTitle className="text-sm font-semibold">Total Attempts</CardTitle>
+                            <Play className="h-4 w-4 text-primary" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">
+                            <div className="text-3xl font-semibold tracking-[-0.04em]">
                                 {exams.reduce((sum, e) => sum + (e.userAttempts ?? 0), 0)}
                             </div>
                         </CardContent>
                     </Card>
                 </div>
 
-                {/* Exam List */}
                 <Card>
                     <CardHeader>
-                        <CardTitle>Assigned Exams</CardTitle>
-                        <CardDescription>Exams assigned to you, including expired ones</CardDescription>
+                        <CardTitle>Assigned exams</CardTitle>
+                        <CardDescription>All assigned assessments, including historical and expired items.</CardDescription>
                     </CardHeader>
                     <CardContent>
                         {exams.length === 0 ? (
-                            <div className="text-center py-12">
+                            <div className="py-12 text-center">
                                 <FileQuestion className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                                 <p className="text-muted-foreground">No exams available at this time</p>
                             </div>
@@ -219,13 +249,13 @@ export default function ExamsPage() {
                                 {exams.map(exam => (
                                     <div
                                         key={exam.id}
-                                        className="flex items-start justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors"
+                                        className="flex flex-col gap-4 rounded-[1.35rem] border border-slate-200/70 bg-white p-5 transition-all duration-200 hover:border-[#00c2ff]/10 hover:shadow-lg hover:shadow-[#006688]/5 md:flex-row md:items-start md:justify-between"
                                     >
                                         <div className="flex-1">
                                             <div className="flex items-center gap-3 mb-2">
-                                                <h3 className="font-semibold text-lg">{exam.title}</h3>
+                                                <h3 className="text-lg font-semibold tracking-[-0.03em]">{exam.title}</h3>
                                                 {exam.hasPassed && (
-                                                    <Badge className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-200">
+                                                    <Badge className="border-emerald-200 bg-emerald-100 text-emerald-800 dark:bg-green-900/20 dark:text-green-200">
                                                         <CheckCircle className="h-3 w-3 mr-1" />
                                                         Passed
                                                     </Badge>
@@ -296,15 +326,15 @@ export default function ExamsPage() {
                                             )}
 
                                             {exam.attemptResults && exam.attemptResults.length > 0 && (
-                                                <div className="mt-4 rounded-lg border bg-muted/30 p-3">
-                                                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                                <div className="mt-4 rounded-2xl border border-slate-200/70 bg-slate-50 p-4">
+                                                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                                                         Attempt Results
                                                     </p>
                                                     <div className="mt-3 space-y-2">
                                                         {exam.attemptResults.map((attempt) => (
                                                             <div
                                                                 key={attempt.id}
-                                                                className="flex flex-col gap-2 rounded-md border bg-background px-3 py-2 md:flex-row md:items-center md:justify-between"
+                                                                className="flex flex-col gap-2 rounded-2xl border border-border/70 bg-white/80 px-4 py-3 md:flex-row md:items-center md:justify-between"
                                                             >
                                                                 <div className="flex flex-wrap items-center gap-2 text-sm">
                                                                     <span className="font-medium">
@@ -345,9 +375,10 @@ export default function ExamsPage() {
                                             )}
                                         </div>
 
-                                        <div className="ml-4 pt-1">
+                                        <div className="pt-1 md:ml-4">
                                             <Link href={`/exams/${exam.id}`}>
                                                 <Button
+                                                    className="w-full md:w-auto"
                                                     disabled={isDeadlinePassed(exam.deadline) || (exam.userAttempts ?? 0) >= exam.maxAttempts && !exam.hasPassed}
                                                 >
                                                     {isDeadlinePassed(exam.deadline) ? (
@@ -380,17 +411,17 @@ export default function ExamsPage() {
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
-                                <Trophy className="h-5 w-5 text-yellow-500" />
-                                Completed Exams
+                                <Trophy className="h-5 w-5 text-primary" />
+                                Completed exams
                             </CardTitle>
-                            <CardDescription>Exams you have passed</CardDescription>
+                            <CardDescription>Assessments already cleared.</CardDescription>
                         </CardHeader>
                         <CardContent>
                             <div className="space-y-3">
                                 {completedExams.map(exam => (
                                     <div
                                         key={exam.id}
-                                        className="flex items-center justify-between p-3 border rounded-lg bg-green-50 dark:bg-green-900/10"
+                                        className="flex items-center justify-between rounded-2xl border border-emerald-100 bg-emerald-50/80 p-4 dark:bg-green-900/10"
                                     >
                                         <div className="flex items-center gap-3">
                                             <CheckCircle className="h-5 w-5 text-green-600" />
