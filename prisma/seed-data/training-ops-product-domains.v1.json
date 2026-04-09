@@ -1,0 +1,84 @@
+{
+  "version": 1,
+  "scopeModel": "PRODUCT_DOMAIN",
+  "items": [
+    {
+      "name": "Conversational AI",
+      "slug": "conversational-ai",
+      "category": "AI",
+      "track": "AGILE",
+      "kpiMode": "DELTA",
+      "description": "Fast-changing AI product area requiring frequent weekly drills and release readiness exercises.",
+      "cadence": "Weekly",
+      "active": true,
+      "baselinePassRate": 10,
+      "targetPassRate": 80,
+      "challengeThreshold": 50
+    },
+    {
+      "name": "RTC",
+      "slug": "rtc",
+      "category": "RTE",
+      "track": "MASTERY",
+      "kpiMode": "RETENTION",
+      "description": "Core RTC support domain focused on recurring case studies, troubleshooting readiness, and sustained pass-rate health.",
+      "cadence": "Weekly",
+      "active": true,
+      "baselinePassRate": 70,
+      "targetPassRate": 90,
+      "challengeThreshold": 90
+    },
+    {
+      "name": "RTM",
+      "slug": "rtm",
+      "category": "RTE",
+      "track": "MASTERY",
+      "kpiMode": "RETENTION",
+      "description": "Core RTM support domain focused on recurring case studies, troubleshooting readiness, and sustained pass-rate health.",
+      "cadence": "Weekly",
+      "active": true,
+      "baselinePassRate": 70,
+      "targetPassRate": 90,
+      "challengeThreshold": 90
+    },
+    {
+      "name": "Cloud Recording",
+      "slug": "cloud-recording",
+      "category": "RTE",
+      "track": "MASTERY",
+      "kpiMode": "RETENTION",
+      "description": "Cloud Recording support domain focused on recurring case studies, troubleshooting readiness, and stable support quality.",
+      "cadence": "Weekly",
+      "active": true,
+      "baselinePassRate": 70,
+      "targetPassRate": 90,
+      "challengeThreshold": 90
+    },
+    {
+      "name": "STT",
+      "slug": "stt",
+      "category": "RTE",
+      "track": "MASTERY",
+      "kpiMode": "RETENTION",
+      "description": "Speech-to-Text support domain focused on weekly troubleshooting drills and sustained support quality.",
+      "cadence": "Weekly",
+      "active": true,
+      "baselinePassRate": 70,
+      "targetPassRate": 90,
+      "challengeThreshold": 90
+    },
+    {
+      "name": "Signaling",
+      "slug": "signaling",
+      "category": "RTE",
+      "track": "MASTERY",
+      "kpiMode": "RETENTION",
+      "description": "Signaling support domain focused on recurring case studies, troubleshooting readiness, and sustained pass-rate health.",
+      "cadence": "Weekly",
+      "active": true,
+      "baselinePassRate": 70,
+      "targetPassRate": 90,
+      "challengeThreshold": 90
+    }
+  ]
+}

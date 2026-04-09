@@ -1,7 +1,7 @@
 'use client'
 
 import { use, useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -116,8 +116,10 @@ const formatStatusLabel = (value: string | null) => {
 export default function EditCoursePage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params)
     const router = useRouter()
+    const searchParams = useSearchParams()
+    const isSmeMode = searchParams.get('sme') === '1'
 
-const getAuthHeaders = (): Record<string, string> => {
+    const getAuthHeaders = (): Record<string, string> => {
         if (typeof window === 'undefined') return {}
         const token = localStorage.getItem('accessToken')
         return token ? { Authorization: `Bearer ${token}` } : {}
@@ -360,7 +362,7 @@ const [formDirty, setFormDirty] = useState(false)
             }
             setFormDirty(false)
             if (redirect) {
-                setTimeout(() => router.push('/admin/courses'), 300)
+                setTimeout(() => router.push(isSmeMode ? '/sme/training-ops/courses' : '/admin/courses'), 300)
             }
             return true
         } catch (err) {
@@ -1136,12 +1138,19 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                         </div>
                         <div className="flex flex-wrap gap-2 lg:justify-end">
                             <Button asChild variant="ghost" size="sm">
-                                <Link href="/admin/courses">Back to courses</Link>
+                                <Link href={isSmeMode ? '/sme/training-ops/courses' : '/admin/courses'}>Back to courses</Link>
                             </Button>
                             {course?.slug && (
                                 <Button asChild variant="outline" size="sm">
-                                    <Link href={`/courses/${course.slug}`} target="_blank">
-                                        Preview course
+                                    <Link
+                                        href={
+                                            isSmeMode || course.status !== 'PUBLISHED'
+                                                ? `/sme/training-ops/courses/${course.id}`
+                                                : `/courses/${course.slug}`
+                                        }
+                                        target={isSmeMode || course.status !== 'PUBLISHED' ? undefined : '_blank'}
+                                    >
+                                        {isSmeMode || course.status !== 'PUBLISHED' ? 'Open course overview' : 'Preview course'}
                                     </Link>
                                 </Button>
                             )}
@@ -1554,7 +1563,7 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                                     variant="secondary"
                                     onClick={async () => {
                                         const saved = await saveCourseInfo({ silent: false, validateStep: 2 })
-                                        if (saved) router.push('/admin/courses')
+                                        if (saved) router.push(isSmeMode ? '/sme/training-ops/courses' : '/admin/courses')
                                     }}
                                     disabled={submitting}
                                 >
@@ -1724,7 +1733,7 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                             <CardContent>
                                 <div className="space-y-6">
                                     <CourseAIConfig courseId={id} />
-                                    <CourseAIAssistantTemplate courseId={id} />
+                                    <CourseAIAssistantTemplate courseId={id} canManageTemplates={!isSmeMode} />
                                 </div>
                             </CardContent>
                         </Card>
@@ -1737,7 +1746,7 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                                 variant="secondary"
                                 onClick={async () => {
                                     const saved = await saveCourseInfo({ silent: false, validateStep: 'all' })
-                                    if (saved) router.push('/admin/courses')
+                                    if (saved) router.push(isSmeMode ? '/sme/training-ops/courses' : '/admin/courses')
                                 }}
                                 disabled={submitting}
                             >
@@ -2028,6 +2037,7 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                             </div>
                         </div>
 
+                        <>
                         {/* Transcript & AI Knowledge Base Section */}
                         {(() => {
                             // Find the first VIDEO asset for this lesson (saved assets)
@@ -2096,6 +2106,7 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                                 </div>
                             )
                         })()}
+                        </>
 
                         {lessonError && <p className="text-sm text-destructive">{lessonError}</p>}
                         <DialogFooter>

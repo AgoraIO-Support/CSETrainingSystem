@@ -5,11 +5,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { withAdminAuth } from '@/lib/auth-middleware';
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware';
 import { ExamService } from '@/lib/services/exam.service';
 import { WecomWebhookService } from '@/lib/services/wecom-webhook.service';
 import prisma from '@/lib/prisma';
 import { inviteUsersSchema } from '@/lib/validations';
+import { TrainingOpsService } from '@/lib/services/training-ops.service';
 import { z } from 'zod';
 
 type RouteContext = {
@@ -17,10 +18,14 @@ type RouteContext = {
 };
 
 // GET /api/admin/exams/[examId]/invitations - Get invitations
-export const GET = withAdminAuth(
+export const GET = withSmeOrAdminAuth(
   async (req: NextRequest, user, context: RouteContext) => {
     try {
       const { examId } = await context.params;
+
+      if (user.role === 'SME') {
+        await TrainingOpsService.assertScopedExamAccess(user, examId);
+      }
 
       const invitations = await prisma.examInvitation.findMany({
         where: { examId },
@@ -42,6 +47,20 @@ export const GET = withAdminAuth(
       });
     } catch (error) {
       console.error('Get invitations error:', error);
+
+      if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'FORBIDDEN',
+              message: 'Insufficient permissions',
+            },
+          },
+          { status: 403 }
+        );
+      }
+
       return NextResponse.json(
         {
           success: false,
@@ -57,10 +76,15 @@ export const GET = withAdminAuth(
 );
 
 // POST /api/admin/exams/[examId]/invitations - Send invitations
-export const POST = withAdminAuth(
+export const POST = withSmeOrAdminAuth(
   async (req: NextRequest, user, context: RouteContext) => {
     try {
       const { examId } = await context.params;
+
+      if (user.role === 'SME') {
+        await TrainingOpsService.assertScopedExamAccess(user, examId);
+      }
+
       const body = await req.json();
       const parsed = inviteUsersSchema.parse(body);
       const { userIds } = parsed;
@@ -151,6 +175,19 @@ export const POST = withAdminAuth(
             },
           },
           { status: 400 }
+        );
+      }
+
+      if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'FORBIDDEN',
+              message: 'Insufficient permissions',
+            },
+          },
+          { status: 403 }
         );
       }
 

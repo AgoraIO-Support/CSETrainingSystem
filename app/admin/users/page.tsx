@@ -30,7 +30,7 @@ import {
 
 const PAGE_SIZE = 10
 
-type RoleFilter = 'all' | 'ADMIN' | 'USER'
+type RoleFilter = 'all' | 'ADMIN' | 'SME' | 'USER'
 type StatusFilter = 'all' | 'ACTIVE' | 'SUSPENDED' | 'DELETED'
 
 interface FilterState {
@@ -43,6 +43,7 @@ const DEFAULT_STATS: AdminUserStats = {
     totalUsers: 0,
     activeUsers: 0,
     adminUsers: 0,
+    smeUsers: 0,
     newThisMonth: 0,
 }
 
@@ -97,6 +98,7 @@ export default function AdminUsersPage() {
         wecomUserId: '',
         department: '',
         title: '',
+        role: 'USER' as AdminUser['role'],
     })
     const [resetPasswordOpen, setResetPasswordOpen] = useState(false)
     const [resetPasswordUser, setResetPasswordUser] = useState<Pick<AdminUser, 'id' | 'name' | 'email'> | null>(null)
@@ -106,6 +108,12 @@ export default function AdminUsersPage() {
         newPassword: '',
         confirmPassword: '',
     })
+
+    const getNextRole = (role: AdminUser['role']): AdminUser['role'] => {
+        if (role === 'USER') return 'SME'
+        if (role === 'SME') return 'ADMIN'
+        return 'USER'
+    }
 
     useEffect(() => {
         let cancelled = false
@@ -249,6 +257,7 @@ export default function AdminUsersPage() {
             wecomUserId: user.wecomUserId || '',
             department: user.department || '',
             title: user.title || '',
+            role: user.role,
         })
         setEditError(null)
         setEditOpen(true)
@@ -276,6 +285,7 @@ export default function AdminUsersPage() {
             wecomUserId: '',
             department: '',
             title: '',
+            role: 'USER',
         })
         setEditError(null)
     }
@@ -317,6 +327,7 @@ export default function AdminUsersPage() {
                 wecomUserId,
                 department: department ? department : null,
                 title: title ? title : null,
+                role: editForm.role,
             })
             setEditOpen(false)
             resetEditForm()
@@ -362,11 +373,13 @@ export default function AdminUsersPage() {
     }
 
     const handleRoleToggle = async (user: AdminUser) => {
-        const targetRole: 'ADMIN' | 'USER' = user.role === 'ADMIN' ? 'USER' : 'ADMIN'
+        const targetRole = getNextRole(user.role)
         const confirmMessage =
             targetRole === 'ADMIN'
                 ? `Grant admin access to ${user.name}?`
-                : `Remove admin access from ${user.name}?`
+                : targetRole === 'SME'
+                    ? `Grant SME access to ${user.name}?`
+                    : `Set ${user.name} back to learner access?`
         confirmActionRef.current = async () => {
             setActionUserId(user.id)
             try {
@@ -561,7 +574,7 @@ export default function AdminUsersPage() {
                         <DialogHeader>
                             <DialogTitle>Edit user</DialogTitle>
                             <DialogDescription>
-                                Update user profile details and WeCom mapping.
+                                Update user profile details, role, and WeCom mapping.
                             </DialogDescription>
                         </DialogHeader>
 
@@ -616,6 +629,19 @@ export default function AdminUsersPage() {
                                         value={editForm.title}
                                         onChange={(e) => setEditForm(prev => ({ ...prev, title: e.target.value }))}
                                     />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="edit-user-role">Role</Label>
+                                    <select
+                                        id="edit-user-role"
+                                        className="h-10 w-full rounded-md border bg-background px-3"
+                                        value={editForm.role}
+                                        onChange={(e) => setEditForm(prev => ({ ...prev, role: e.target.value as AdminUser['role'] }))}
+                                    >
+                                        <option value="USER">Learner</option>
+                                        <option value="SME">SME</option>
+                                        <option value="ADMIN">Admin</option>
+                                    </select>
                                 </div>
                             </div>
 
@@ -692,7 +718,7 @@ export default function AdminUsersPage() {
                     </DialogContent>
                 </Dialog>
 
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
                     {[
                         {
                             label: 'Total Users',
@@ -711,6 +737,12 @@ export default function AdminUsersPage() {
                             value: stats.adminUsers,
                             description: 'Have elevated permissions',
                             icon: ShieldCheck,
+                        },
+                        {
+                            label: 'SMEs',
+                            value: stats.smeUsers,
+                            description: 'Own domains and training workflows',
+                            icon: Users,
                         },
                         {
                             label: 'New This Month',
@@ -760,6 +792,7 @@ export default function AdminUsersPage() {
                                         <SelectContent>
                                             <SelectItem value="all">All roles</SelectItem>
                                             <SelectItem value="ADMIN">Admins</SelectItem>
+                                            <SelectItem value="SME">SMEs</SelectItem>
                                             <SelectItem value="USER">Learners</SelectItem>
                                         </SelectContent>
                                     </Select>
@@ -862,8 +895,8 @@ export default function AdminUsersPage() {
                                                         </div>
                                                     </td>
                                                     <td className="py-3 pr-4">
-                                                        <Badge variant={user.role === 'ADMIN' ? 'default' : 'secondary'}>
-                                                            {user.role === 'ADMIN' ? 'Admin' : 'Learner'}
+                                                        <Badge variant={user.role === 'ADMIN' ? 'default' : user.role === 'SME' ? 'outline' : 'secondary'}>
+                                                            {user.role === 'ADMIN' ? 'Admin' : user.role === 'SME' ? 'SME' : 'Learner'}
                                                         </Badge>
                                                     </td>
                                                     <td className="py-3 pr-4">
@@ -886,6 +919,9 @@ export default function AdminUsersPage() {
                                                         </div>
                                                     </td>
                                                     <td className="py-3">
+                                                        {(() => {
+                                                            const nextRole = getNextRole(user.role)
+                                                            return (
                                                         <div className="flex items-center justify-end space-x-2">
                                                             <Button
                                                                 variant="ghost"
@@ -913,15 +949,20 @@ export default function AdminUsersPage() {
                                                             >
                                                                 {actionUserId === user.id ? (
                                                                     <Loader2 className="h-4 w-4 animate-spin" />
-                                                                ) : user.role === 'ADMIN' ? (
+                                                                ) : nextRole === 'ADMIN' ? (
                                                                     <>
-                                                                        <UserMinus className="h-4 w-4 mr-2" />
-                                                                        Revoke
+                                                                        <ShieldCheck className="h-4 w-4 mr-2" />
+                                                                        Promote Admin
+                                                                    </>
+                                                                ) : nextRole === 'SME' ? (
+                                                                    <>
+                                                                        <UserPlus className="h-4 w-4 mr-2" />
+                                                                        Promote SME
                                                                     </>
                                                                 ) : (
                                                                     <>
-                                                                        <ShieldCheck className="h-4 w-4 mr-2" />
-                                                                        Promote
+                                                                        <UserMinus className="h-4 w-4 mr-2" />
+                                                                        Set Learner
                                                                     </>
                                                                 )}
                                                             </Button>
@@ -949,6 +990,8 @@ export default function AdminUsersPage() {
                                                                 )}
                                                             </Button>
                                                         </div>
+                                                            )
+                                                        })()}
                                                     </td>
                                                 </tr>
                                             ))}

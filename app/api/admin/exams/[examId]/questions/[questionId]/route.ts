@@ -5,8 +5,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { withAdminAuth } from '@/lib/auth-middleware';
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware';
 import { ExamService } from '@/lib/services/exam.service';
+import { TrainingOpsService } from '@/lib/services/training-ops.service';
 import { updateExamQuestionSchema } from '@/lib/validations';
 import prisma from '@/lib/prisma';
 import { z } from 'zod';
@@ -16,10 +17,13 @@ type RouteContext = {
 };
 
 // PATCH /api/admin/exams/[examId]/questions/[questionId] - Update question
-export const PATCH = withAdminAuth(
+export const PATCH = withSmeOrAdminAuth(
   async (req: NextRequest, user, context: RouteContext) => {
     try {
       const { examId, questionId } = await context.params;
+      if (user.role === 'SME') {
+        await TrainingOpsService.assertScopedExamAccess(user, examId);
+      }
       const body = await req.json();
 
       const existingQuestion = await prisma.examQuestion.findFirst({
@@ -104,6 +108,19 @@ export const PATCH = withAdminAuth(
         );
       }
 
+      if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'AUTH_003',
+              message: 'Insufficient permissions',
+            },
+          },
+          { status: 403 }
+        );
+      }
+
       return NextResponse.json(
         {
           success: false,
@@ -119,10 +136,13 @@ export const PATCH = withAdminAuth(
 );
 
 // DELETE /api/admin/exams/[examId]/questions/[questionId] - Delete question
-export const DELETE = withAdminAuth(
+export const DELETE = withSmeOrAdminAuth(
   async (req: NextRequest, user, context: RouteContext) => {
     try {
       const { examId, questionId } = await context.params;
+      if (user.role === 'SME') {
+        await TrainingOpsService.assertScopedExamAccess(user, examId);
+      }
 
       // Verify exam exists
       const exam = await ExamService.getExamById(examId);
@@ -159,6 +179,19 @@ export const DELETE = withAdminAuth(
       });
     } catch (error) {
       console.error('Delete question error:', error);
+
+      if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'AUTH_003',
+              message: 'Insufficient permissions',
+            },
+          },
+          { status: 403 }
+        );
+      }
 
       return NextResponse.json(
         {

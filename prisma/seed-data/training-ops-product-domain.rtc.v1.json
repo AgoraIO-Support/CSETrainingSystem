@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "scopeModel": "PRODUCT_DOMAIN",
+  "items": [
+    {
+      "name": "RTC",
+      "slug": "rtc",
+      "category": "RTE",
+      "track": "MASTERY",
+      "kpiMode": "RETENTION",
+      "description": "Core RTC support domain focused on recurring case studies, troubleshooting readiness, and sustained pass-rate health.",
+      "cadence": "Weekly",
+      "active": true,
+      "baselinePassRate": 70,
+      "targetPassRate": 90,
+      "challengeThreshold": 90
+    }
+  ]
+}

@@ -5,6 +5,8 @@ import { AIResponseFormat, AIPromptUseCase } from '@prisma/client'
 import { z } from 'zod'
 import { SUPPORTED_OPENAI_MODELS } from '@/lib/services/openai-models'
 
+type RouteContext = { params: Promise<{ id: string }> }
+
 function getPrismaCode(error: unknown): string | undefined {
     if (!error || typeof error !== 'object') return undefined
     const maybeCode = (error as { code?: unknown }).code
@@ -25,9 +27,9 @@ const updateTemplateSchema = z.object({
     isActive: z.boolean().optional(),
 })
 
-export const GET = withAdminAuth(async (_req, _user, ctx) => {
+export const GET = withAdminAuth(async (_req, _user, ctx: RouteContext) => {
     try {
-        const id = ctx?.params?.id as string
+        const { id } = await ctx.params
         const template = await prisma.aIPromptTemplate.findUnique({ where: { id } })
         if (!template) {
             return NextResponse.json(
@@ -57,9 +59,9 @@ export const GET = withAdminAuth(async (_req, _user, ctx) => {
     }
 })
 
-export const PATCH = withAdminAuth(async (req, _user, ctx) => {
+export const PATCH = withAdminAuth(async (req, _user, ctx: RouteContext) => {
     try {
-        const id = ctx?.params?.id as string
+        const { id } = await ctx.params
         const body = await req.json()
         const patch = updateTemplateSchema.parse(body)
 
@@ -122,9 +124,9 @@ export const PATCH = withAdminAuth(async (req, _user, ctx) => {
     }
 })
 
-export const DELETE = withAdminAuth(async (_req, _user, ctx) => {
+export const DELETE = withAdminAuth(async (_req, _user, ctx: RouteContext) => {
     try {
-        const id = ctx?.params?.id as string
+        const { id } = await ctx.params
 
         const [defaultsRows, courseAssignmentRows, examAssignmentRows] = await Promise.all([
             prisma.aIPromptDefault.findMany({
@@ -175,12 +177,23 @@ export const DELETE = withAdminAuth(async (_req, _user, ctx) => {
             dependency.defaults + dependency.courseAssignments + dependency.examAssignments
 
         if (totalDependencyCount > 0) {
+            const dependencyMessages: string[] = []
+            if (defaultsCount > 0) {
+                dependencyMessages.push('it is currently selected as a default template')
+            }
+            if (courseAssignmentsCount > 0) {
+                dependencyMessages.push(`it is assigned to ${courseAssignmentsCount} course${courseAssignmentsCount === 1 ? '' : 's'}`)
+            }
+            if (examAssignmentsCount > 0) {
+                dependencyMessages.push(`it is assigned to ${examAssignmentsCount} exam${examAssignmentsCount === 1 ? '' : 's'}`)
+            }
+
             return NextResponse.json(
                 {
                     success: false,
                     error: {
                         code: 'AI_PROMPT_409',
-                        message: 'Template is in use and cannot be deleted',
+                        message: `Template cannot be deleted because ${dependencyMessages.join(', ')}.`,
                         details: dependency,
                     },
                 },

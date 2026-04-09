@@ -6,6 +6,24 @@ import type {
     AdminUser,
     AdminUserStats,
     AdminAnalyticsSummary,
+    TrainingOpsBridge,
+    SmeWorkspaceSummary,
+    ProductDomainEffectivenessSummary,
+    ProductDomainSummary,
+    BadgeMilestoneSummary,
+    TrainingOpsBadgeImportSummary,
+    TrainingOpsLearningSeriesImportSummary,
+    TrainingOpsDomainImportSummary,
+    TrainingOpsBootstrapImportSummary,
+    SmeBadgeLadderOverview,
+    SmeManagedExamDetail,
+    SmeManagedCourseDetail,
+    LearningSeriesSummary,
+    LearningEventSummary,
+    TrainingOpsExamSummary,
+    TrainingOpsCourseSummary,
+    LearnerRewardsOverview,
+    LearnerTrainingOverview,
     UserProgressOverview,
     UserProfile,
     UpdateProfilePayload,
@@ -75,6 +93,7 @@ type CreateCoursePayload = {
     category: string
     tags: string[]
     instructorId: string
+    learningEventId?: string | null
     status?: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
 }
 
@@ -419,7 +438,7 @@ export class ApiClient {
     static async updateUser(
         userId: string,
         payload: {
-            role?: 'USER' | 'ADMIN'
+            role?: 'USER' | 'SME' | 'ADMIN'
             status?: 'ACTIVE' | 'SUSPENDED' | 'DELETED'
             name?: string
             email?: string
@@ -466,11 +485,667 @@ export class ApiClient {
         return this.request(`/admin/analytics${search}`)
     }
 
+    static async getTrainingOpsBridge(): Promise<{
+        success: boolean
+        data: TrainingOpsBridge
+    }> {
+        return this.request('/admin/training-ops/bridge')
+    }
+
+    static async getTrainingOpsDomains(params: Record<string, string | number | boolean | undefined> = {}): Promise<{
+        success: boolean
+        data: ProductDomainSummary[]
+        pagination: {
+            page: number
+            limit: number
+            total: number
+            totalPages: number
+        }
+    }> {
+        const query = new URLSearchParams()
+        Object.entries(params).forEach(([key, value]) => {
+            if (value !== undefined && value !== null && value !== '') {
+                query.set(key, String(value))
+            }
+        })
+        const search = query.toString() ? `?${query.toString()}` : ''
+        return this.request(`/admin/training-ops/domains${search}`)
+    }
+
+    static async getTrainingOpsEffectiveness(): Promise<{
+        success: boolean
+        data: ProductDomainEffectivenessSummary[]
+    }> {
+        return this.request('/admin/training-ops/effectiveness')
+    }
+
+    static async getTrainingOpsDomain(id: string): Promise<{
+        success: boolean
+        data: ProductDomainSummary
+    }> {
+        return this.request(`/admin/training-ops/domains/${id}`)
+    }
+
+    static async createTrainingOpsDomain(payload: {
+        name: string
+        slug: string
+        category: ProductDomainSummary['category']
+        track: ProductDomainSummary['track']
+        kpiMode: ProductDomainSummary['kpiMode']
+        description?: string | null
+        cadence?: string | null
+        active: boolean
+        baselinePassRate?: number | null
+        targetPassRate?: number | null
+        challengeThreshold?: number | null
+        primarySmeId?: string | null
+        backupSmeId?: string | null
+    }): Promise<{
+        success: boolean
+        data: ProductDomainSummary
+    }> {
+        return this.request('/admin/training-ops/domains', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async updateTrainingOpsDomain(id: string, payload: {
+        name?: string
+        slug?: string
+        category?: ProductDomainSummary['category']
+        track?: ProductDomainSummary['track']
+        kpiMode?: ProductDomainSummary['kpiMode']
+        description?: string | null
+        cadence?: string | null
+        active?: boolean
+        baselinePassRate?: number | null
+        targetPassRate?: number | null
+        challengeThreshold?: number | null
+        primarySmeId?: string | null
+        backupSmeId?: string | null
+    }): Promise<{
+        success: boolean
+        data: ProductDomainSummary
+    }> {
+        return this.request(`/admin/training-ops/domains/${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async importTrainingOpsDomains(payload: {
+        payload: unknown
+        apply?: boolean
+    }): Promise<{
+        success: boolean
+        data: TrainingOpsDomainImportSummary
+    }> {
+        return this.request('/admin/training-ops/domains/import', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async importTrainingOpsBootstrap(payload: {
+        payload: unknown
+        apply?: boolean
+    }): Promise<{
+        success: boolean
+        data: TrainingOpsBootstrapImportSummary
+    }> {
+        return this.request('/admin/training-ops/import', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async getTrainingOpsSeries(params: Record<string, string | number | boolean | undefined> = {}): Promise<{
+        success: boolean
+        data: LearningSeriesSummary[]
+        pagination: {
+            page: number
+            limit: number
+            total: number
+            totalPages: number
+        }
+    }> {
+        const query = new URLSearchParams()
+        Object.entries(params).forEach(([key, value]) => {
+            if (value !== undefined && value !== null && value !== '') {
+                query.set(key, String(value))
+            }
+        })
+        const search = query.toString() ? `?${query.toString()}` : ''
+        return this.request(`/admin/training-ops/series${search}`)
+    }
+
+    static async getTrainingOpsSeriesById(id: string): Promise<{
+        success: boolean
+        data: LearningSeriesSummary
+    }> {
+        return this.request(`/admin/training-ops/series/${id}`)
+    }
+
+    static async createTrainingOpsSeries(payload: {
+        name: string
+        slug: string
+        type: LearningSeriesSummary['type']
+        domainId?: string | null
+        description?: string | null
+        cadence?: string | null
+        isActive: boolean
+        badgeEligible: boolean
+        countsTowardPerformance: boolean
+        defaultStarValue?: number | null
+        ownerId?: string | null
+    }): Promise<{
+        success: boolean
+        data: LearningSeriesSummary
+    }> {
+        return this.request('/admin/training-ops/series', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async updateTrainingOpsSeries(id: string, payload: {
+        name?: string
+        slug?: string
+        type?: LearningSeriesSummary['type']
+        domainId?: string | null
+        description?: string | null
+        cadence?: string | null
+        isActive?: boolean
+        badgeEligible?: boolean
+        countsTowardPerformance?: boolean
+        defaultStarValue?: number | null
+        ownerId?: string | null
+    }): Promise<{
+        success: boolean
+        data: LearningSeriesSummary
+    }> {
+        return this.request(`/admin/training-ops/series/${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async importTrainingOpsLearningSeries(payload: {
+        payload: unknown
+        apply?: boolean
+    }): Promise<{
+        success: boolean
+        data: TrainingOpsLearningSeriesImportSummary
+    }> {
+        return this.request('/admin/training-ops/series/import', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async getTrainingOpsBadgeMilestones(params: Record<string, string | number | boolean | undefined> = {}): Promise<{
+        success: boolean
+        data: BadgeMilestoneSummary[]
+        pagination: {
+            page: number
+            limit: number
+            total: number
+            totalPages: number
+        }
+    }> {
+        const query = new URLSearchParams()
+        Object.entries(params).forEach(([key, value]) => {
+            if (value !== undefined && value !== null && value !== '') {
+                query.set(key, String(value))
+            }
+        })
+        const search = query.toString() ? `?${query.toString()}` : ''
+        return this.request(`/admin/training-ops/badges${search}`)
+    }
+
+    static async getTrainingOpsBadgeMilestone(id: string): Promise<{
+        success: boolean
+        data: BadgeMilestoneSummary
+    }> {
+        return this.request(`/admin/training-ops/badges/${id}`)
+    }
+
+    static async createTrainingOpsBadgeMilestone(payload: {
+        name: string
+        slug: string
+        description?: string | null
+        icon?: string | null
+        thresholdStars: number
+        active: boolean
+        domainId?: string | null
+        learningSeriesId?: string | null
+    }): Promise<{
+        success: boolean
+        data: BadgeMilestoneSummary
+    }> {
+        return this.request('/admin/training-ops/badges', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async updateTrainingOpsBadgeMilestone(id: string, payload: {
+        name?: string
+        slug?: string
+        description?: string | null
+        icon?: string | null
+        thresholdStars?: number
+        active?: boolean
+        domainId?: string | null
+        learningSeriesId?: string | null
+    }): Promise<{
+        success: boolean
+        data: BadgeMilestoneSummary
+    }> {
+        return this.request(`/admin/training-ops/badges/${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async importTrainingOpsBadgeMilestones(payload: {
+        payload: unknown
+        apply?: boolean
+    }): Promise<{
+        success: boolean
+        data: TrainingOpsBadgeImportSummary
+    }> {
+        return this.request('/admin/training-ops/badges/import', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async getTrainingOpsEvents(params: Record<string, string | number | boolean | undefined> = {}): Promise<{
+        success: boolean
+        data: LearningEventSummary[]
+        pagination: {
+            page: number
+            limit: number
+            total: number
+            totalPages: number
+        }
+    }> {
+        const query = new URLSearchParams()
+        Object.entries(params).forEach(([key, value]) => {
+            if (value !== undefined && value !== null && value !== '') {
+                query.set(key, String(value))
+            }
+        })
+        const search = query.toString() ? `?${query.toString()}` : ''
+        return this.request(`/admin/training-ops/events${search}`)
+    }
+
+    static async createTrainingOpsEvent(payload: {
+        title: string
+        format: LearningEventSummary['format']
+        status: LearningEventSummary['status']
+        seriesId?: string | null
+        domainId?: string | null
+        description?: string | null
+        releaseVersion?: string | null
+        scheduledAt?: string | null
+        startsAt?: string | null
+        endsAt?: string | null
+        isRequired: boolean
+        countsTowardPerformance: boolean
+        starValue?: number | null
+        hostId?: string | null
+    }): Promise<{
+        success: boolean
+        data: LearningEventSummary
+    }> {
+        return this.request('/admin/training-ops/events', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async getTrainingOpsEvent(eventId: string): Promise<{
+        success: boolean
+        data: LearningEventSummary
+    }> {
+        return this.request(`/admin/training-ops/events/${eventId}`)
+    }
+
+    static async updateTrainingOpsEvent(eventId: string, payload: Partial<{
+        title: string
+        format: LearningEventSummary['format']
+        status: LearningEventSummary['status']
+        seriesId?: string | null
+        domainId?: string | null
+        description?: string | null
+        releaseVersion?: string | null
+        scheduledAt?: string | null
+        startsAt?: string | null
+        endsAt?: string | null
+        isRequired: boolean
+        countsTowardPerformance: boolean
+        starValue?: number | null
+        hostId?: string | null
+    }>): Promise<{
+        success: boolean
+        data: LearningEventSummary
+    }> {
+        return this.request(`/admin/training-ops/events/${eventId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async attachExamToTrainingOpsEvent(eventId: string, payload: { examId: string }): Promise<{
+        success: boolean
+        data: LearningEventSummary
+    }> {
+        return this.request(`/admin/training-ops/events/${eventId}/exams`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async detachExamFromTrainingOpsEvent(eventId: string, examId: string): Promise<{
+        success: boolean
+        data: LearningEventSummary
+    }> {
+        return this.request(`/admin/training-ops/events/${eventId}/exams/${examId}`, {
+            method: 'DELETE',
+        })
+    }
+
+    static async attachCourseToTrainingOpsEvent(eventId: string, payload: { courseId: string }): Promise<{
+        success: boolean
+        data: LearningEventSummary
+    }> {
+        return this.request(`/admin/training-ops/events/${eventId}/courses`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async detachCourseFromTrainingOpsEvent(eventId: string, courseId: string): Promise<{
+        success: boolean
+        data: LearningEventSummary
+    }> {
+        return this.request(`/admin/training-ops/events/${eventId}/courses/${courseId}`, {
+            method: 'DELETE',
+        })
+    }
+
+    static async getSmeTrainingOpsOverview(): Promise<{
+        success: boolean
+        data: SmeWorkspaceSummary
+    }> {
+        return this.request('/sme/training-ops/overview')
+    }
+
+    static async getSmeTrainingOpsDomains(): Promise<{
+        success: boolean
+        data: ProductDomainSummary[]
+    }> {
+        return this.request('/sme/training-ops/domains')
+    }
+
+    static async getSmeTrainingOpsSeries(): Promise<{
+        success: boolean
+        data: LearningSeriesSummary[]
+    }> {
+        return this.request('/sme/training-ops/series')
+    }
+
+    static async getSmeTrainingOpsBadges(): Promise<{
+        success: boolean
+        data: SmeBadgeLadderOverview
+    }> {
+        return this.request('/sme/training-ops/badges')
+    }
+
+    static async applySmeTrainingOpsBadgeTemplates(payload: {
+        learningSeriesId: string
+        templateIds: string[]
+    }): Promise<{
+        success: boolean
+        data: SmeBadgeLadderOverview
+    }> {
+        return this.request('/sme/training-ops/badges', {
+            method: 'POST',
+            body: JSON.stringify({
+                action: 'APPLY_TEMPLATES',
+                ...payload,
+            }),
+        })
+    }
+
+    static async createSmeTrainingOpsCustomBadge(payload: {
+        learningSeriesId: string
+        name: string
+        slug: string
+        description?: string | null
+        icon?: string | null
+        thresholdStars: number
+        active?: boolean
+    }): Promise<{
+        success: boolean
+        data: SmeBadgeLadderOverview
+    }> {
+        return this.request('/sme/training-ops/badges', {
+            method: 'POST',
+            body: JSON.stringify({
+                action: 'CREATE_CUSTOM',
+                ...payload,
+            }),
+        })
+    }
+
+    static async getSmeTrainingOpsEffectiveness(): Promise<{
+        success: boolean
+        data: ProductDomainEffectivenessSummary[]
+    }> {
+        return this.request('/sme/training-ops/effectiveness')
+    }
+
+    static async getSmeTrainingOpsLearnerGaps(): Promise<{
+        success: boolean
+        data: SmeWorkspaceSummary['learnerGaps']
+    }> {
+        return this.request('/sme/training-ops/learner-gaps')
+    }
+
+    static async getSmeTrainingOpsHosts(): Promise<{
+        success: boolean
+        data: AdminUser[]
+    }> {
+        return this.request('/sme/training-ops/hosts')
+    }
+
+    static async getSmeTrainingOpsExams(): Promise<{
+        success: boolean
+        data: TrainingOpsExamSummary[]
+    }> {
+        return this.request('/sme/training-ops/exams')
+    }
+
+    static async getSmeTrainingOpsExam(examId: string): Promise<{
+        success: boolean
+        data: SmeManagedExamDetail
+    }> {
+        return this.request(`/sme/training-ops/exams/${examId}`)
+    }
+
+    static async getSmeTrainingOpsCourses(): Promise<{
+        success: boolean
+        data: TrainingOpsCourseSummary[]
+    }> {
+        return this.request('/sme/training-ops/courses')
+    }
+
+    static async getSmeTrainingOpsCourse(courseId: string): Promise<{
+        success: boolean
+        data: SmeManagedCourseDetail
+    }> {
+        return this.request(`/sme/training-ops/courses/${courseId}`)
+    }
+
+    static async getSmeTrainingOpsEvents(params: Record<string, string | number | boolean | undefined> = {}): Promise<{
+        success: boolean
+        data: LearningEventSummary[]
+    }> {
+        const query = new URLSearchParams()
+        Object.entries(params).forEach(([key, value]) => {
+            if (value !== undefined && value !== null && value !== '') {
+                query.set(key, String(value))
+            }
+        })
+        const search = query.toString() ? `?${query.toString()}` : ''
+        return this.request(`/sme/training-ops/events${search}`)
+    }
+
+    static async getSmeTrainingOpsEvent(eventId: string): Promise<{
+        success: boolean
+        data: LearningEventSummary
+    }> {
+        return this.request(`/sme/training-ops/events/${eventId}`)
+    }
+
+    static async createSmeTrainingOpsEvent(payload: {
+        title: string
+        format: LearningEventSummary['format']
+        status: LearningEventSummary['status']
+        seriesId?: string | null
+        domainId?: string | null
+        description?: string | null
+        releaseVersion?: string | null
+        scheduledAt?: string | null
+        startsAt?: string | null
+        endsAt?: string | null
+        isRequired: boolean
+        countsTowardPerformance: boolean
+        starValue?: number | null
+        hostId?: string | null
+    }): Promise<{
+        success: boolean
+        data: LearningEventSummary
+    }> {
+        return this.request('/sme/training-ops/events', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async updateSmeTrainingOpsEvent(eventId: string, payload: Partial<{
+        title: string
+        format: LearningEventSummary['format']
+        status: LearningEventSummary['status']
+        seriesId?: string | null
+        domainId?: string | null
+        description?: string | null
+        releaseVersion?: string | null
+        scheduledAt?: string | null
+        startsAt?: string | null
+        endsAt?: string | null
+        isRequired: boolean
+        countsTowardPerformance: boolean
+        starValue?: number | null
+        hostId?: string | null
+    }>): Promise<{
+        success: boolean
+        data: LearningEventSummary
+    }> {
+        return this.request(`/sme/training-ops/events/${eventId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async deleteSmeTrainingOpsEvent(eventId: string): Promise<{
+        success: boolean
+        data: { id: string }
+    }> {
+        return this.request(`/sme/training-ops/events/${eventId}`, {
+            method: 'DELETE',
+        })
+    }
+
+    static async attachExamToSmeTrainingOpsEvent(eventId: string, payload: { examId: string }): Promise<{
+        success: boolean
+        data: LearningEventSummary
+    }> {
+        return this.request(`/sme/training-ops/events/${eventId}/exams`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async detachExamFromSmeTrainingOpsEvent(eventId: string, examId: string): Promise<{
+        success: boolean
+        data: LearningEventSummary
+    }> {
+        return this.request(`/sme/training-ops/events/${eventId}/exams/${examId}`, {
+            method: 'DELETE',
+        })
+    }
+
+    static async attachCourseToSmeTrainingOpsEvent(eventId: string, payload: { courseId: string }): Promise<{
+        success: boolean
+        data: LearningEventSummary
+    }> {
+        return this.request(`/sme/training-ops/events/${eventId}/courses`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async detachCourseFromSmeTrainingOpsEvent(eventId: string, courseId: string): Promise<{
+        success: boolean
+        data: LearningEventSummary
+    }> {
+        return this.request(`/sme/training-ops/events/${eventId}/courses/${courseId}`, {
+            method: 'DELETE',
+        })
+    }
+
+    static async createDraftExamFromSmeTrainingOpsEvent(eventId: string): Promise<{
+        success: boolean
+        data: Exam
+    }> {
+        return this.request(`/sme/training-ops/events/${eventId}/draft-exam`, {
+            method: 'POST',
+        })
+    }
+
+    static async createDraftCourseFromSmeTrainingOpsEvent(eventId: string): Promise<{
+        success: boolean
+        data: Course
+    }> {
+        return this.request(`/sme/training-ops/events/${eventId}/draft-course`, {
+            method: 'POST',
+        })
+    }
+
     static async getProgressOverview(): Promise<{
         success: boolean
         data: UserProgressOverview
     }> {
         return this.request('/progress/overview')
+    }
+
+    static async getLearnerRewardsOverview(): Promise<{
+        success: boolean
+        data: LearnerRewardsOverview
+    }> {
+        return this.request('/rewards')
+    }
+
+    static async getLearnerTrainingOverview(): Promise<{
+        success: boolean
+        data: LearnerTrainingOverview
+    }> {
+        return this.request('/training')
     }
 
     // Progress
@@ -570,6 +1245,13 @@ export class ApiClient {
         timezone: string
         availableFrom?: string
         deadline?: string
+        assessmentKind?: 'PRACTICE' | 'READINESS' | 'FORMAL'
+        productDomainId?: string | null
+        learningSeriesId?: string | null
+        learningEventId?: string | null
+        awardsStars?: boolean
+        starValue?: number | null
+        countsTowardPerformance?: boolean
     }): Promise<{ success: boolean; data: Exam }> {
         return this.request('/admin/exams', {
             method: 'POST',
@@ -636,7 +1318,7 @@ export class ApiClient {
             badgeMode: 'AUTO' | 'UPLOADED'
             badgeS3Key?: string | null
             badgeMimeType?: string | null
-            badgeStyle?: any | null
+            badgeStyle?: Record<string, unknown> | null
             createdAt: string | Date
             updatedAt: string | Date
         } | null
@@ -652,9 +1334,9 @@ export class ApiClient {
             badgeMode: 'AUTO' | 'UPLOADED'
             badgeS3Key?: string | null
             badgeMimeType?: string | null
-            badgeStyle?: any | null
+            badgeStyle?: Record<string, unknown> | null
         }
-    ): Promise<{ success: boolean; data: any }> {
+    ): Promise<{ success: boolean; data: unknown }> {
         return this.request(`/admin/exams/${examId}/certificate-template`, {
             method: 'PUT',
             body: JSON.stringify(payload),
@@ -965,7 +1647,23 @@ export class ApiClient {
 
     // Exam Analytics
     static async getExamAnalytics(examId: string): Promise<{ success: boolean; data: ExamAnalytics }> {
-        const response: any = await this.request(`/admin/exams/${examId}/analytics`)
+        const response = (await this.request(`/admin/exams/${examId}/analytics`)) as {
+            success: boolean
+            data: ExamAnalytics & {
+                summary?: {
+                    totalAttempts?: number
+                    uniqueUsers?: number
+                    averageScore?: number
+                    medianScore?: number | null
+                    maxScore?: number
+                    minScore?: number
+                    passedCount?: number
+                    failedCount?: number
+                    averageCompletionTime?: number | null
+                }
+                examId?: string
+            }
+        }
         const raw = response?.data
 
         // Backward/forward compatibility:
@@ -1024,9 +1722,24 @@ export class ApiClient {
         }
     }> {
         const query = limit ? `?limit=${limit}` : ''
-        const response: any = await this.request(`/admin/exams/${examId}/leaderboard${query}`)
+        const response = (await this.request(`/admin/exams/${examId}/leaderboard${query}`)) as {
+            success: boolean
+            data?: {
+                examId?: string
+                examTitle?: string
+                leaderboard?: Array<{
+                    rank: number
+                    userId: string
+                    userName: string
+                    score?: number
+                    bestScore?: number
+                    percentageScore?: number
+                    completedAt: string
+                }>
+            }
+        }
         const leaderboard = Array.isArray(response?.data?.leaderboard) ? response.data.leaderboard : []
-        const normalized = leaderboard.map((entry: any) => ({
+        const normalized = leaderboard.map((entry) => ({
             rank: entry.rank,
             userId: entry.userId,
             userName: entry.userName,
@@ -1050,6 +1763,11 @@ export class ApiClient {
     static async getAvailableExams(): Promise<{
         success: boolean
         data: Array<Exam & {
+            assessmentKind?: 'PRACTICE' | 'READINESS' | 'FORMAL'
+            awardsStars?: boolean
+            starValue?: number | null
+            countsTowardPerformance?: boolean
+            certificateEligible?: boolean
             userAttempts: number
             bestScore: number | null
             hasPassed: boolean
@@ -1070,6 +1788,7 @@ export class ApiClient {
         success: boolean
         data: Exam & {
             questionsCount: number
+            certificateEligible?: boolean
             userAttempts: Array<{
                 id: string
                 attemptNumber: number
@@ -1198,6 +1917,7 @@ export class ApiClient {
         success: boolean
         data: {
             attemptId: string
+            examId: string
             examTitle: string
             attemptNumber: number
             status: string
@@ -1209,9 +1929,37 @@ export class ApiClient {
             totalScore: number
             passingScore: number
             allowReview: boolean
+            assessmentKind?: 'PRACTICE' | 'READINESS' | 'FORMAL' | null
+            awardsStars: boolean
+            starValue?: number | null
+            countsTowardPerformance: boolean
             maxAttempts: number
             attemptsUsed: number
             reviewUnlocked: boolean
+            reviewUnlockedByPassing?: boolean
+            reviewUnlockedByAttempts?: boolean
+            reviewUnlockedByDeadline?: boolean
+            rewardOutcome: {
+                starsEarned: number
+                badgesUnlocked: Array<{
+                    id: string
+                    name: string
+                    slug: string
+                    description: string | null
+                    learningSeries?: {
+                        id: string
+                        name: string
+                        slug: string
+                    } | null
+                }>
+                certificate: {
+                    eligible: boolean
+                    issued: boolean
+                    id: string | null
+                    title: string | null
+                    certificateNumber: string | null
+                }
+            }
             answers?: Array<{
                 questionId: string
                 question: string
@@ -1223,6 +1971,7 @@ export class ApiClient {
                 pointsAwarded: number | null
                 maxPoints: number
                 explanation: string | null
+                feedback?: string | null
             }>
         }
     }> {
@@ -1327,7 +2076,7 @@ export class ApiClient {
             certificateTitle?: string | null
             badgeMode?: 'AUTO' | 'UPLOADED' | null
             badgeUrl?: string | null
-            badgeStyle?: any | null
+            badgeStyle?: Record<string, unknown> | null
         }
     }> {
         return this.request(`/certificates/${certificateId}`)

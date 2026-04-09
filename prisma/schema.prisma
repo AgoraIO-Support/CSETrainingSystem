@@ -16,6 +16,7 @@ datasource db {
 
 enum UserRole {
   USER
+  SME
   ADMIN
 }
 
@@ -25,15 +26,76 @@ enum UserStatus {
   DELETED
 }
 
+enum ProductDomainCategory {
+  RTE
+  AI
+}
+
+enum ProductTrack {
+  AGILE
+  MASTERY
+  RELEASE
+  FINAL
+}
+
+enum SmeKpiMode {
+  DELTA
+  RETENTION
+  READINESS
+}
+
+enum LearningSeriesType {
+  WEEKLY_DRILL
+  CASE_STUDY
+  KNOWLEDGE_SHARING
+  FAQ_SHARE
+  RELEASE_READINESS
+  QUARTERLY_FINAL
+  YEAR_END_FINAL
+}
+
+enum LearningEventFormat {
+  CASE_STUDY
+  KNOWLEDGE_SHARING
+  FAQ_SHARE
+  RELEASE_BRIEFING
+  QUIZ_REVIEW
+  FINAL_EXAM
+  WORKSHOP
+}
+
+enum LearningEventStatus {
+  DRAFT
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELED
+}
+
+enum AssessmentKind {
+  PRACTICE
+  READINESS
+  FORMAL
+}
+
+enum StarAwardSourceType {
+  WEEKLY_QUIZ
+  CASE_STUDY
+  LAUNCH_EXAM
+  FINAL_EXAM
+  BONUS
+  MANUAL
+}
+
 model User {
-  id       String     @id @default(uuid())
-  email    String     @unique
-  wecomUserId String? @unique
-  name     String
-  password String? // Hashed password for local auth
-  avatar   String?
-  role     UserRole   @default(USER)
-  status   UserStatus @default(ACTIVE)
+  id          String     @id @default(uuid())
+  email       String     @unique
+  wecomUserId String?    @unique
+  name        String
+  password    String? // Hashed password for local auth
+  avatar      String?
+  role        UserRole   @default(USER)
+  status      UserStatus @default(ACTIVE)
 
   // Supabase Auth integration
   supabaseId String? @unique
@@ -59,17 +121,242 @@ model User {
   // Admin-created courses (if instructor)
   createdCourses Course[] @relation("CourseInstructor")
 
+  // Training operations
+  primaryOwnedDomains   ProductDomain[]  @relation("DomainPrimarySme")
+  backupOwnedDomains    ProductDomain[]  @relation("DomainBackupSme")
+  ownedLearningSeries   LearningSeries[] @relation("LearningSeriesOwner")
+  hostedLearningEvents  LearningEvent[]  @relation("LearningEventHost")
+  createdLearningEvents LearningEvent[]  @relation("LearningEventCreator")
+  starAwards            StarAward[]
+  badgeAwards           BadgeAward[]
+
   // Exam relations
-  examAttempts    ExamAttempt[]
-  examInvitations ExamInvitation[]
-  createdExams    Exam[]           @relation("ExamCreator")
-  approvedExams   Exam[]           @relation("ExamApprover")
-  revokedCertificates Certificate[] @relation("CertificateRevoker")
+  examAttempts        ExamAttempt[]
+  examInvitations     ExamInvitation[]
+  createdExams        Exam[]           @relation("ExamCreator")
+  approvedExams       Exam[]           @relation("ExamApprover")
+  revokedCertificates Certificate[]    @relation("CertificateRevoker")
 
   @@index([email])
   @@index([role])
   @@index([status])
   @@map("users")
+}
+
+// ============================================================================
+// TRAINING OPERATIONS
+// ============================================================================
+
+model ProductDomain {
+  id   String @id @default(uuid())
+  name String
+  slug String @unique
+
+  category ProductDomainCategory
+  track    ProductTrack
+  kpiMode  SmeKpiMode
+
+  description String? @db.Text
+  cadence     String?
+  active      Boolean @default(true)
+
+  baselinePassRate   Float?
+  targetPassRate     Float?
+  challengeThreshold Float?
+
+  primarySmeId String?
+  primarySme   User?   @relation("DomainPrimarySme", fields: [primarySmeId], references: [id], onDelete: SetNull)
+  backupSmeId  String?
+  backupSme    User?   @relation("DomainBackupSme", fields: [backupSmeId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  learningSeries  LearningSeries[]
+  learningEvents  LearningEvent[]
+  exams           Exam[]
+  examQuestions   ExamQuestion[]
+  starAwards      StarAward[]
+  badgeMilestones BadgeMilestone[]
+  badgeAwards     BadgeAward[]
+
+  @@index([slug])
+  @@index([category])
+  @@index([track])
+  @@index([primarySmeId])
+  @@map("product_domains")
+}
+
+model LearningSeries {
+  id String @id @default(uuid())
+
+  name String
+  slug String             @unique
+  type LearningSeriesType
+
+  domainId String?
+  domain   ProductDomain? @relation(fields: [domainId], references: [id], onDelete: SetNull)
+
+  description String? @db.Text
+  cadence     String?
+  isActive    Boolean @default(true)
+
+  badgeEligible           Boolean @default(true)
+  countsTowardPerformance Boolean @default(false)
+  defaultStarValue        Int?
+
+  ownerId String?
+  owner   User?   @relation("LearningSeriesOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events LearningEvent[]
+  exams  Exam[]
+  badgeMilestones BadgeMilestone[]
+  starAwards      StarAward[]
+  badgeAwards     BadgeAward[]
+
+  @@index([slug])
+  @@index([type])
+  @@index([domainId])
+  @@index([ownerId])
+  @@map("learning_series")
+}
+
+model LearningEvent {
+  id String @id @default(uuid())
+
+  title  String
+  format LearningEventFormat
+  status LearningEventStatus @default(DRAFT)
+
+  seriesId String?
+  series   LearningSeries? @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+
+  domainId String?
+  domain   ProductDomain? @relation(fields: [domainId], references: [id], onDelete: SetNull)
+
+  description    String?   @db.Text
+  releaseVersion String?
+  scheduledAt    DateTime?
+  startsAt       DateTime?
+  endsAt         DateTime?
+
+  isRequired              Boolean @default(false)
+  countsTowardPerformance Boolean @default(false)
+  starValue               Int?
+
+  hostId      String?
+  host        User?   @relation("LearningEventHost", fields: [hostId], references: [id], onDelete: SetNull)
+  createdById String?
+  createdBy   User?   @relation("LearningEventCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+
+  exams       Exam[]
+  courses     Course[]
+  starAwards  StarAward[]
+  badgeAwards BadgeAward[]
+
+  @@index([seriesId])
+  @@index([domainId])
+  @@index([status])
+  @@index([scheduledAt])
+  @@index([hostId])
+  @@map("learning_events")
+}
+
+model BadgeMilestone {
+  id String @id @default(uuid())
+
+  name           String
+  slug           String  @unique
+  description    String? @db.Text
+  icon           String?
+  thresholdStars Int
+  active         Boolean @default(true)
+
+  domainId String?
+  domain   ProductDomain? @relation(fields: [domainId], references: [id], onDelete: SetNull)
+
+  learningSeriesId String?
+  learningSeries   LearningSeries? @relation(fields: [learningSeriesId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  awards BadgeAward[]
+
+  @@index([domainId])
+  @@index([learningSeriesId])
+  @@index([active])
+  @@map("badge_milestones")
+}
+
+model StarAward {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  domainId String?
+  domain   ProductDomain? @relation(fields: [domainId], references: [id], onDelete: SetNull)
+
+  learningSeriesId String?
+  learningSeries   LearningSeries? @relation(fields: [learningSeriesId], references: [id], onDelete: SetNull)
+
+  eventId String?
+  event   LearningEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  examId String?
+  exam   Exam?   @relation(fields: [examId], references: [id], onDelete: SetNull)
+
+  sourceType StarAwardSourceType
+  stars      Int
+  reason     String?             @db.Text
+  awardedAt  DateTime            @default(now())
+
+  @@index([userId, awardedAt])
+  @@index([domainId])
+  @@index([learningSeriesId])
+  @@index([eventId])
+  @@index([examId])
+  @@map("star_awards")
+}
+
+model BadgeAward {
+  id String @id @default(uuid())
+
+  badgeId String
+  badge   BadgeMilestone @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  domainId String?
+  domain   ProductDomain? @relation(fields: [domainId], references: [id], onDelete: SetNull)
+
+  learningSeriesId String?
+  learningSeries   LearningSeries? @relation(fields: [learningSeriesId], references: [id], onDelete: SetNull)
+
+  eventId String?
+  event   LearningEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  examId String?
+  exam   Exam?   @relation(fields: [examId], references: [id], onDelete: SetNull)
+
+  awardedAt DateTime @default(now())
+
+  @@unique([badgeId, userId])
+  @@index([userId, awardedAt])
+  @@index([domainId])
+  @@index([learningSeriesId])
+  @@index([eventId])
+  @@index([examId])
+  @@map("badge_awards")
 }
 
 // ============================================================================
@@ -108,6 +395,9 @@ model Course {
   description String  @db.Text
   thumbnail   String? // S3 URL
 
+  learningEventId String?
+  learningEvent   LearningEvent? @relation(fields: [learningEventId], references: [id], onDelete: SetNull)
+
   // Course metadata
   level            CourseLevel
   status           CourseStatus @default(DRAFT)
@@ -132,13 +422,13 @@ model Course {
   publishedAt DateTime?
 
   // Relations
-  chapters    Chapter[]
-  enrollments Enrollment[]
-  quizzes     Quiz[]
-  discussions Discussion[]
-  reviews     CourseReview[]
-  assets      CourseAsset[]   @relation("CourseAssets")
-  aiConfig    CourseAIConfig?
+  chapters            Chapter[]
+  enrollments         Enrollment[]
+  quizzes             Quiz[]
+  discussions         Discussion[]
+  reviews             CourseReview[]
+  assets              CourseAsset[]              @relation("CourseAssets")
+  aiConfig            CourseAIConfig?
   aiPromptAssignments CourseAIPromptAssignment[]
 
   // Exam relations
@@ -149,6 +439,7 @@ model Course {
   @@index([status])
   @@index([category])
   @@index([instructorId])
+  @@index([learningEventId])
   @@map("courses")
 }
 
@@ -204,15 +495,15 @@ model Lesson {
   updatedAt DateTime @updatedAt
 
   // Relations
-  progress    LessonProgress[]
-  assets      LessonAsset[]
-  aiConfig    LessonAIConfig?
-  transcripts TranscriptAsset[]
+  progress                 LessonProgress[]
+  assets                   LessonAsset[]
+  aiConfig                 LessonAIConfig?
+  transcripts              TranscriptAsset[]
   transcriptProcessingJobs TranscriptProcessingJob[]
 
   // Knowledge base (XML context system)
-  knowledgeContext KnowledgeContext?
-  knowledgeAnchors KnowledgeAnchor[]
+  knowledgeContext     KnowledgeContext?
+  knowledgeAnchors     KnowledgeAnchor[]
   knowledgeContextJobs KnowledgeContextJob[]
 
   @@index([chapterId])
@@ -415,16 +706,16 @@ model Certificate {
   pdfUrl            String? // S3 URL for generated PDF
   pdfS3Key          String? // S3 key for generated PDF (for deletion/cleanup)
 
-  status       CertificateStatus @default(ISSUED)
-  revokedAt    DateTime?
-  revokedById  String?
-  revokedBy    User?             @relation("CertificateRevoker", fields: [revokedById], references: [id], onDelete: SetNull)
+  status      CertificateStatus @default(ISSUED)
+  revokedAt   DateTime?
+  revokedById String?
+  revokedBy   User?             @relation("CertificateRevoker", fields: [revokedById], references: [id], onDelete: SetNull)
 
   // Certificate metadata
-  recipientName String? // Name on certificate (snapshot at time of issue)
-  examTitle     String? // Exam title snapshot
-  courseTitle   String? // Course title snapshot
-  score         Float? // Score achieved
+  recipientName    String? // Name on certificate (snapshot at time of issue)
+  examTitle        String? // Exam title snapshot
+  courseTitle      String? // Course title snapshot
+  score            Float? // Score achieved
   certificateTitle String? // Certificate name/title snapshot
 
   // Badge snapshot (auto-generated or uploaded)
@@ -564,23 +855,23 @@ model AIMessage {
 }
 
 model AIPromptTemplate {
-  id          String   @id @default(uuid())
-  name        String   @unique
-  description String?  @db.Text
+  id          String          @id @default(uuid())
+  name        String          @unique
+  description String?         @db.Text
   useCase     AIPromptUseCase @default(MISC)
 
   // Prompt content
   // - `template` is the legacy single-string field (kept for backward compatibility / seeds).
   // - `systemPrompt` / `userPrompt` are used by the newer, DB-driven prompt resolver.
-  template    String   @db.Text
-  systemPrompt String? @db.Text
-  userPrompt   String? @db.Text
-  variables   String[] // List of variable names used in template
+  template     String   @db.Text
+  systemPrompt String?  @db.Text
+  userPrompt   String?  @db.Text
+  variables    String[] // List of variable names used in template
 
   // Model defaults for this template (can be overridden by course/exam assignments)
-  model       String @default("gpt-4o-mini")
-  temperature Float  @default(0.2)
-  maxTokens   Int    @default(1024)
+  model          String           @default("gpt-4o-mini")
+  temperature    Float            @default(0.2)
+  maxTokens      Int              @default(1024)
   responseFormat AIResponseFormat @default(TEXT)
 
   isActive Boolean @default(true)
@@ -590,7 +881,7 @@ model AIPromptTemplate {
   updatedAt DateTime @updatedAt
 
   // Relations
-  defaults         AIPromptDefault[]
+  defaults          AIPromptDefault[]
   courseAssignments CourseAIPromptAssignment[]
   examAssignments   ExamAIPromptAssignment[]
 
@@ -622,8 +913,8 @@ enum AIResponseFormat {
 }
 
 model AIPromptDefault {
-  id         String @id @default(uuid())
-  useCase    AIPromptUseCase @unique
+  id         String           @id @default(uuid())
+  useCase    AIPromptUseCase  @unique
   templateId String
   template   AIPromptTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
 
@@ -659,7 +950,7 @@ model CourseAIPromptAssignment {
 model ExamAIPromptAssignment {
   id     String @id @default(uuid())
   examId String
-  exam   Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
+  exam   Exam   @relation(fields: [examId], references: [id], onDelete: Cascade)
 
   useCase    AIPromptUseCase
   templateId String
@@ -927,8 +1218,8 @@ model TranscriptAsset {
   updatedAt   DateTime  @updatedAt
   processedAt DateTime?
 
-  chunks         TranscriptChunk[]
-  processingJobs TranscriptProcessingJob[]
+  chunks               TranscriptChunk[]
+  processingJobs       TranscriptProcessingJob[]
   knowledgeContextJobs KnowledgeContextJob[]
 
   @@index([lessonId])
@@ -1247,11 +1538,19 @@ model Exam {
   description  String? @db.Text
   instructions String? @db.Text
 
-  status ExamStatus @default(DRAFT)
+  status         ExamStatus     @default(DRAFT)
+  assessmentKind AssessmentKind @default(PRACTICE)
+
+  productDomainId  String?
+  productDomain    ProductDomain?  @relation(fields: [productDomainId], references: [id], onDelete: SetNull)
+  learningSeriesId String?
+  learningSeries   LearningSeries? @relation(fields: [learningSeriesId], references: [id], onDelete: SetNull)
+  learningEventId  String?
+  learningEvent    LearningEvent?  @relation(fields: [learningEventId], references: [id], onDelete: SetNull)
 
   // Timing
   timeLimit     Int? // Minutes (null = no limit)
-  timezone      String   @default("UTC")
+  timezone      String    @default("UTC")
   deadline      DateTime? // Exam closes after this date
   availableFrom DateTime? // Exam becomes available after this date
 
@@ -1260,15 +1559,18 @@ model Exam {
   passingScore Int @default(70) // Percentage
 
   // Settings
-  randomizeQuestions     Boolean @default(false)
-  randomizeOptions       Boolean @default(false)
-  showResultsImmediately Boolean @default(true)
-  allowReview            Boolean @default(true) // Review answers after submission
-  maxAttempts            Int     @default(1)
+  randomizeQuestions      Boolean @default(false)
+  randomizeOptions        Boolean @default(false)
+  showResultsImmediately  Boolean @default(true)
+  allowReview             Boolean @default(true) // Review answers after submission
+  maxAttempts             Int     @default(1)
+  awardsStars             Boolean @default(false)
+  starValue               Int?
+  countsTowardPerformance Boolean @default(false)
 
   // AI Generation Config
   aiGenerationConfig Json? // Stores generation parameters
-  version Int @default(1)
+  version            Int   @default(1)
 
   // Metadata
   createdById  String
@@ -1284,18 +1586,24 @@ model Exam {
   closedAt    DateTime?
 
   // Relations
-  questions    ExamQuestion[]
-  attempts     ExamAttempt[]
-  materials    ExamMaterial[]
-  invitations  ExamInvitation[]
-  analytics    ExamAnalytics?
-  certificates Certificate[]
+  questions           ExamQuestion[]
+  attempts            ExamAttempt[]
+  materials           ExamMaterial[]
+  invitations         ExamInvitation[]
+  analytics           ExamAnalytics?
+  certificates        Certificate[]
   certificateTemplate ExamCertificateTemplate?
   aiPromptAssignments ExamAIPromptAssignment[]
+  starAwards          StarAward[]
+  badgeAwards         BadgeAward[]
 
   @@index([status])
   @@index([courseId])
   @@index([examType])
+  @@index([assessmentKind])
+  @@index([productDomainId])
+  @@index([learningSeriesId])
+  @@index([learningEventId])
   @@index([createdById])
   @@index([version])
   @@map("exams")
@@ -1310,16 +1618,18 @@ model ExamQuestion {
   type       ExamQuestionType
   difficulty DifficultyLevel  @default(MEDIUM)
 
-  question      String  @db.Text
-  options       Json? // For MC/TF: ["option1", "option2", ...]
-  correctAnswer String? @db.Text // For auto-gradable questions
+  question        String         @db.Text
+  options         Json? // For MC/TF: ["option1", "option2", ...]
+  correctAnswer   String?        @db.Text // For auto-gradable questions
+  productDomainId String?
+  productDomain   ProductDomain? @relation(fields: [productDomainId], references: [id], onDelete: SetNull)
 
   // For essay questions
-  rubric       String? @db.Text // Grading criteria for essays
-  sampleAnswer String? @db.Text // Reference answer for AI grading
-  gradingCriteria Json? // Structured grading criteria for AI-assisted essay grading
-  maxWords     Int? // Word limit for essays
-  attachmentS3Key String?
+  rubric             String? @db.Text // Grading criteria for essays
+  sampleAnswer       String? @db.Text // Reference answer for AI grading
+  gradingCriteria    Json? // Structured grading criteria for AI-assisted essay grading
+  maxWords           Int? // Word limit for essays
+  attachmentS3Key    String?
   attachmentFilename String?
   attachmentMimeType String?
 
@@ -1338,8 +1648,8 @@ model ExamQuestion {
   tags  String[] @default([])
 
   // Timestamps
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
   archivedAt DateTime?
 
   // Relations
@@ -1347,6 +1657,7 @@ model ExamQuestion {
   sources ExamQuestionSource[]
 
   @@index([examId])
+  @@index([productDomainId])
   @@index([type])
   @@index([order])
   @@index([archivedAt])
@@ -1405,9 +1716,9 @@ model ExamAttempt {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  answers ExamAnswer[]
+  answers           ExamAnswer[]
   questionSnapshots ExamAttemptQuestionSnapshot[]
-  certificates Certificate[]
+  certificates      Certificate[]
 
   @@index([userId])
   @@index([examId])
@@ -1422,27 +1733,28 @@ model ExamAttemptQuestionSnapshot {
   attemptId String
   attempt   ExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
-  examId String
+  examId      String
   examVersion Int
-  questionId String
+  questionId  String
 
   type       ExamQuestionType
   difficulty DifficultyLevel  @default(MEDIUM)
 
-  question      String  @db.Text
-  options       Json?
-  correctAnswer String? @db.Text
-  rubric       String? @db.Text
-  sampleAnswer String? @db.Text
-  gradingCriteria Json?
-  maxWords     Int?
-  attachmentS3Key String?
+  question           String   @db.Text
+  options            Json?
+  correctAnswer      String?  @db.Text
+  productDomainId    String?
+  rubric             String?  @db.Text
+  sampleAnswer       String?  @db.Text
+  gradingCriteria    Json?
+  maxWords           Int?
+  attachmentS3Key    String?
   attachmentFilename String?
   attachmentMimeType String?
-  points      Int     @default(10)
-  explanation String? @db.Text
-  topic String?
-  tags  String[] @default([])
+  points             Int      @default(10)
+  explanation        String?  @db.Text
+  topic              String?
+  tags               String[] @default([])
 
   order Int @default(0)
 
@@ -1450,6 +1762,7 @@ model ExamAttemptQuestionSnapshot {
 
   @@unique([attemptId, questionId])
   @@index([attemptId, order])
+  @@index([productDomainId])
   @@index([examId, examVersion])
   @@map("exam_attempt_question_snapshots")
 }
@@ -1479,10 +1792,10 @@ model ExamAnswer {
   pointsAwarded Float?
 
   // AI Grading (for essays)
-  aiSuggestedScore Float?
-  aiFeedback       String?   @db.Text
+  aiSuggestedScore   Float?
+  aiFeedback         String?   @db.Text
   aiGradingBreakdown Json?
-  aiGradedAt       DateTime?
+  aiGradedAt         DateTime?
 
   // Admin override
   adminScore      Float?

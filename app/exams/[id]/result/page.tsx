@@ -19,7 +19,6 @@ import {
     Clock,
     Target,
     RotateCcw,
-    Download,
     AlertCircle,
 } from 'lucide-react'
 import Link from 'next/link'
@@ -27,6 +26,7 @@ import type { ExamQuestionType } from '@/types'
 
 interface ResultData {
     attemptId: string
+    examId: string
     examTitle: string
     attemptNumber: number
     status: string
@@ -38,12 +38,37 @@ interface ResultData {
     totalScore: number
     passingScore: number
     allowReview: boolean
+    assessmentKind?: 'PRACTICE' | 'READINESS' | 'FORMAL' | null
+    awardsStars: boolean
+    starValue?: number | null
+    countsTowardPerformance: boolean
     maxAttempts: number
     attemptsUsed: number
     reviewUnlocked: boolean
     reviewUnlockedByPassing?: boolean
     reviewUnlockedByAttempts?: boolean
     reviewUnlockedByDeadline?: boolean
+    rewardOutcome: {
+        starsEarned: number
+        badgesUnlocked: Array<{
+            id: string
+            name: string
+            slug: string
+            description: string | null
+            learningSeries?: {
+                id: string
+                name: string
+                slug: string
+            } | null
+        }>
+        certificate: {
+            eligible: boolean
+            issued: boolean
+            id: string | null
+            title: string | null
+            certificateNumber: string | null
+        }
+    }
     answers?: Array<{
         questionId: string
         question: string
@@ -152,6 +177,18 @@ export default function ExamResultPage({ params }: PageProps) {
 
     const isPending = result.status === 'SUBMITTED' && result.percentageScore === null
     const attemptsRemaining = Math.max(0, (result.maxAttempts ?? 0) - (result.attemptsUsed ?? 0))
+    const earnedStarsLabel = result.rewardOutcome.starsEarned > 0
+        ? `+${result.rewardOutcome.starsEarned} star${result.rewardOutcome.starsEarned > 1 ? 's' : ''} earned`
+        : result.awardsStars
+            ? 'No stars earned on this attempt'
+            : 'This assessment does not award stars'
+    const certificateStatusLabel = result.rewardOutcome.certificate.issued
+        ? 'Certificate awarded'
+        : result.rewardOutcome.certificate.eligible
+            ? result.passed
+                ? 'Certificate will be available after issuance completes'
+                : 'Certificate is only awarded if you pass'
+            : 'No certificate for this assessment'
     const reviewUnlockDescription = result.reviewUnlocked
         ? result.reviewUnlockedByPassing
             ? 'Review unlocked because you passed this attempt'
@@ -228,6 +265,69 @@ export default function ExamResultPage({ params }: PageProps) {
                                 {result.rawScore} / {result.totalScore} points
                                 (Passing: {result.passingScore})
                             </p>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {!isPending && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Rewards & Recognition</CardTitle>
+                            <CardDescription>
+                                This assessment is marked as {result.assessmentKind ?? 'PRACTICE'}.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="grid gap-4 md:grid-cols-3">
+                            <div className="rounded-lg border bg-background/70 p-4">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Stars</p>
+                                <p className="mt-2 text-lg font-semibold">{earnedStarsLabel}</p>
+                                {result.awardsStars && result.starValue ? (
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        Passing this exam can award up to {result.starValue} star{result.starValue > 1 ? 's' : ''}.
+                                    </p>
+                                ) : null}
+                            </div>
+                            <div className="rounded-lg border bg-background/70 p-4">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Badges</p>
+                                <p className="mt-2 text-lg font-semibold">
+                                    {result.rewardOutcome.badgesUnlocked.length > 0
+                                        ? `${result.rewardOutcome.badgesUnlocked.length} unlocked`
+                                        : 'No new badge unlocked'}
+                                </p>
+                                {result.rewardOutcome.badgesUnlocked.length > 0 ? (
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        {result.rewardOutcome.badgesUnlocked.map((badge) => (
+                                            <Badge key={badge.id} variant="secondary">
+                                                {badge.name}
+                                            </Badge>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        Keep progressing in this series to unlock the next milestone.
+                                    </p>
+                                )}
+                            </div>
+                            <div className="rounded-lg border bg-background/70 p-4">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Certificate</p>
+                                <p className="mt-2 text-lg font-semibold">{certificateStatusLabel}</p>
+                                {result.rewardOutcome.certificate.issued && result.rewardOutcome.certificate.id ? (
+                                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                                        <Badge variant="outline">
+                                            {result.rewardOutcome.certificate.title || 'Certificate'}
+                                        </Badge>
+                                        {result.rewardOutcome.certificate.certificateNumber ? (
+                                            <span className="text-sm text-muted-foreground">
+                                                #{result.rewardOutcome.certificate.certificateNumber}
+                                            </span>
+                                        ) : null}
+                                    </div>
+                                ) : (
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        Formal assessments may issue certificates when certificate-on-pass is enabled.
+                                    </p>
+                                )}
+                            </div>
                         </CardContent>
                     </Card>
                 )}
@@ -448,7 +548,7 @@ export default function ExamResultPage({ params }: PageProps) {
                         </Button>
                     </Link>
 
-                    {result.passed && (
+                    {result.rewardOutcome.certificate.issued && result.rewardOutcome.certificate.id && (
                         <Link href="/certificates">
                             <Button size="lg">
                                 <Award className="h-4 w-4 mr-2" />

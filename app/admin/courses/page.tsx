@@ -14,6 +14,7 @@ import type { Course } from '@/types'
 
 export default function AdminCoursesPage() {
     const [courses, setCourses] = useState<Course[]>([])
+    const [currentUserRole, setCurrentUserRole] = useState<'ADMIN' | 'SME' | 'USER' | null>(null)
     const [searchQuery, setSearchQuery] = useState('')
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
@@ -21,6 +22,19 @@ export default function AdminCoursesPage() {
     const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
     const [errorDialogOpen, setErrorDialogOpen] = useState(false)
     const [errorDialogMessage, setErrorDialogMessage] = useState('')
+
+    useEffect(() => {
+        const loadUser = async () => {
+            try {
+                const response = await ApiClient.getMe()
+                setCurrentUserRole(response.data.role)
+            } catch {
+                setCurrentUserRole(null)
+            }
+        }
+
+        void loadUser()
+    }, [])
 
     useEffect(() => {
         let cancelled = false
@@ -102,7 +116,7 @@ export default function AdminCoursesPage() {
                             Create and manage training courses
                         </p>
                     </div>
-                    <Link href="/admin/courses/create">
+                    <Link href={currentUserRole === 'SME' ? '/admin/courses/create?sme=1' : '/admin/courses/create'}>
                         <Button>
                             <Plus className="h-4 w-4 mr-2" />
                             Create Course
@@ -177,7 +191,15 @@ export default function AdminCoursesPage() {
                                             </div>
                                         </div>
                                         <div className="flex items-center space-x-2">
-                                            <Link href={`/courses/${course.slug || course.id}`}>
+                                            <Link
+                                                href={
+                                                    currentUserRole === 'SME'
+                                                        ? `/sme/training-ops/courses/${course.id}`
+                                                        : course.status === 'PUBLISHED'
+                                                          ? `/courses/${course.slug || course.id}`
+                                                          : `/admin/courses/${course.id}/edit`
+                                                }
+                                            >
                                                 <Button variant="ghost" size="icon">
                                                     <Eye className="h-4 w-4" />
                                                 </Button>
@@ -198,7 +220,7 @@ export default function AdminCoursesPage() {
                                                     <Send className="h-4 w-4" />
                                                 </Button>
                                             )}
-                                            <Link href={`/admin/courses/${course.id}/edit`}>
+                                            <Link href={`/admin/courses/${course.id}/edit${currentUserRole === 'SME' ? '?sme=1' : ''}`}>
                                                 <Button variant="ghost" size="icon">
                                                     <Edit className="h-4 w-4" />
                                                 </Button>

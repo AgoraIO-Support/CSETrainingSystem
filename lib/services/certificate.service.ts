@@ -6,7 +6,7 @@
 import prisma from '@/lib/prisma';
 import { EmailService } from './email.service';
 import { v4 as uuidv4 } from 'uuid';
-import { CertificateBadgeMode, CertificateStatus } from '@prisma/client';
+import { AssessmentKind, CertificateBadgeMode, CertificateStatus } from '@prisma/client';
 import { FileService } from '@/lib/services/file.service';
 
 export interface CertificateData {
@@ -81,12 +81,14 @@ export class CertificateService {
         userId,
         passed: true,
         status: 'GRADED',
-        OR: [
-          // No template configured: treat as enabled with defaults.
-          { exam: { certificateTemplate: { is: null } } },
-          // Template exists and is enabled.
-          { exam: { certificateTemplate: { is: { isEnabled: true } } } },
-        ],
+        exam: {
+          assessmentKind: AssessmentKind.FORMAL,
+          certificateTemplate: {
+            is: {
+              isEnabled: true,
+            },
+          },
+        },
       },
       include: {
         user: { select: { name: true, email: true } },
@@ -95,6 +97,7 @@ export class CertificateService {
             id: true,
             title: true,
             courseId: true,
+            assessmentKind: true,
             course: { select: { title: true } },
             totalScore: true,
             certificateTemplate: true,
@@ -149,17 +152,9 @@ export class CertificateService {
       if (existingExamIds.has(attempt.examId)) continue;
 
       const template = attempt.exam.certificateTemplate;
-      if (template && !template.isEnabled) continue;
+      if (!template || !template.isEnabled || attempt.exam.assessmentKind !== AssessmentKind.FORMAL) continue;
 
-      const effectiveTemplate = template
-        ? (template as any)
-        : {
-            title: `${attempt.exam.title} Certificate`,
-            badgeMode: CertificateBadgeMode.AUTO,
-            badgeS3Key: null,
-            badgeMimeType: null,
-            badgeStyle: { theme: 'blue', variant: 'default' },
-          };
+      const effectiveTemplate = template as any;
       const badge = this.normalizeBadgeTemplate(effectiveTemplate as any);
 
       // Best-effort "record-only" backfill: do not generate/upload PDF here.
@@ -275,24 +270,21 @@ export class CertificateService {
       throw new Error('EXAM_NOT_PASSED');
     }
 
-    const template = await prisma.examCertificateTemplate.findUnique({
-      where: { examId: attempt.examId },
-    });
-
-    if (template && !template.isEnabled) {
+    if (attempt.exam.assessmentKind !== AssessmentKind.FORMAL) {
       if (opts.silentIfNotEnabled) return null;
       throw new Error('CERTIFICATE_NOT_ENABLED');
     }
 
-    const effectiveTemplate =
-      template ??
-      ({
-        title: `${attempt.exam.title} Certificate`,
-        badgeMode: CertificateBadgeMode.AUTO,
-        badgeS3Key: null,
-        badgeMimeType: null,
-        badgeStyle: { theme: 'blue', variant: 'default' },
-      } as const);
+    const template = await prisma.examCertificateTemplate.findUnique({
+      where: { examId: attempt.examId },
+    });
+
+    if (!template || !template.isEnabled) {
+      if (opts.silentIfNotEnabled) return null;
+      throw new Error('CERTIFICATE_NOT_ENABLED');
+    }
+
+    const effectiveTemplate = template;
 
     const existingCert = await prisma.certificate.findFirst({
       where: {

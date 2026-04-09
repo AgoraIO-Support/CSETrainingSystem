@@ -1,15 +1,19 @@
 import { NextResponse } from 'next/server'
-import { withAdminAuth } from '@/lib/auth-middleware'
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware'
 import { CourseService } from '@/lib/services/course.service'
 import { CascadeDeleteService } from '@/lib/services/cascade-delete.service'
 import { updateCourseSchema } from '@/lib/validations'
 import { z } from 'zod'
 import prisma from '@/lib/prisma'
 import { WecomWebhookService } from '@/lib/services/wecom-webhook.service'
+import { TrainingOpsService } from '@/lib/services/training-ops.service'
 
-export const PUT = withAdminAuth(async (req, user, { params }: { params: Promise<{ id: string }> }) => {
+export const PUT = withSmeOrAdminAuth(async (req, user, { params }: { params: Promise<{ id: string }> }) => {
     try {
         const { id } = await params
+        if (user.role === 'SME') {
+            await TrainingOpsService.assertScopedCourseAccess(user, id)
+        }
         const body = await req.json()
         const sendNotification = body?.sendNotification === true
         const data = updateCourseSchema.parse(body)
@@ -22,6 +26,7 @@ export const PUT = withAdminAuth(async (req, user, { params }: { params: Promise
         const notificationResults = { sent: 0, failed: 0, recipients: 0 }
 
         if (
+            user.role === 'ADMIN' &&
             sendNotification &&
             previous &&
             previous.status !== 'PUBLISHED' &&
@@ -83,6 +88,19 @@ export const PUT = withAdminAuth(async (req, user, { params }: { params: Promise
             )
         }
 
+        if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: {
+                        code: 'TRAINING_OPS_SCOPE_FORBIDDEN',
+                        message: 'You do not have access to this course',
+                    },
+                },
+                { status: 403 }
+            )
+        }
+
         return NextResponse.json(
             {
                 success: false,
@@ -96,15 +114,25 @@ export const PUT = withAdminAuth(async (req, user, { params }: { params: Promise
     }
 })
 
-export const DELETE = withAdminAuth(async (req, user, { params }: { params: Promise<{ id: string }> }) => {
+export const DELETE = withSmeOrAdminAuth(async (req, user, { params }: { params: Promise<{ id: string }> }) => {
     try {
         const { id } = await params
+        if (user.role === 'SME') {
+            await TrainingOpsService.assertScopedCourseAccess(user, id)
+        }
 
         await CascadeDeleteService.deleteCourseCascade(id)
 
         return NextResponse.json({ success: true })
     } catch (error) {
         console.error('Course delete error:', error)
+
+        if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+            return NextResponse.json(
+                { success: false, error: { code: 'TRAINING_OPS_SCOPE_FORBIDDEN', message: 'You do not have access to this course' } },
+                { status: 403 }
+            )
+        }
 
         // S3 cleanup failure returns 502 to indicate partial failure
         if (error instanceof Error && error.message.startsWith('S3_CLEANUP_FAILED')) {

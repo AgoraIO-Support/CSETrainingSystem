@@ -206,7 +206,7 @@ export default function ProfilePage() {
                                     </div>
                                     <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                                         <Badge variant="secondary" className="text-sm">
-                                            {profile?.role === 'ADMIN' ? 'Administrator' : 'Learner'}
+                                            {profile?.role === 'ADMIN' ? 'Administrator' : profile?.role === 'SME' ? 'SME' : 'Learner'}
                                         </Badge>
                                         {profile?.createdAt && (
                                             <span>Member since {formatDate(profile.createdAt)}</span>

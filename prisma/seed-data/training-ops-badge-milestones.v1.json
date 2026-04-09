@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "scopeModel": "LEARNING_SERIES",
+  "activeSeries": [
+    "conversational-ai-weekly-drill",
+    "rtc-weekly-case-study"
+  ],
+  "items": [
+    {
+      "scope": "SERIES",
+      "learningSeriesSlug": "conversational-ai-weekly-drill",
+      "learningSeriesName": "Conversational AI Weekly Drill",
+      "domainSlug": "conversational-ai",
+      "level": "READY",
+      "name": "Convo AI Ready",
+      "slug": "convo-ai-ready",
+      "description": "Earned through steady participation in the Conversational AI weekly drill series.",
+      "thresholdStars": 4,
+      "sortOrder": 10,
+      "active": true
+    },
+    {
+      "scope": "SERIES",
+      "learningSeriesSlug": "conversational-ai-weekly-drill",
+      "learningSeriesName": "Conversational AI Weekly Drill",
+      "domainSlug": "conversational-ai",
+      "level": "PRACTITIONER",
+      "name": "Convo AI Practitioner",
+      "slug": "convo-ai-practitioner",
+      "description": "Demonstrates consistent hands-on practice across Conversational AI case studies.",
+      "thresholdStars": 10,
+      "sortOrder": 20,
+      "active": true
+    },
+    {
+      "scope": "SERIES",
+      "learningSeriesSlug": "conversational-ai-weekly-drill",
+      "learningSeriesName": "Conversational AI Weekly Drill",
+      "domainSlug": "conversational-ai",
+      "level": "TROUBLESHOOTER",
+      "name": "Convo AI Troubleshooter",
+      "slug": "convo-ai-troubleshooter",
+      "description": "Shows strong problem-solving ability in Conversational AI scenarios and escalations.",
+      "thresholdStars": 18,
+      "sortOrder": 30,
+      "active": true
+    },
+    {
+      "scope": "SERIES",
+      "learningSeriesSlug": "conversational-ai-weekly-drill",
+      "learningSeriesName": "Conversational AI Weekly Drill",
+      "domainSlug": "conversational-ai",
+      "level": "DOMAIN_SPECIALIST",
+      "name": "Convo AI Domain Specialist",
+      "slug": "convo-ai-domain-specialist",
+      "description": "Recognizes sustained mastery and reliable performance in Conversational AI weekly practice.",
+      "thresholdStars": 28,
+      "sortOrder": 40,
+      "active": true
+    },
+    {
+      "scope": "SERIES",
+      "learningSeriesSlug": "rtc-weekly-case-study",
+      "learningSeriesName": "RTC Weekly Case Study",
+      "domainSlug": "rtc",
+      "level": "READY",
+      "name": "RTC Ready",
+      "slug": "rtc-ready",
+      "description": "Earned through steady participation in RTC weekly case studies.",
+      "thresholdStars": 4,
+      "sortOrder": 10,
+      "active": true
+    },
+    {
+      "scope": "SERIES",
+      "learningSeriesSlug": "rtc-weekly-case-study",
+      "learningSeriesName": "RTC Weekly Case Study",
+      "domainSlug": "rtc",
+      "level": "PRACTITIONER",
+      "name": "RTC Practitioner",
+      "slug": "rtc-practitioner",
+      "description": "Demonstrates consistent RTC practice and technical review participation.",
+      "thresholdStars": 10,
+      "sortOrder": 20,
+      "active": true
+    },
+    {
+      "scope": "SERIES",
+      "learningSeriesSlug": "rtc-weekly-case-study",
+      "learningSeriesName": "RTC Weekly Case Study",
+      "domainSlug": "rtc",
+      "level": "TROUBLESHOOTER",
+      "name": "RTC Troubleshooter",
+      "slug": "rtc-troubleshooter",
+      "description": "Shows strong troubleshooting capability in RTC support and escalation scenarios.",
+      "thresholdStars": 18,
+      "sortOrder": 30,
+      "active": true
+    },
+    {
+      "scope": "SERIES",
+      "learningSeriesSlug": "rtc-weekly-case-study",
+      "learningSeriesName": "RTC Weekly Case Study",
+      "domainSlug": "rtc",
+      "level": "DOMAIN_SPECIALIST",
+      "name": "RTC Domain Specialist",
+      "slug": "rtc-domain-specialist",
+      "description": "Recognizes sustained RTC expertise developed through repeated case-study performance.",
+      "thresholdStars": 28,
+      "sortOrder": 40,
+      "active": true
+    }
+  ]
+}

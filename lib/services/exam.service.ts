@@ -10,6 +10,9 @@ import {
   ExamQuestionType,
   DifficultyLevel,
   Prisma,
+  AssessmentKind,
+  LearningEventFormat,
+  LearningSeriesType,
 } from '@prisma/client';
 import { FileService } from '@/lib/services/file.service';
 import { ASSET_S3_BUCKET_NAME, S3_BUCKET_NAME } from '@/lib/aws-s3';
@@ -34,6 +37,13 @@ export interface CreateExamInput {
   showResultsImmediately?: boolean;
   allowReview?: boolean;
   maxAttempts?: number;
+  assessmentKind?: AssessmentKind;
+  productDomainId?: string | null;
+  learningSeriesId?: string | null;
+  learningEventId?: string | null;
+  awardsStars?: boolean;
+  starValue?: number | null;
+  countsTowardPerformance?: boolean;
 }
 
 export interface UpdateExamInput {
@@ -110,6 +120,14 @@ export interface ExamWithDetails {
   showResultsImmediately: boolean;
   allowReview: boolean;
   maxAttempts: number;
+  assessmentKind?: AssessmentKind;
+  productDomainId?: string | null;
+  learningSeriesId?: string | null;
+  learningEventId?: string | null;
+  awardsStars?: boolean;
+  starValue?: number | null;
+  countsTowardPerformance?: boolean;
+  certificateEligible?: boolean;
   version: number;
   createdBy: {
     id: string;
@@ -135,6 +153,29 @@ export interface ExamWithDetails {
 }
 
 export class ExamService {
+  private static resolveAssessmentKindFromEvent(event: {
+    countsTowardPerformance: boolean
+    format: LearningEventFormat
+    series?: { type: LearningSeriesType } | null
+  }): AssessmentKind {
+    if (
+      event.countsTowardPerformance ||
+      event.format === 'FINAL_EXAM' ||
+      event.series?.type === 'QUARTERLY_FINAL' ||
+      event.series?.type === 'YEAR_END_FINAL'
+    ) {
+      return 'FORMAL'
+    }
+
+    if (
+      event.format === 'RELEASE_BRIEFING' ||
+      event.series?.type === 'RELEASE_READINESS'
+    ) {
+      return 'READINESS'
+    }
+
+    return 'PRACTICE'
+  }
   private static async enrichQuestionWithAttachmentUrl<T extends {
     attachmentS3Key?: string | null;
     question?: string | null;
@@ -303,6 +344,11 @@ export class ExamService {
             email: true,
           },
         },
+        certificateTemplate: {
+          select: {
+            isEnabled: true,
+          },
+        },
         _count: {
           select: {
             questions: true,
@@ -314,7 +360,12 @@ export class ExamService {
       },
     });
 
-    return exam as ExamWithDetails | null;
+    return exam
+      ? {
+          ...exam,
+          certificateEligible: exam.assessmentKind === 'FORMAL' && Boolean(exam.certificateTemplate?.isEnabled),
+        } as ExamWithDetails
+      : null;
   }
 
   /**
@@ -339,6 +390,68 @@ export class ExamService {
       }
     }
 
+    let resolvedProductDomainId = data.productDomainId ?? null
+    let resolvedLearningSeriesId = data.learningSeriesId ?? null
+    let resolvedLearningEventId = data.learningEventId ?? null
+    let resolvedAssessmentKind = data.assessmentKind ?? AssessmentKind.PRACTICE
+    let resolvedAwardsStars = data.awardsStars ?? false
+    let resolvedStarValue = data.starValue ?? null
+    let resolvedCountsTowardPerformance = data.countsTowardPerformance ?? false
+
+    if (data.learningEventId) {
+      const event = await prisma.learningEvent.findUnique({
+        where: { id: data.learningEventId },
+        include: {
+          series: {
+            select: { id: true, type: true, domainId: true },
+          },
+        },
+      })
+
+      if (!event) {
+        throw new Error('LEARNING_EVENT_NOT_FOUND')
+      }
+
+      resolvedLearningEventId = event.id
+      resolvedLearningSeriesId = data.learningSeriesId ?? event.seriesId ?? null
+      resolvedProductDomainId =
+        data.productDomainId ?? event.domainId ?? event.series?.domainId ?? null
+      resolvedAssessmentKind =
+        data.assessmentKind ?? this.resolveAssessmentKindFromEvent(event)
+      resolvedCountsTowardPerformance =
+        data.countsTowardPerformance ?? event.countsTowardPerformance
+      resolvedAwardsStars =
+        data.awardsStars ?? ((event.starValue ?? 0) > 0)
+      resolvedStarValue =
+        data.starValue ?? event.starValue ?? null
+    }
+
+    if (resolvedLearningSeriesId) {
+      const series = await prisma.learningSeries.findUnique({
+        where: { id: resolvedLearningSeriesId },
+        select: { id: true, domainId: true },
+      })
+
+      if (!series) {
+        throw new Error('LEARNING_SERIES_NOT_FOUND')
+      }
+
+      if (!resolvedProductDomainId && series.domainId) {
+        resolvedProductDomainId = series.domainId
+      }
+    }
+
+    if (resolvedProductDomainId) {
+      const domain = await prisma.productDomain.findUnique({
+        where: { id: resolvedProductDomainId },
+        select: { id: true },
+      })
+
+      if (!domain) {
+        throw new Error('PRODUCT_DOMAIN_NOT_FOUND')
+      }
+    }
+
     const exam = await prisma.exam.create({
       data: {
         examType: data.examType,
@@ -357,6 +470,13 @@ export class ExamService {
         showResultsImmediately: data.showResultsImmediately ?? true,
         allowReview: data.allowReview ?? true,
         maxAttempts: data.maxAttempts ?? 1,
+        assessmentKind: resolvedAssessmentKind,
+        productDomainId: resolvedProductDomainId,
+        learningSeriesId: resolvedLearningSeriesId,
+        learningEventId: resolvedLearningEventId,
+        awardsStars: resolvedAwardsStars,
+        starValue: resolvedStarValue,
+        countsTowardPerformance: resolvedCountsTowardPerformance,
         createdById,
         status: ExamStatus.DRAFT,
       },

@@ -3,7 +3,7 @@ export interface User {
     name: string
     email: string
     avatar?: string
-    role: 'admin' | 'user' | 'ADMIN' | 'USER'
+    role: 'admin' | 'user' | 'ADMIN' | 'USER' | 'SME'
     enrolledCourses: string[]
     completedCourses: string[]
     progress: Record<string, number>
@@ -15,7 +15,7 @@ export interface AdminUser {
     email: string
     wecomUserId?: string | null
     avatar?: string | null
-    role: 'USER' | 'ADMIN'
+    role: 'USER' | 'SME' | 'ADMIN'
     status: 'ACTIVE' | 'SUSPENDED' | 'DELETED'
     department?: string | null
     title?: string | null
@@ -25,10 +25,98 @@ export interface AdminUser {
     completedCourses: number
 }
 
+export interface SmeWorkspaceSummary {
+    domains: ProductDomainSummary[]
+    series: LearningSeriesSummary[]
+    events: LearningEventSummary[]
+    effectiveness: ProductDomainEffectivenessSummary[]
+    weakTopics: Array<{
+        topic: string | null
+        misses: number
+        answered: number
+        domainName: string | null
+    }>
+    learnerGaps: Array<{
+        userId: string
+        name: string
+        email: string
+        gradedAttempts: number
+        passedAttempts: number
+        failedAttempts: number
+        passRate: number
+        lastSubmittedAt: string | Date | null
+    }>
+}
+
+export interface SmeBadgeLadderOverview {
+    series: Array<{
+        id: string
+        name: string
+        slug: string
+    }>
+    templates: Array<{
+        id: string
+        name: string
+        slug: string
+        description?: string | null
+        icon?: string | null
+        thresholdStars: number
+        awardCount: number
+    }>
+    seriesLadders: Array<{
+        learningSeries: {
+            id: string
+            name: string
+            slug: string
+        }
+        totalUnlocks: number
+        recognizedLearners: number
+        latestUnlockedAt: string | Date | null
+        milestones: Array<{
+            id: string
+            name: string
+            slug: string
+            description?: string | null
+            icon?: string | null
+            thresholdStars: number
+            awardCount: number
+        }>
+    }>
+    recentUnlocks: Array<{
+        id: string
+        awardedAt: string | Date
+        user: {
+            id: string
+            name: string
+            email: string
+        }
+        badge: {
+            id: string
+            name: string
+            slug: string
+            thresholdStars: number
+        }
+        learningSeries: {
+            id: string
+            name: string
+            slug: string
+        }
+        event?: {
+            id: string
+            title: string
+        } | null
+        exam?: {
+            id: string
+            title: string
+        } | null
+    }>
+}
+
 export interface AdminUserStats {
     totalUsers: number
     activeUsers: number
     adminUsers: number
+    smeUsers: number
     newThisMonth: number
 }
 
@@ -71,11 +159,685 @@ export interface AdminAnalyticsSummary {
     recentActivity: SystemAnalyticsEntry[]
 }
 
+export interface TrainingOpsBridge {
+    generatedAt: string | Date
+    analytics: {
+        totalUsers: number
+        activeUsers: number
+        totalCourses: number
+        totalEnrollments: number
+        completionRate: number
+        learnerRows: number
+        recentActivityEntries: number
+    }
+    exams: {
+        totalExams: number
+        draftExams: number
+        pendingReviewExams: number
+        approvedExams: number
+        publishedExams: number
+        invitations: number
+        attempts: number
+        practiceExams: number | null
+        readinessExams: number | null
+        formalExams: number | null
+        performanceTrackedExams: number | null
+        starEnabledExams: number | null
+        examsMappedToDomain: number | null
+        questionsMappedToDomain: number | null
+        recentExams: Array<{
+            id: string
+            title: string
+            status: string
+            publishedAt: string | Date | null
+            updatedAt: string | Date
+            allowReview: boolean
+            maxAttempts: number
+            questionCount: number
+            invitationCount: number
+            attemptCount: number
+        }>
+    }
+    rewards: {
+        achievementTemplates: number
+        achievementAwards: number
+        certificateCount: number
+        formalCertificateCount: number | null
+        badgeMilestones: number | null
+        badgeAwards: number | null
+        starAwards: number | null
+        certificateExams: Array<{
+            examId: string
+            title: string
+            certificateCount: number
+            learnerCount: number
+        }>
+        learnersWithRecognition: number
+        topLearners: Array<{
+            userId: string
+            name: string
+            email: string
+            stars: number
+            badges: number
+            lastRewardedAt: string | Date | null
+            recentSources: string[]
+        }>
+    }
+    trainingOps: {
+        productDomains: number | null
+        activeProductDomains: number | null
+        learningSeries: number | null
+        activeLearningSeries: number | null
+        scheduledEvents: number | null
+        completedEvents: number | null
+        migrated: boolean
+        previewDomains: Array<{
+            id: string
+            name: string
+            cadence: string | null
+            primarySmeName: string | null
+        }>
+        previewSeries: Array<{
+            id: string
+            name: string
+            type: string
+            domainName: string | null
+            cadence: string | null
+            isActive: boolean
+        }>
+        previewEvents: Array<{
+            id: string
+            title: string
+            status: string
+            scheduledAt: string | Date | null
+            domainName: string | null
+            hostName: string | null
+        }>
+        topRewardDomains: Array<{
+            domainId: string | null
+            domainName: string | null
+            starAwards: number
+            badgeAwards: number
+            recognizedLearners: number
+        }>
+        rewardedEvents: Array<{
+            id: string
+            title: string
+            scheduledAt: string | Date | null
+            domainName: string | null
+            starAwards: number
+            badgeAwards: number
+            recognizedLearners: number
+        }>
+    }
+}
+
+export interface ProductDomainSummary {
+    id: string
+    name: string
+    slug: string
+    category: 'RTE' | 'AI'
+    track: 'AGILE' | 'MASTERY' | 'RELEASE' | 'FINAL'
+    kpiMode: 'DELTA' | 'RETENTION' | 'READINESS'
+    description?: string | null
+    cadence?: string | null
+    active: boolean
+    baselinePassRate?: number | null
+    targetPassRate?: number | null
+    challengeThreshold?: number | null
+    primarySme?: {
+        id: string
+        name: string
+        email: string
+    } | null
+    backupSme?: {
+        id: string
+        name: string
+        email: string
+    } | null
+    counts: {
+        learningSeries: number
+        learningEvents: number
+        exams: number
+        badgeMilestones: number
+    }
+    recentEvent?: {
+        id: string
+        title: string
+        scheduledAt: string | Date | null
+    } | null
+    rewards?: {
+        starAwards: number
+        badgeAwards: number
+        recognizedLearners: number
+    }
+    createdAt: string | Date
+    updatedAt: string | Date
+}
+
+export interface ProductDomainEffectivenessSummary {
+    id: string
+    name: string
+    slug: string
+    category: 'RTE' | 'AI'
+    track: 'AGILE' | 'MASTERY' | 'RELEASE' | 'FINAL'
+    kpiMode: 'DELTA' | 'RETENTION' | 'READINESS'
+    cadence?: string | null
+    baselinePassRate?: number | null
+    targetPassRate?: number | null
+    challengeThreshold?: number | null
+    currentPassRate: number
+    deltaFromBaseline: number | null
+    targetGap: number | null
+    gradedAttempts: number
+    passedAttempts: number
+    failedAttempts: number
+    linkedExamCount: number
+    performanceExamCount: number
+    scheduledEventCount: number
+    status: 'ON_TRACK' | 'MONITOR' | 'AT_RISK' | 'INSUFFICIENT_DATA'
+    primarySme?: {
+        id: string
+        name: string
+        email: string
+    } | null
+}
+
+export interface LearningSeriesSummary {
+    id: string
+    name: string
+    slug: string
+    type:
+        | 'WEEKLY_DRILL'
+        | 'CASE_STUDY'
+        | 'KNOWLEDGE_SHARING'
+        | 'FAQ_SHARE'
+        | 'RELEASE_READINESS'
+        | 'QUARTERLY_FINAL'
+        | 'YEAR_END_FINAL'
+    description?: string | null
+    cadence?: string | null
+    isActive: boolean
+    badgeEligible: boolean
+    countsTowardPerformance: boolean
+    defaultStarValue?: number | null
+    domain?: {
+        id: string
+        name: string
+        slug: string
+        track: 'AGILE' | 'MASTERY' | 'RELEASE' | 'FINAL'
+    } | null
+    owner?: {
+        id: string
+        name: string
+        email: string
+    } | null
+    counts: {
+        events: number
+        exams: number
+    }
+    recentEvent?: {
+        id: string
+        title: string
+        scheduledAt: string | Date | null
+    } | null
+    rewards?: {
+        starAwards: number
+        badgeAwards: number
+        recognizedLearners: number
+    }
+    createdAt: string | Date
+    updatedAt: string | Date
+}
+
+export interface BadgeMilestoneSummary {
+    id: string
+    name: string
+    slug: string
+    description?: string | null
+    icon?: string | null
+    thresholdStars: number
+    active: boolean
+    domain?: {
+        id: string
+        name: string
+        slug: string
+    } | null
+    learningSeries?: {
+        id: string
+        name: string
+        slug: string
+    } | null
+    awardCount: number
+    createdAt: string | Date
+    updatedAt: string | Date
+}
+
+export interface TrainingOpsBadgeImportItemSummary {
+    slug: string
+    name: string
+    scope: 'SERIES' | 'GLOBAL' | 'DOMAIN'
+    learningSeriesSlug?: string | null
+    domainSlug?: string | null
+    thresholdStars: number
+    action: 'plan' | 'upserted'
+}
+
+export interface TrainingOpsBadgeImportSummary {
+    version: number
+    scopeModel: string
+    activeSeries: string[]
+    dryRun: boolean
+    totals: {
+        items: number
+        processed: number
+    }
+    items: TrainingOpsBadgeImportItemSummary[]
+}
+
+export interface TrainingOpsLearningSeriesImportItemSummary {
+    slug: string
+    name: string
+    type:
+        | 'WEEKLY_DRILL'
+        | 'CASE_STUDY'
+        | 'KNOWLEDGE_SHARING'
+        | 'FAQ_SHARE'
+        | 'RELEASE_READINESS'
+        | 'QUARTERLY_FINAL'
+        | 'YEAR_END_FINAL'
+    domainSlug?: string | null
+    ownerEmail?: string | null
+    action: 'plan' | 'upserted'
+}
+
+export interface TrainingOpsLearningSeriesImportSummary {
+    version: number
+    scopeModel: string
+    activeDomains: string[]
+    dryRun: boolean
+    totals: {
+        items: number
+        processed: number
+    }
+    items: TrainingOpsLearningSeriesImportItemSummary[]
+}
+
+export interface TrainingOpsDomainImportItemSummary {
+    slug: string
+    name: string
+    category: 'RTE' | 'AI'
+    track: 'AGILE' | 'MASTERY' | 'RELEASE' | 'FINAL'
+    kpiMode: 'DELTA' | 'RETENTION' | 'READINESS'
+    primarySmeEmail?: string | null
+    backupSmeEmail?: string | null
+    action: 'plan' | 'upserted'
+}
+
+export interface TrainingOpsDomainImportSummary {
+    version: number
+    scopeModel: string
+    dryRun: boolean
+    totals: {
+        items: number
+        processed: number
+    }
+    items: TrainingOpsDomainImportItemSummary[]
+}
+
+export interface TrainingOpsBootstrapImportSummary {
+    version: number
+    scopeModel: string
+    dryRun: boolean
+    totals: {
+        sections: number
+        items: number
+        processed: number
+    }
+    domains: TrainingOpsDomainImportSummary
+    series: TrainingOpsLearningSeriesImportSummary
+    badges: TrainingOpsBadgeImportSummary
+}
+
+export interface LearningEventSummary {
+    id: string
+    title: string
+    format:
+        | 'CASE_STUDY'
+        | 'KNOWLEDGE_SHARING'
+        | 'FAQ_SHARE'
+        | 'RELEASE_BRIEFING'
+        | 'QUIZ_REVIEW'
+        | 'FINAL_EXAM'
+        | 'WORKSHOP'
+    status: 'DRAFT' | 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELED'
+    description?: string | null
+    releaseVersion?: string | null
+    scheduledAt?: string | Date | null
+    startsAt?: string | Date | null
+    endsAt?: string | Date | null
+    isRequired: boolean
+    countsTowardPerformance: boolean
+    starValue?: number | null
+    domain?: {
+        id: string
+        name: string
+        slug: string
+    } | null
+    series?: {
+        id: string
+        name: string
+        slug: string
+        type: string
+    } | null
+    host?: {
+        id: string
+        name: string
+        email: string
+    } | null
+    createdBy?: {
+        id: string
+        name: string
+        email: string
+    } | null
+    exams: Array<{
+        id: string
+        title: string
+        status: string
+        publishedAt?: string | Date | null
+        invitationCount?: number
+        attemptCount?: number
+        gradedAttemptCount?: number
+        passedCount?: number
+        failedCount?: number
+        passRate?: number
+    }>
+    courses: Array<{
+        id: string
+        title: string
+        slug: string
+        status: string
+        publishedAt?: string | Date | null
+        enrolledCount: number
+    }>
+    analytics?: {
+        linkedCourseCount: number
+        linkedExamCount: number
+        invitationCount: number
+        attemptCount: number
+        gradedAttemptCount: number
+        passedCount: number
+        failedCount: number
+        passRate: number
+        starAwardCount: number
+        badgeAwardCount: number
+        recognizedLearners: number
+    }
+    createdAt: string | Date
+    updatedAt: string | Date
+    completedAt?: string | Date | null
+}
+
+export interface TrainingOpsExamSummary {
+    id: string
+    title: string
+    status: ExamStatus
+    publishedAt?: string | Date | null
+    productDomainId?: string | null
+    learningSeriesId?: string | null
+    learningEventId?: string | null
+    invitationCount?: number
+    attemptCount?: number
+    gradedAttemptCount?: number
+    passedCount?: number
+    failedCount?: number
+    passRate?: number
+}
+
+export interface SmeManagedExamDetail extends TrainingOpsExamSummary {
+    description?: string | null
+    instructions?: string | null
+    assessmentKind?: string | null
+    awardsStars?: boolean
+    starValue?: number | null
+    countsTowardPerformance?: boolean
+    createdAt: string | Date
+    updatedAt: string | Date
+    questionCount: number
+    domain?: {
+        id: string
+        name: string
+        slug: string
+    } | null
+    series?: {
+        id: string
+        name: string
+        slug: string
+    } | null
+    event?: {
+        id: string
+        title: string
+        format: string
+        status: string
+    } | null
+}
+
+export interface TrainingOpsCourseSummary {
+    id: string
+    title: string
+    slug: string
+    status: CourseStatus
+    publishedAt?: string | Date | null
+    enrolledCount: number
+    learningEventId?: string | null
+}
+
+export interface SmeManagedCourseDetail extends TrainingOpsCourseSummary {
+    description: string
+    category: string
+    level: CourseLevel
+    tags: string[]
+    learningOutcomes: string[]
+    requirements: string[]
+    createdAt: string | Date
+    updatedAt: string | Date
+    chapterCount: number
+    enrollmentCount: number
+    linkedExamCount: number
+    instructor: {
+        id: string
+        name: string
+        email: string
+    }
+    event?: {
+        id: string
+        title: string
+        format: string
+        status: string
+    } | null
+}
+
+export interface LearnerRewardsOverview {
+    summary: {
+        totalStars: number
+        totalBadges: number
+        recognizedEvents: number
+        activeDomains: number
+        certificatesEarned: number
+    }
+    recentStarAwards: Array<{
+        id: string
+        stars: number
+        sourceType: string
+        reason?: string | null
+        awardedAt: string | Date
+        domain?: {
+            id: string
+            name: string
+            slug: string
+        } | null
+        learningSeries?: {
+            id: string
+            name: string
+            slug: string
+        } | null
+        event?: {
+            id: string
+            title: string
+        } | null
+        exam?: {
+            id: string
+            title: string
+        } | null
+    }>
+    badges: Array<{
+        id: string
+        awardedAt: string | Date
+        badge: {
+            id: string
+            name: string
+            slug: string
+            description?: string | null
+            icon?: string | null
+            thresholdStars: number
+        }
+        domain?: {
+            id: string
+            name: string
+            slug: string
+        } | null
+        learningSeries?: {
+            id: string
+            name: string
+            slug: string
+        } | null
+        event?: {
+            id: string
+            title: string
+        } | null
+    }>
+    topDomains: Array<{
+        domainId: string | null
+        domainName: string
+        stars: number
+        badges: number
+    }>
+    seriesProgressions: Array<{
+        learningSeries: {
+            id: string
+            name: string
+            slug: string
+        }
+        stars: number
+        unlockedBadges: number
+        currentBadge: {
+            id: string
+            name: string
+            slug: string
+            thresholdStars: number
+        } | null
+        nextBadge: {
+            id: string
+            name: string
+            slug: string
+            thresholdStars: number
+            remainingStars: number
+        } | null
+        progressPercent: number
+    }>
+    nextBadge?: {
+        id: string
+        name: string
+        slug: string
+        thresholdStars: number
+        remainingStars: number
+    } | null
+}
+
+export interface LearnerTrainingOverview {
+    summary: {
+        assignedExams: number
+        pendingExams: number
+        inProgressExams: number
+        passedExams: number
+        upcomingEvents: number
+        requiredItems: number
+    }
+    upcomingEvents: Array<{
+        id: string
+        title: string
+        format: string
+        status: string
+        scheduledAt?: string | Date | null
+        startsAt?: string | Date | null
+        isRequired: boolean
+        domain?: {
+            id: string
+            name: string
+            slug: string
+        } | null
+        linkedExams: Array<{
+            id: string
+            title: string
+            deadline?: string | Date | null
+        }>
+    }>
+    assignedExams: Array<{
+        id: string
+        title: string
+        status: string
+        assessmentKind?: 'PRACTICE' | 'READINESS' | 'FORMAL'
+        countsTowardPerformance: boolean
+        awardsStars: boolean
+        starValue?: number | null
+        certificateEligible?: boolean
+        deadline?: string | Date | null
+        availableFrom?: string | Date | null
+        domain?: {
+            id: string
+            name: string
+            slug: string
+        } | null
+        learningSeries?: {
+            id: string
+            name: string
+            slug: string
+            type: string
+        } | null
+        learningEvent?: {
+            id: string
+            title: string
+            format: string
+            scheduledAt?: string | Date | null
+            isRequired: boolean
+        } | null
+        userStatus: {
+            completedAttempts: number
+            remainingAttempts: number
+            hasInProgressAttempt: boolean
+            inProgressAttemptId?: string
+            bestScore?: number | null
+            hasPassed: boolean
+        }
+    }>
+    recentCompletions: Array<{
+        attemptId: string
+        examId: string
+        examTitle: string
+        submittedAt?: string | Date | null
+        percentageScore?: number | null
+        passed?: boolean | null
+        domainName?: string | null
+        eventTitle?: string | null
+        assessmentKind?: 'PRACTICE' | 'READINESS' | 'FORMAL'
+    }>
+}
+
 export interface UserProfile {
     id: string
     email: string
     name: string
-    role: 'USER' | 'ADMIN'
+    role: 'USER' | 'SME' | 'ADMIN'
     avatar?: string | null
     bio?: string | null
     title?: string | null
@@ -229,6 +991,7 @@ export interface Course {
     assets?: CourseAsset[]
     aiAssistantEnabled?: boolean
     status?: CourseStatus
+    learningEventId?: string | null
 }
 
 // Curriculum (new)
@@ -387,6 +1150,14 @@ export interface Exam {
     randomizeOptions: boolean
     showResultsImmediately: boolean
     allowReview: boolean
+    assessmentKind?: 'PRACTICE' | 'READINESS' | 'FORMAL'
+    productDomainId?: string | null
+    learningSeriesId?: string | null
+    learningEventId?: string | null
+    awardsStars?: boolean
+    starValue?: number | null
+    countsTowardPerformance?: boolean
+    certificateEligible?: boolean
     timezone: string
     availableFrom?: string | Date | null
     deadline?: string | Date | null

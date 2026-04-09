@@ -4,8 +4,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { withAdminAuth } from '@/lib/auth-middleware';
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware';
 import { ExamService } from '@/lib/services/exam.service';
+import { TrainingOpsService } from '@/lib/services/training-ops.service';
 import { changeExamStatusSchema } from '@/lib/validations';
 import { z } from 'zod';
 
@@ -14,12 +15,16 @@ type RouteContext = {
 };
 
 // POST /api/admin/exams/[examId]/status - Change exam status
-export const POST = withAdminAuth(
+export const POST = withSmeOrAdminAuth(
   async (req: NextRequest, user, context: RouteContext) => {
     try {
       const { examId } = await context.params;
       const body = await req.json();
       const { status } = changeExamStatusSchema.parse(body);
+
+      if (user.role === 'SME') {
+        await TrainingOpsService.assertScopedExamAccess(user, examId);
+      }
 
       const exam = await ExamService.changeStatus(examId, status, user.id);
 
@@ -55,6 +60,19 @@ export const POST = withAdminAuth(
               },
             },
             { status: 404 }
+          );
+        }
+
+        if (error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+          return NextResponse.json(
+            {
+              success: false,
+              error: {
+                code: 'FORBIDDEN',
+                message: 'Insufficient permissions',
+              },
+            },
+            { status: 403 }
           );
         }
 

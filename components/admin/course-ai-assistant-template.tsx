@@ -51,7 +51,13 @@ async function api<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> 
     return json.data as T
 }
 
-export function CourseAIAssistantTemplate({ courseId }: { courseId: string }) {
+export function CourseAIAssistantTemplate({
+    courseId,
+    canManageTemplates = true,
+}: {
+    courseId: string
+    canManageTemplates?: boolean
+}) {
     const useCase: AIPromptUseCase = 'AI_ASSISTANT_KNOWLEDGE_CONTEXT_SYSTEM'
 
     const [loading, setLoading] = useState(true)
@@ -148,9 +154,11 @@ export function CourseAIAssistantTemplate({ courseId }: { courseId: string }) {
                         <Wand2 className="h-5 w-5" />
                         <CardTitle>AI Assistant Template</CardTitle>
                     </div>
-                    <Button asChild variant="ghost" size="sm">
-                        <Link href="/admin/ai-config">Manage templates</Link>
-                    </Button>
+                    {canManageTemplates ? (
+                        <Button asChild variant="ghost" size="sm">
+                            <Link href="/admin/ai-config">Manage templates</Link>
+                        </Button>
+                    ) : null}
                 </div>
                 <p className="text-sm text-muted-foreground">
                     Select which prompt template to use for the AI assistant in this course.
@@ -187,4 +195,3 @@ export function CourseAIAssistantTemplate({ courseId }: { courseId: string }) {
         </Card>
     )
 }
-

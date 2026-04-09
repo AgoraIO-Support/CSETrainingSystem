@@ -4,15 +4,16 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { withAdminAuth } from '@/lib/auth-middleware';
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware';
 import { KnowledgeContextService } from '@/lib/services/knowledge-context.service';
 import prisma from '@/lib/prisma';
+import { TrainingOpsService } from '@/lib/services/training-ops.service';
 
 /**
  * GET /api/admin/lessons/[lessonId]/knowledge
  * Get knowledge context status and metadata
  */
-export const GET = withAdminAuth(async (
+export const GET = withSmeOrAdminAuth(async (
   request: NextRequest,
   user,
   context: { params: Promise<{ lessonId: string }> }
@@ -20,6 +21,7 @@ export const GET = withAdminAuth(async (
   try {
     const params = await context.params;
     const { lessonId } = params;
+    if (user.role === 'SME') await TrainingOpsService.assertScopedLessonAccess(user, lessonId);
 
     const latestJob = await prisma.knowledgeContextJob.findFirst({
       where: { lessonId },

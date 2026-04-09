@@ -1,14 +1,16 @@
 import { NextResponse } from 'next/server'
-import { withAdminAuth } from '@/lib/auth-middleware'
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware'
 import { MaterialService } from '@/lib/services/material.service'
 import { FileService } from '@/lib/services/file.service'
 import { LessonAssetType } from '@prisma/client'
+import { TrainingOpsService } from '@/lib/services/training-ops.service'
 
 // DELETE /admin/courses/:id/chapters/:chapterId/lessons/:lessonId/assets/:assetId
 // Deletes the lesson-asset binding AND the underlying CourseAsset + S3 file
-export const DELETE = withAdminAuth(async (req, user, { params }: { params: Promise<{ id: string; chapterId: string; lessonId: string; assetId: string }> }) => {
+export const DELETE = withSmeOrAdminAuth(async (req, user, { params }: { params: Promise<{ id: string; chapterId: string; lessonId: string; assetId: string }> }) => {
   try {
     const { id: courseId, chapterId, lessonId, assetId } = await params
+    if (user.role === 'SME') await TrainingOpsService.assertScopedCourseAccess(user, courseId)
 
     // Validate hierarchy
     const valid = await MaterialService.validateHierarchy({ courseId, chapterId, lessonId, assetId })
@@ -37,6 +39,12 @@ export const DELETE = withAdminAuth(async (req, user, { params }: { params: Prom
     return NextResponse.json({ success: true, data })
   } catch (error) {
     console.error('Delete lesson asset error:', error)
+    if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+      return NextResponse.json(
+        { success: false, error: { code: 'TRAINING_OPS_SCOPE_FORBIDDEN', message: 'You do not have access to this course' } },
+        { status: 403 }
+      )
+    }
     return NextResponse.json(
       { success: false, error: { code: 'SYSTEM_001', message: 'Failed to delete lesson asset' } },
       { status: 500 }

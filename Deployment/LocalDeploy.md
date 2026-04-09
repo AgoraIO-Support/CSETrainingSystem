@@ -391,7 +391,7 @@ podman run --rm --network cselearning \
   -v "$PWD:/app" \
   -v cselearning-web-node_modules:/app/node_modules \
   -w /app \
-  localhost/cselearning-migrator:latest \
+  localhost/cselearning-web:latest \
   npm ci --no-audit --no-fund
 ```
 
@@ -399,14 +399,14 @@ podman run --rm --network cselearning \
 
 ```bash
 podman rm -f cselearning-web-dev || true
-podman run -d --name cselearning-web-dev --network cselearning -p 3000:3000 \
+podman run -d --name cselearning-web-dev --network cselearning -p 3001:3000 \
   --env-file tmp/podman/local.env \
   -v "$PWD:/app" \
   -v cselearning-web-node_modules:/app/node_modules \
   -w /app \
   -e CSE_LOG=api,db,s3,knowledgecontext,openai,worker,transcriptprocessing \
   -e CSE_WECOM_LOG_CONTENT=1 \
-  localhost/cselearning-migrator:latest \
+  localhost/cselearning-web:latest \
   npm run dev
 ```
 

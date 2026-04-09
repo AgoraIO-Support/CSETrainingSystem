@@ -13,7 +13,7 @@ const IS_LOCAL_AUTH =
 export interface AuthUser {
     id: string
     email: string
-    role: 'USER' | 'ADMIN'
+    role: 'USER' | 'SME' | 'ADMIN'
     supabaseId?: string
 }
 
@@ -24,7 +24,8 @@ export interface AuthUser {
 export function withAuth(
     handler: (req: NextRequest, user: AuthUser, context: any) => Promise<NextResponse>,
     options?: {
-        requiredRole?: 'USER' | 'ADMIN'
+        requiredRole?: 'USER' | 'SME' | 'ADMIN'
+        requiredRoles?: Array<'USER' | 'SME' | 'ADMIN'>
     }
 ) {
     return async (req: NextRequest, context: any) => {
@@ -107,7 +108,8 @@ export function withAuth(
             }
 
             // Check role requirement
-            if (options?.requiredRole && dbUser.role !== options.requiredRole) {
+            const allowedRoles = options?.requiredRoles ?? (options?.requiredRole ? [options.requiredRole] : undefined)
+            if (allowedRoles && !allowedRoles.includes(dbUser.role)) {
                 const res = NextResponse.json(
                     {
                         success: false,
@@ -168,6 +170,12 @@ export function withAdminAuth(
     handler: (req: NextRequest, user: AuthUser, context: any) => Promise<NextResponse>
 ) {
     return withAuth(handler, { requiredRole: 'ADMIN' })
+}
+
+export function withSmeOrAdminAuth(
+    handler: (req: NextRequest, user: AuthUser, context: any) => Promise<NextResponse>
+) {
+    return withAuth(handler, { requiredRoles: ['SME', 'ADMIN'] })
 }
 
 /**

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { withAdminAuth } from '@/lib/auth-middleware'
+import { withAdminAuth, withSmeOrAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
 import { AIResponseFormat, AIPromptUseCase } from '@prisma/client'
 import { z } from 'zod'
@@ -20,7 +20,7 @@ const createTemplateSchema = z.object({
 })
 
 // GET /api/admin/ai/prompt-templates
-export const GET = withAdminAuth(async (req) => {
+export const GET = withSmeOrAdminAuth(async (req) => {
     try {
         const { searchParams } = new URL(req.url)
         const useCase = searchParams.get('useCase')

@@ -46,12 +46,37 @@ type ResultPayload = {
   totalScore: number;
   passingScore: number;
   allowReview: boolean;
+  assessmentKind: string | null;
+  awardsStars: boolean;
+  starValue: number | null;
+  countsTowardPerformance: boolean;
   maxAttempts: number;
   attemptsUsed: number;
   reviewUnlocked: boolean;
   reviewUnlockedByPassing: boolean;
   reviewUnlockedByAttempts: boolean;
   reviewUnlockedByDeadline: boolean;
+  rewardOutcome: {
+    starsEarned: number;
+    badgesUnlocked: Array<{
+      id: string;
+      name: string;
+      slug: string;
+      description: string | null;
+      learningSeries: {
+        id: string;
+        name: string;
+        slug: string;
+      } | null;
+    }>;
+    certificate: {
+      eligible: boolean;
+      issued: boolean;
+      id: string | null;
+      title: string | null;
+      certificateNumber: string | null;
+    };
+  };
   answers?: ResultAnswer[];
 };
 
@@ -151,16 +176,88 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
           totalScore: attempt.exam.totalScore,
           passingScore: attempt.exam.passingScore,
           allowReview: attempt.exam.allowReview,
+          assessmentKind: attempt.exam.assessmentKind ?? null,
+          awardsStars: attempt.exam.awardsStars,
+          starValue: attempt.exam.starValue ?? null,
+          countsTowardPerformance: attempt.exam.countsTowardPerformance,
           maxAttempts,
           attemptsUsed,
           reviewUnlocked,
           reviewUnlockedByPassing,
           reviewUnlockedByAttempts,
           reviewUnlockedByDeadline,
+          rewardOutcome: {
+            starsEarned: 0,
+            badgesUnlocked: [],
+            certificate: {
+              eligible: false,
+              issued: false,
+              id: null,
+              title: null,
+              certificateNumber: null,
+            },
+          },
           message: 'Results are not yet available. Please check back after grading is complete.',
         },
       });
     }
+
+    const [starAwards, badgeAwards, certificateTemplate, issuedCertificate] = await Promise.all([
+      prisma.starAward.findMany({
+        where: {
+          userId: user.id,
+          examId: attempt.examId,
+        },
+        select: {
+          stars: true,
+        },
+      }),
+      prisma.badgeAward.findMany({
+        where: {
+          userId: user.id,
+          examId: attempt.examId,
+        },
+        include: {
+          badge: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              description: true,
+              learningSeries: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      prisma.examCertificateTemplate.findUnique({
+        where: { examId: attempt.examId },
+        select: {
+          isEnabled: true,
+          title: true,
+        },
+      }),
+      prisma.certificate.findFirst({
+        where: {
+          userId: user.id,
+          examId: attempt.examId,
+          attemptId: attempt.id,
+        },
+        select: {
+          id: true,
+          certificateTitle: true,
+          certificateNumber: true,
+          status: true,
+        },
+      }),
+    ]);
+
+    const starsEarned = starAwards.reduce((sum, award) => sum + award.stars, 0);
 
     // Build result response
     const result: ResultPayload = {
@@ -178,12 +275,33 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
       totalScore: attempt.exam.totalScore,
       passingScore: attempt.exam.passingScore,
       allowReview: attempt.exam.allowReview,
+      assessmentKind: attempt.exam.assessmentKind ?? null,
+      awardsStars: attempt.exam.awardsStars,
+      starValue: attempt.exam.starValue ?? null,
+      countsTowardPerformance: attempt.exam.countsTowardPerformance,
       maxAttempts,
       attemptsUsed,
       reviewUnlocked,
       reviewUnlockedByPassing,
       reviewUnlockedByAttempts,
       reviewUnlockedByDeadline,
+      rewardOutcome: {
+        starsEarned,
+        badgesUnlocked: badgeAwards.map((award) => ({
+          id: award.badge.id,
+          name: award.badge.name,
+          slug: award.badge.slug,
+          description: award.badge.description ?? null,
+          learningSeries: award.badge.learningSeries,
+        })),
+        certificate: {
+          eligible: attempt.exam.assessmentKind === 'FORMAL' && Boolean(certificateTemplate?.isEnabled),
+          issued: Boolean(issuedCertificate),
+          id: issuedCertificate?.id ?? null,
+          title: issuedCertificate?.certificateTitle ?? certificateTemplate?.title ?? null,
+          certificateNumber: issuedCertificate?.certificateNumber ?? null,
+        },
+      },
     };
 
     // Include answers if review is allowed

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, use, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -29,6 +30,8 @@ type PageProps = {
 
 export default function ExamInvitationsPage({ params }: PageProps) {
     const { id: examId } = use(params)
+    const searchParams = useSearchParams()
+    const isSmeMode = searchParams.get('sme') === '1'
     const [exam, setExam] = useState<Exam | null>(null)
     const [invitations, setInvitations] = useState<ExamInvitation[]>([])
     const [users, setUsers] = useState<AdminUser[]>([])
@@ -186,7 +189,7 @@ export default function ExamInvitationsPage({ params }: PageProps) {
             <DashboardLayout>
                 <div className="text-center py-12">
                     <p className="text-muted-foreground">Exam not found</p>
-                    <Link href="/admin/exams">
+                    <Link href={isSmeMode ? '/sme/training-ops/exams' : '/admin/exams'}>
                         <Button className="mt-4">Back to Exams</Button>
                     </Link>
                 </div>
@@ -204,7 +207,7 @@ export default function ExamInvitationsPage({ params }: PageProps) {
             <div className="space-y-6">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                        <Link href="/admin/exams">
+                        <Link href={isSmeMode ? '/sme/training-ops/exams' : '/admin/exams'}>
                             <Button variant="ghost" size="icon">
                                 <ArrowLeft className="h-4 w-4" />
                             </Button>

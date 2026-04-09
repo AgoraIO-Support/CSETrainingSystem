@@ -4,16 +4,17 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { withAdminAuth } from '@/lib/auth-middleware';
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware';
 import prisma from '@/lib/prisma';
 import { TranscriptJobService } from '@/lib/services/transcript-job.service';
 import { getPrimaryAiTranscriptTrack } from '@/lib/transcript-tracks';
+import { TrainingOpsService } from '@/lib/services/training-ops.service';
 
 /**
  * POST /api/admin/lessons/[lessonId]/transcript/process
  * Enqueue transcript processing for RAG (async worker required)
  */
-export const POST = withAdminAuth(async (
+export const POST = withSmeOrAdminAuth(async (
   request: NextRequest,
   user,
   context: { params: Promise<{ lessonId: string }> }
@@ -22,6 +23,7 @@ export const POST = withAdminAuth(async (
     // Await params
     const params: { lessonId: string } = await context.params;
     const { lessonId } = params;
+    if (user.role === 'SME') await TrainingOpsService.assertScopedLessonAccess(user, lessonId);
 
     // 1. Get lesson with full context
     const lesson = await prisma.lesson.findUnique({

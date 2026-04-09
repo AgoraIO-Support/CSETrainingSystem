@@ -5,6 +5,7 @@
 
 import prisma from '@/lib/prisma';
 import {
+  AssessmentKind,
   ExamAttemptStatus,
   ExamStatus,
   ExamQuestionType,
@@ -111,6 +112,10 @@ export interface AttemptWithAnswers {
     passingScore: number;
     showResultsImmediately: boolean;
     allowReview: boolean;
+    assessmentKind: AssessmentKind | null;
+    awardsStars: boolean;
+    starValue: number | null;
+    countsTowardPerformance: boolean;
   };
 }
 
@@ -555,6 +560,10 @@ export class ExamAttemptService {
             passingScore: true,
             showResultsImmediately: true,
             allowReview: true,
+            assessmentKind: true,
+            awardsStars: true,
+            starValue: true,
+            countsTowardPerformance: true,
           },
         },
         answers: { select: { questionId: true } },
@@ -641,6 +650,10 @@ export class ExamAttemptService {
             passingScore: true,
             showResultsImmediately: true,
             allowReview: true,
+            assessmentKind: true,
+            awardsStars: true,
+            starValue: true,
+            countsTowardPerformance: true,
           },
         },
         answers: {

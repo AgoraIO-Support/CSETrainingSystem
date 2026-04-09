@@ -1,19 +1,53 @@
 import { NextResponse } from 'next/server'
-import { withAdminAuth } from '@/lib/auth-middleware'
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware'
 import { CourseService } from '@/lib/services/course.service'
+import { TrainingOpsService } from '@/lib/services/training-ops.service'
 import { createCourseSchema } from '@/lib/validations'
+import type { CourseLevel, CourseStatus } from '@/types'
 import { z } from 'zod'
 
 // GET /admin/courses — admin list (all statuses by default)
-export const GET = withAdminAuth(async (req) => {
+export const GET = withSmeOrAdminAuth(async (req, user) => {
     try {
         const { searchParams } = new URL(req.url)
         const page = Number(searchParams.get('page') || '1')
         const limit = Number(searchParams.get('limit') || '10')
         const category = searchParams.get('category') || undefined
-        const level = (searchParams.get('level') as any) || undefined
+        const level = (searchParams.get('level') as CourseLevel | null) || undefined
         const search = searchParams.get('search') || undefined
-        const status = (searchParams.get('status') as any) || 'ALL'
+        const status = ((searchParams.get('status') as CourseStatus | 'ALL' | null) || 'ALL')
+
+        if (user.role === 'SME') {
+            const scopedCourses = await TrainingOpsService.getScopedCourses(user)
+            const query = search?.trim().toLowerCase()
+
+            const filtered = scopedCourses.filter((course) => {
+                if (status !== 'ALL' && course.status !== status) return false
+                if (category && course.category !== category) return false
+                if (level && course.level !== level) return false
+                if (!query) return true
+
+                return (
+                    course.title.toLowerCase().includes(query) ||
+                    course.category.toLowerCase().includes(query) ||
+                    course.instructor?.name?.toLowerCase().includes(query)
+                )
+            })
+
+            const start = Math.max(0, (page - 1) * limit)
+            const paged = filtered.slice(start, start + limit)
+
+            return NextResponse.json({
+                success: true,
+                data: paged,
+                pagination: {
+                    page,
+                    limit,
+                    total: filtered.length,
+                    totalPages: Math.ceil(filtered.length / limit),
+                },
+            })
+        }
 
         const { courses, pagination } = await CourseService.getCourses({
             page,
@@ -34,12 +68,19 @@ export const GET = withAdminAuth(async (req) => {
     }
 })
 
-export const POST = withAdminAuth(async (req) => {
+export const POST = withSmeOrAdminAuth(async (req, user) => {
     try {
         const body = await req.json()
         const data = createCourseSchema.parse(body)
 
-        const course = await CourseService.createCourse(data)
+        if (user.role === 'SME' && data.learningEventId) {
+            await TrainingOpsService.getScopedLearningEventById(user, data.learningEventId)
+        }
+
+        const course = await CourseService.createCourse({
+            ...data,
+            instructorId: user.role === 'SME' ? user.id : data.instructorId,
+        })
 
         return NextResponse.json(
             {
@@ -75,6 +116,32 @@ export const POST = withAdminAuth(async (req) => {
                     },
                 },
                 { status: 409 }
+            )
+        }
+
+        if (error instanceof Error && error.message === 'LEARNING_EVENT_NOT_FOUND') {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: {
+                        code: 'VALIDATION_ERROR',
+                        message: 'Learning event not found',
+                    },
+                },
+                { status: 404 }
+            )
+        }
+
+        if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: {
+                        code: 'AUTH_003',
+                        message: 'You can only create courses for learning events within your SME scope',
+                    },
+                },
+                { status: 403 }
             )
         }
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, use, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -108,6 +109,8 @@ const createEmptyCriterion = (): EssayGradingCriterion => ({
 
 export default function ExamQuestionsPage({ params }: PageProps) {
     const { id: examId } = use(params)
+    const searchParams = useSearchParams()
+    const isSmeMode = searchParams.get('sme') === '1'
     const [exam, setExam] = useState<Exam | null>(null)
     const [questions, setQuestions] = useState<ExamQuestion[]>([])
     const formRef = useRef<HTMLDivElement | null>(null)
@@ -637,7 +640,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
             <DashboardLayout>
                 <div className="text-center py-12">
                     <p className="text-muted-foreground">Exam not found</p>
-                    <Link href="/admin/exams">
+                    <Link href={isSmeMode ? '/sme/training-ops/exams' : '/admin/exams'}>
                         <Button className="mt-4">Back to Exams</Button>
                     </Link>
                 </div>
@@ -725,7 +728,7 @@ export default function ExamQuestionsPage({ params }: PageProps) {
             <div className="space-y-6">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                        <Link href="/admin/exams">
+                        <Link href={isSmeMode ? `/admin/exams/${examId}/edit?sme=1` : '/admin/exams'}>
                             <Button variant="ghost" size="icon">
                                 <ArrowLeft className="h-4 w-4" />
                             </Button>
@@ -748,10 +751,12 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                             )}
                             Delete Selected ({selectedQuestionIds.length})
                         </Button>
-                        <Button variant="outline" onClick={() => setShowGenerateDialog(true)} disabled={!canEditQuestions}>
-                            <Sparkles className="h-4 w-4 mr-2" />
-                            Generate with AI
-                        </Button>
+                        {!isSmeMode && (
+                            <Button variant="outline" onClick={() => setShowGenerateDialog(true)} disabled={!canEditQuestions}>
+                                <Sparkles className="h-4 w-4 mr-2" />
+                                Generate with AI
+                            </Button>
+                        )}
                         <Button onClick={handleCreateQuestion} disabled={!canEditQuestions}>
                             <Plus className="h-4 w-4 mr-2" />
                             Add Question
@@ -1468,13 +1473,15 @@ export default function ExamQuestionsPage({ params }: PageProps) {
                         {questions.length === 0 ? (
                             <div className="text-center py-12">
                                 <p className="text-muted-foreground mb-4">
-                                    No questions yet. Add questions manually or generate them with AI.
+                                    No questions yet. Add questions manually{isSmeMode ? '.' : ' or generate them with AI.'}
                                 </p>
                                 <div className="flex items-center justify-center gap-2">
-                                    <Button variant="outline" onClick={() => setShowGenerateDialog(true)} disabled={!canEditQuestions}>
-                                        <Sparkles className="h-4 w-4 mr-2" />
-                                        Generate with AI
-                                    </Button>
+                                    {!isSmeMode && (
+                                        <Button variant="outline" onClick={() => setShowGenerateDialog(true)} disabled={!canEditQuestions}>
+                                            <Sparkles className="h-4 w-4 mr-2" />
+                                            Generate with AI
+                                        </Button>
+                                    )}
                                     <Button onClick={handleCreateQuestion} disabled={!canEditQuestions}>
                                         <Plus className="h-4 w-4 mr-2" />
                                         Add Question

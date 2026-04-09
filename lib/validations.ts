@@ -1,4 +1,10 @@
-import { LessonAssetType, ExamType, ExamQuestionType, DifficultyLevel, ExamStatus } from '@prisma/client'
+import {
+    LessonAssetType,
+    ExamType,
+    ExamQuestionType,
+    DifficultyLevel,
+    ExamStatus,
+} from '@prisma/client'
 import { z } from 'zod'
 import { LessonCompletionRule, LessonType } from '@prisma/client'
 import { DEFAULT_EXAM_TIMEZONE, isValidExamTimeZone } from '@/lib/exam-timezone'
@@ -26,7 +32,7 @@ export const updateProfileSchema = z.object({
 })
 
 export const adminUpdateUserSchema = z.object({
-    role: z.enum(['USER', 'ADMIN']).optional(),
+    role: z.enum(['USER', 'SME', 'ADMIN']).optional(),
     status: z.enum(['ACTIVE', 'SUSPENDED', 'DELETED']).optional(),
     name: z.string().trim().min(1, 'Name is required').max(100, 'Name is too long').optional(),
     email: z.string().trim().email('Invalid email address').optional(),
@@ -66,6 +72,148 @@ export const adminResetUserPasswordSchema = z.object({
     newPassword: z.string().min(8, 'Password must be at least 8 characters'),
 })
 
+const optionalNullableDateInput = () =>
+    z.preprocess(
+        (value) => {
+            if (value === undefined || value === null || value === '') return null
+            return value
+        },
+        z.coerce.date().nullable().optional()
+    )
+
+const productDomainCategories = ['RTE', 'AI'] as const
+const productTracks = ['AGILE', 'MASTERY', 'RELEASE', 'FINAL'] as const
+const smeKpiModes = ['DELTA', 'RETENTION', 'READINESS'] as const
+const learningSeriesTypes = [
+    'WEEKLY_DRILL',
+    'CASE_STUDY',
+    'KNOWLEDGE_SHARING',
+    'FAQ_SHARE',
+    'RELEASE_READINESS',
+    'QUARTERLY_FINAL',
+    'YEAR_END_FINAL',
+] as const
+const learningEventFormats = [
+    'CASE_STUDY',
+    'KNOWLEDGE_SHARING',
+    'FAQ_SHARE',
+    'RELEASE_BRIEFING',
+    'QUIZ_REVIEW',
+    'FINAL_EXAM',
+    'WORKSHOP',
+] as const
+const learningEventStatuses = ['DRAFT', 'SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELED'] as const
+const assessmentKinds = ['PRACTICE', 'READINESS', 'FORMAL'] as const
+
+export const createLearningEventSchema = z.object({
+    title: z.string().trim().min(1, 'Title is required').max(200, 'Title is too long'),
+    format: z.enum(learningEventFormats),
+    status: z.enum(learningEventStatuses).default('DRAFT'),
+    seriesId: z.string().uuid().optional().nullable(),
+    domainId: z.string().uuid().optional().nullable(),
+    description: z.string().trim().optional().nullable(),
+    releaseVersion: z.string().trim().max(120, 'Release version is too long').optional().nullable(),
+    scheduledAt: optionalNullableDateInput(),
+    startsAt: optionalNullableDateInput(),
+    endsAt: optionalNullableDateInput(),
+    isRequired: z.boolean().default(false),
+    countsTowardPerformance: z.boolean().default(false),
+    starValue: z.number().int().min(0).max(20).optional().nullable(),
+    hostId: z.string().uuid().optional().nullable(),
+})
+
+export const updateLearningEventSchema = createLearningEventSchema.partial().refine(
+    (data) => Object.keys(data).length > 0,
+    {
+        message: 'At least one field must be provided',
+        path: ['title'],
+    }
+)
+
+const productDomainSchemaBase = z.object({
+    name: z.string().trim().min(1, 'Name is required').max(120, 'Name is too long'),
+    slug: z.string().trim().min(1, 'Slug is required').regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
+    category: z.enum(productDomainCategories),
+    track: z.enum(productTracks),
+    kpiMode: z.enum(smeKpiModes),
+    description: z.string().trim().optional().nullable(),
+    cadence: z.string().trim().max(120, 'Cadence is too long').optional().nullable(),
+    active: z.boolean().default(true),
+    baselinePassRate: z.number().min(0).max(100).optional().nullable(),
+    targetPassRate: z.number().min(0).max(100).optional().nullable(),
+    challengeThreshold: z.number().min(0).max(100).optional().nullable(),
+    primarySmeId: z.string().uuid().optional().nullable(),
+    backupSmeId: z.string().uuid().optional().nullable(),
+})
+
+export const createProductDomainSchema = productDomainSchemaBase.refine((data) => !data.primarySmeId || !data.backupSmeId || data.primarySmeId !== data.backupSmeId, {
+    message: 'Primary SME and backup SME must be different users',
+    path: ['backupSmeId'],
+})
+
+export const updateProductDomainSchema = productDomainSchemaBase.partial().refine(
+    (data) => Object.keys(data).length > 0,
+    {
+        message: 'At least one field must be provided',
+        path: ['name'],
+    }
+)
+
+const learningSeriesSchemaBase = z.object({
+    name: z.string().trim().min(1, 'Name is required').max(160, 'Name is too long'),
+    slug: z.string().trim().min(1, 'Slug is required').regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
+    type: z.enum(learningSeriesTypes),
+    domainId: z.string().uuid().optional().nullable(),
+    description: z.string().trim().optional().nullable(),
+    cadence: z.string().trim().max(120, 'Cadence is too long').optional().nullable(),
+    isActive: z.boolean().default(true),
+    badgeEligible: z.boolean().default(true),
+    countsTowardPerformance: z.boolean().default(false),
+    defaultStarValue: z.number().int().min(0).max(20).optional().nullable(),
+    ownerId: z.string().uuid().optional().nullable(),
+})
+
+export const createLearningSeriesSchema = learningSeriesSchemaBase
+
+export const updateLearningSeriesSchema = learningSeriesSchemaBase.partial().refine(
+    (data) => Object.keys(data).length > 0,
+    {
+        message: 'At least one field must be provided',
+        path: ['name'],
+    }
+)
+
+const badgeMilestoneSchemaShape = {
+    name: z.string().trim().min(1, 'Name is required').max(120, 'Name is too long'),
+    slug: z.string().trim().min(1, 'Slug is required').regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
+    description: z.string().trim().optional().nullable(),
+    icon: z.string().trim().max(32, 'Icon is too long').optional().nullable(),
+    thresholdStars: z.number().int().min(1).max(1000),
+    active: z.boolean().default(true),
+    domainId: z.string().uuid().optional().nullable(),
+    learningSeriesId: z.string().uuid().optional().nullable(),
+}
+
+const badgeMilestoneSchemaBase = z.object(badgeMilestoneSchemaShape)
+
+const refineBadgeMilestoneScope = <T extends z.ZodTypeAny>(schema: T) => schema.refine(
+    (data) => !(data.domainId && data.learningSeriesId),
+    {
+        message: 'Choose either a domain scope or a learning series scope, not both',
+        path: ['learningSeriesId'],
+    }
+)
+
+export const createBadgeMilestoneSchema = refineBadgeMilestoneScope(badgeMilestoneSchemaBase)
+
+export const updateBadgeMilestoneSchema = refineBadgeMilestoneScope(badgeMilestoneSchemaBase.partial()).refine(
+    (data) => Object.keys(data).length > 0,
+    {
+        message: 'At least one field must be provided',
+        path: ['name'],
+    }
+)
+
 // Course schemas
 export const createCourseSchema = z.object({
     title: z.string().min(1, 'Title is required'),
@@ -78,6 +226,7 @@ export const createCourseSchema = z.object({
     learningOutcomes: z.array(z.string()).optional(),
     requirements: z.array(z.string()).optional(),
     instructorId: z.string().uuid(),
+    learningEventId: z.string().uuid().optional().nullable(),
     status: z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED']).optional(),
 })
 
@@ -220,6 +369,13 @@ export const createExamSchema = z.object({
     showResultsImmediately: z.boolean().default(true),
     allowReview: z.boolean().default(true),
     maxAttempts: z.number().int().positive().default(1),
+    assessmentKind: z.enum(assessmentKinds).optional(),
+    productDomainId: z.string().uuid().optional().nullable(),
+    learningSeriesId: z.string().uuid().optional().nullable(),
+    learningEventId: z.string().uuid().optional().nullable(),
+    awardsStars: z.boolean().optional(),
+    starValue: z.number().int().min(0).max(20).optional().nullable(),
+    countsTowardPerformance: z.boolean().optional(),
 })
 
 export const updateExamSchema = z.object({

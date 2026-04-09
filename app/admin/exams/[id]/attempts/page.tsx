@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, use } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -35,6 +36,8 @@ type PageProps = {
 
 export default function ExamAttemptsPage({ params }: PageProps) {
     const { id: examId } = use(params)
+    const searchParams = useSearchParams()
+    const isSmeMode = searchParams.get('sme') === '1'
     const [exam, setExam] = useState<Exam | null>(null)
     const [attempts, setAttempts] = useState<ExamAttempt[]>([])
     const [loading, setLoading] = useState(true)
@@ -129,7 +132,7 @@ export default function ExamAttemptsPage({ params }: PageProps) {
             <DashboardLayout>
                 <div className="text-center py-12">
                     <p className="text-muted-foreground">Exam not found</p>
-                    <Link href="/admin/exams">
+                    <Link href={isSmeMode ? '/sme/training-ops/exams' : '/admin/exams'}>
                         <Button className="mt-4">Back to Exams</Button>
                     </Link>
                 </div>
@@ -157,7 +160,7 @@ export default function ExamAttemptsPage({ params }: PageProps) {
             <div className="space-y-6">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                        <Link href="/admin/exams">
+                        <Link href={isSmeMode ? '/sme/training-ops/exams' : '/admin/exams'}>
                             <Button variant="ghost" size="icon">
                                 <ArrowLeft className="h-4 w-4" />
                             </Button>
@@ -190,7 +193,7 @@ export default function ExamAttemptsPage({ params }: PageProps) {
                             <AlertCircle className="h-5 w-5" />
                             <span className="font-medium">{needsGrading.length} attempt(s) need essay grading</span>
                         </div>
-                        <Link href={`/admin/exams/${examId}/attempts/${needsGrading[0].id}`}>
+                        <Link href={`/admin/exams/${examId}/attempts/${needsGrading[0].id}${isSmeMode ? '?sme=1' : ''}`}>
                             <Button variant="outline" size="sm">
                                 <FileText className="h-4 w-4 mr-2" />
                                 Start Grading
@@ -348,7 +351,7 @@ export default function ExamAttemptsPage({ params }: PageProps) {
                                                     )}
                                                 </td>
                                                 <td className="py-3">
-                                                    <Link href={`/admin/exams/${examId}/attempts/${attempt.id}`}>
+                                                    <Link href={`/admin/exams/${examId}/attempts/${attempt.id}${isSmeMode ? '?sme=1' : ''}`}>
                                                         <Button variant="ghost" size="sm">
                                                             <Eye className="h-4 w-4 mr-1" />
                                                             View

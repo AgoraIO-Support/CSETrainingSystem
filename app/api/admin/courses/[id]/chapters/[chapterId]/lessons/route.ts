@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server'
-import { withAdminAuth } from '@/lib/auth-middleware'
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware'
 import { z } from 'zod'
 import { createLessonSchema } from '@/lib/validations'
 import { CourseStructureService } from '@/lib/services/course-structure.service'
+import { TrainingOpsService } from '@/lib/services/training-ops.service'
 
 // GET /admin/courses/:id/chapters/:chapterId/lessons
-export const GET = withAdminAuth(async (req, user, { params }: { params: Promise<{ id: string; chapterId: string }> }) => {
+export const GET = withSmeOrAdminAuth(async (req, user, { params }: { params: Promise<{ id: string; chapterId: string }> }) => {
   try {
     const { id: courseId, chapterId } = await params
+    if (user.role === 'SME') await TrainingOpsService.assertScopedCourseAccess(user, courseId)
     await CourseStructureService.assertChapterAncestry(courseId, chapterId)
     const lessons = await CourseStructureService.listLessons(chapterId)
     return NextResponse.json({ success: true, data: lessons })
@@ -25,6 +27,12 @@ export const GET = withAdminAuth(async (req, user, { params }: { params: Promise
         { status: 400 }
       )
     }
+    if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+      return NextResponse.json(
+        { success: false, error: { code: 'TRAINING_OPS_SCOPE_FORBIDDEN', message: 'You do not have access to this course' } },
+        { status: 403 }
+      )
+    }
     return NextResponse.json(
       { success: false, error: { code: 'SYSTEM_001', message: 'Failed to list lessons' } },
       { status: 500 }
@@ -33,9 +41,10 @@ export const GET = withAdminAuth(async (req, user, { params }: { params: Promise
 })
 
 // POST /admin/courses/:id/chapters/:chapterId/lessons
-export const POST = withAdminAuth(async (req, user, { params }: { params: Promise<{ id: string; chapterId: string }> }) => {
+export const POST = withSmeOrAdminAuth(async (req, user, { params }: { params: Promise<{ id: string; chapterId: string }> }) => {
   try {
     const { id: courseId, chapterId } = await params
+    if (user.role === 'SME') await TrainingOpsService.assertScopedCourseAccess(user, courseId)
     const body = await req.json()
     const data: z.infer<typeof createLessonSchema> = createLessonSchema.parse(body)
 
@@ -68,6 +77,12 @@ export const POST = withAdminAuth(async (req, user, { params }: { params: Promis
       return NextResponse.json(
         { success: false, error: { code: 'ASSET_COURSE_MISMATCH', message: 'Asset does not belong to course' } },
         { status: 400 }
+      )
+    }
+    if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+      return NextResponse.json(
+        { success: false, error: { code: 'TRAINING_OPS_SCOPE_FORBIDDEN', message: 'You do not have access to this course' } },
+        { status: 403 }
       )
     }
     return NextResponse.json(

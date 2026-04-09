@@ -8,9 +8,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
-import { ArrowRight, Clock, BookOpen, Award, Loader2 } from 'lucide-react'
+import { ArrowRight, BookOpen, Award, Loader2, Medal, Star } from 'lucide-react'
 import type { AuthUser } from '@/lib/auth-middleware'
-import type { Course } from '@/types'
+import type { Course, LearnerRewardsOverview, LearnerTrainingOverview } from '@/types'
 
 type DashboardUser = AuthUser & {
     name?: string | null
@@ -28,6 +28,8 @@ export default function HomePage() {
     const [user, setUser] = useState<DashboardUser | null>(null)
     const [courses, setCourses] = useState<Course[]>([])
     const [enrolledCourseCount, setEnrolledCourseCount] = useState(0)
+    const [rewardsOverview, setRewardsOverview] = useState<LearnerRewardsOverview | null>(null)
+    const [trainingOverview, setTrainingOverview] = useState<LearnerTrainingOverview | null>(null)
     const [loading, setLoading] = useState(true)
     const [redirecting, setRedirecting] = useState(false)
     const [continueLoading, setContinueLoading] = useState(false)
@@ -56,8 +58,27 @@ export default function HomePage() {
                     return
                 }
 
-                const progressOverviewRes = await ApiClient.getProgressOverview()
-                setEnrolledCourseCount(progressOverviewRes.data.stats.totalEnrolled || 0)
+                if (userRes.data.role === 'SME') {
+                    setRedirecting(true)
+                    router.replace('/sme')
+                    return
+                }
+
+                const [progressOverviewRes, rewardsRes, trainingRes] = await Promise.allSettled([
+                    ApiClient.getProgressOverview(),
+                    ApiClient.getLearnerRewardsOverview(),
+                    ApiClient.getLearnerTrainingOverview(),
+                ])
+
+                if (progressOverviewRes.status === 'fulfilled') {
+                    setEnrolledCourseCount(progressOverviewRes.value.data.stats.totalEnrolled || 0)
+                }
+                if (rewardsRes.status === 'fulfilled') {
+                    setRewardsOverview(rewardsRes.value.data)
+                }
+                if (trainingRes.status === 'fulfilled') {
+                    setTrainingOverview(trainingRes.value.data)
+                }
             } catch (error) {
                 console.error('Failed to fetch data:', error)
                 router.push('/login')
@@ -182,10 +203,10 @@ export default function HomePage() {
                                     </div>
                                     <div className="rounded-2xl border border-slate-200/70 bg-slate-50 p-4">
                                         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                                            Role
+                                            Stars
                                         </p>
-                                        <p className="mt-2 text-3xl font-semibold tracking-[-0.04em]">{user.role}</p>
-                                        <p className="mt-1 text-sm text-muted-foreground">Current access tier</p>
+                                        <p className="mt-2 text-3xl font-semibold tracking-[-0.04em]">{rewardsOverview?.summary.totalStars ?? 0}</p>
+                                        <p className="mt-1 text-sm text-muted-foreground">Training rewards earned</p>
                                     </div>
                                 </div>
                             </div>
@@ -194,20 +215,28 @@ export default function HomePage() {
 
                     <Card className="border-border/70">
                         <CardHeader className="pb-4">
-                            <CardTitle className="text-lg">Account status</CardTitle>
-                            <CardDescription>System access and participation state</CardDescription>
+                            <CardTitle className="text-lg">Training snapshot</CardTitle>
+                            <CardDescription>What needs attention next</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
-                                    Status
+                            <div className="rounded-2xl border border-sky-100 bg-sky-50 p-4">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-700">
+                                    Pending Assessments
                                 </p>
-                                <p className="mt-2 text-2xl font-semibold text-emerald-800">Active</p>
-                                <p className="mt-1 text-sm text-emerald-700/80">Ready for assigned courses and exams</p>
+                                <p className="mt-2 text-2xl font-semibold text-sky-800">{trainingOverview?.summary.pendingExams ?? 0}</p>
+                                <p className="mt-1 text-sm text-sky-700/80">
+                                    {trainingOverview?.summary.upcomingEvents ?? 0} linked events · {rewardsOverview?.summary.totalBadges ?? 0} badges unlocked
+                                </p>
                             </div>
-                            <Link href="/progress#enrolled-courses" className="block">
+                            <Link href="/training" className="block">
                                 <Button variant="outline" className="w-full justify-between">
-                                    Open enrolled courses
+                                    Open training queue
+                                    <ArrowRight className="h-4 w-4" />
+                                </Button>
+                            </Link>
+                            <Link href="/rewards" className="block">
+                                <Button variant="outline" className="w-full justify-between">
+                                    View rewards
                                     <ArrowRight className="h-4 w-4" />
                                 </Button>
                             </Link>
@@ -306,32 +335,109 @@ export default function HomePage() {
                         </Card>
                     </Link>
 
-                    <Card>
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-sm font-semibold">Role</CardTitle>
-                            <Clock className="h-4 w-4 text-primary" />
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-3xl font-semibold tracking-[-0.04em]">{user.role}</div>
-                            <p className="mt-2 text-sm text-muted-foreground">
-                                Current system access level.
-                            </p>
-                        </CardContent>
-                    </Card>
+                    <Link href="/rewards" className="block">
+                        <Card className="transition-transform duration-200 hover:translate-y-[-2px]">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                <CardTitle className="text-sm font-semibold">Badges Unlocked</CardTitle>
+                                <Medal className="h-4 w-4 text-primary" />
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-3xl font-semibold tracking-[-0.04em]">
+                                    {rewardsOverview?.summary.totalBadges ?? 0}
+                                </div>
+                                <p className="mt-2 text-sm text-muted-foreground">
+                                    Milestones unlocked through consistent stars earned in training series.
+                                </p>
+                            </CardContent>
+                        </Card>
+                    </Link>
 
-                    <Card>
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-sm font-semibold">Status</CardTitle>
-                            <Award className="h-4 w-4 text-primary" />
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-3xl font-semibold tracking-[-0.04em] text-emerald-700">Active</div>
-                            <p className="mt-2 text-sm text-muted-foreground">
-                                Account and access are in good standing.
-                            </p>
-                        </CardContent>
-                    </Card>
+                    <Link href="/certificates" className="block">
+                        <Card className="transition-transform duration-200 hover:translate-y-[-2px]">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                <CardTitle className="text-sm font-semibold">Certificates</CardTitle>
+                                <Award className="h-4 w-4 text-primary" />
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-3xl font-semibold tracking-[-0.04em] text-emerald-700">
+                                    {rewardsOverview?.summary.certificatesEarned ?? 0}
+                                </div>
+                                <p className="mt-2 text-sm text-muted-foreground">
+                                    Formal achievements issued separately from day-to-day practice rewards.
+                                </p>
+                            </CardContent>
+                        </Card>
+                    </Link>
                 </div>
+
+                <Card>
+                    <CardHeader className="flex flex-col gap-3 pb-3 md:flex-row md:items-start md:justify-between">
+                        <div>
+                            <CardTitle className="text-xl">Rewards progression</CardTitle>
+                            <CardDescription>
+                                Stars advance badge ladders inside training series, while certificates remain a formal outcome.
+                            </CardDescription>
+                        </div>
+                        <div className="flex gap-2">
+                            <Link href="/rewards">
+                                <Button variant="outline" size="sm">Open rewards</Button>
+                            </Link>
+                            <Link href="/training">
+                                <Button variant="outline" size="sm">Training queue</Button>
+                            </Link>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+                        <div className="rounded-2xl border border-slate-200/70 bg-slate-50 p-4">
+                            <div className="flex items-center gap-2">
+                                <Star className="h-4 w-4 text-[#006688]" />
+                                <p className="text-sm font-semibold text-slate-900">Next global badge</p>
+                            </div>
+                            {rewardsOverview?.nextBadge ? (
+                                <>
+                                    <p className="mt-3 text-lg font-semibold tracking-[-0.03em]">
+                                        {rewardsOverview.nextBadge.name}
+                                    </p>
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        {rewardsOverview.nextBadge.remainingStars} more star{rewardsOverview.nextBadge.remainingStars === 1 ? '' : 's'} needed.
+                                    </p>
+                                </>
+                            ) : (
+                                <p className="mt-3 text-sm text-muted-foreground">
+                                    No further global milestone is currently configured.
+                                </p>
+                            )}
+                        </div>
+                        <div className="rounded-2xl border border-slate-200/70 bg-slate-50 p-4">
+                            <p className="text-sm font-semibold text-slate-900">Strongest series</p>
+                            {rewardsOverview?.seriesProgressions?.[0] ? (
+                                <>
+                                    <p className="mt-3 text-lg font-semibold tracking-[-0.03em]">
+                                        {rewardsOverview.seriesProgressions[0].learningSeries.name}
+                                    </p>
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        {rewardsOverview.seriesProgressions[0].currentBadge
+                                            ? `Current level: ${rewardsOverview.seriesProgressions[0].currentBadge.name}`
+                                            : 'No series badge unlocked yet'}
+                                    </p>
+                                    {rewardsOverview.seriesProgressions[0].nextBadge ? (
+                                        <p className="mt-1 text-sm text-muted-foreground">
+                                            Next: {rewardsOverview.seriesProgressions[0].nextBadge.name} · {rewardsOverview.seriesProgressions[0].nextBadge.remainingStars} stars to go
+                                        </p>
+                                    ) : (
+                                        <p className="mt-1 text-sm text-muted-foreground">
+                                            Top badge reached in this series.
+                                        </p>
+                                    )}
+                                </>
+                            ) : (
+                                <p className="mt-3 text-sm text-muted-foreground">
+                                    Earn stars from assigned training to begin series badge progression.
+                                </p>
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
 
                 <div>
                     <div className="mb-4 flex items-center justify-between">

@@ -4,16 +4,18 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { withAdminAuth } from '@/lib/auth-middleware'
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
+import { TrainingOpsService } from '@/lib/services/training-ops.service'
 
-export const GET = withAdminAuth(async (
+export const GET = withSmeOrAdminAuth(async (
     request: NextRequest,
     user,
     context: { params: Promise<{ lessonId: string }> }
 ) => {
     try {
         const { lessonId } = await context.params
+        if (user.role === 'SME') await TrainingOpsService.assertScopedLessonAccess(user, lessonId)
 
         const job = await prisma.knowledgeContextJob.findFirst({
             where: { lessonId },
@@ -50,4 +52,3 @@ export const GET = withAdminAuth(async (
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 })
-

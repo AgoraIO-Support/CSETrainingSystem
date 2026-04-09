@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server'
-import { withAdminAuth } from '@/lib/auth-middleware'
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware'
 import { z } from 'zod'
 import { reorderLessonsSchema } from '@/lib/validations'
 import { CourseStructureService } from '@/lib/services/course-structure.service'
+import { TrainingOpsService } from '@/lib/services/training-ops.service'
 
 // PATCH /admin/courses/:id/chapters/:chapterId/lessons/reorder
-export const PATCH = withAdminAuth(async (req, user, { params }: { params: Promise<{ id: string; chapterId: string }> }) => {
+export const PATCH = withSmeOrAdminAuth(async (req, user, { params }: { params: Promise<{ id: string; chapterId: string }> }) => {
   try {
     const { id: courseId, chapterId } = await params
+    if (user.role === 'SME') await TrainingOpsService.assertScopedCourseAccess(user, courseId)
     const body = await req.json()
     const data = reorderLessonsSchema.parse(body)
 
@@ -34,6 +36,12 @@ export const PATCH = withAdminAuth(async (req, user, { params }: { params: Promi
       return NextResponse.json(
         { success: false, error: { code: 'ANCESTRY_MISMATCH', message: 'Chapter does not belong to course' } },
         { status: 400 }
+      )
+    }
+    if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+      return NextResponse.json(
+        { success: false, error: { code: 'TRAINING_OPS_SCOPE_FORBIDDEN', message: 'You do not have access to this course' } },
+        { status: 403 }
       )
     }
     return NextResponse.json(

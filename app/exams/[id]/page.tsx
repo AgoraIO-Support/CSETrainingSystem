@@ -191,6 +191,12 @@ export default function ExamIntroPage({ params }: PageProps) {
                                 Course: {exam.course.title}
                             </p>
                         )}
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            <Badge variant="outline">{exam.assessmentKind ?? 'PRACTICE'}</Badge>
+                            {exam.countsTowardPerformance ? <Badge>Performance</Badge> : null}
+                            {exam.awardsStars && exam.starValue ? <Badge variant="secondary">+{exam.starValue} stars on pass</Badge> : null}
+                            {exam.certificateEligible ? <Badge variant="outline">Certificate on pass</Badge> : null}
+                        </div>
                     </div>
                 </div>
 
@@ -341,6 +347,16 @@ export default function ExamIntroPage({ params }: PageProps) {
                                     <li>You have {exam.timeLimit} minutes to complete this exam</li>
                                 )}
                                 <li>You have {exam.remainingAttempts} attempt(s) remaining</li>
+                                {exam.awardsStars && exam.starValue ? (
+                                    <li>Passing this exam earns {exam.starValue} star{exam.starValue > 1 ? 's' : ''}</li>
+                                ) : (
+                                    <li>This assessment does not award stars</li>
+                                )}
+                                {exam.certificateEligible ? (
+                                    <li>A certificate will be issued automatically if you pass</li>
+                                ) : (
+                                    <li>No certificate is issued for this assessment</li>
+                                )}
                                 {exam.randomizeQuestions && <li>Questions will be presented in random order</li>}
                                 {exam.showResultsImmediately ? (
                                     <li>Results will be shown immediately after submission</li>

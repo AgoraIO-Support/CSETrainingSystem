@@ -11,6 +11,18 @@ interface GetUserParams {
 }
 
 export class UserService {
+    private static async safeCountSmeUsers() {
+        try {
+            return await prisma.user.count({ where: { role: 'SME' } })
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            if (message.includes('Expected UserRole')) {
+                return 0
+            }
+            throw error
+        }
+    }
+
     static async createUser(data: {
         email: string
         password: string
@@ -100,14 +112,7 @@ export class UserService {
 
         const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
 
-        const statsPromise = prisma.$transaction([
-            prisma.user.count(),
-            prisma.user.count({ where: { status: 'ACTIVE' } }),
-            prisma.user.count({ where: { role: 'ADMIN' } }),
-            prisma.user.count({ where: { createdAt: { gte: startOfMonth } } }),
-        ])
-
-        const [users, totalFiltered, statsCounts] = await Promise.all([
+        const [users, totalFiltered, totalUsers, activeUsers, adminUsers, smeUsers, newThisMonth] = await Promise.all([
             prisma.user.findMany({
                 where,
                 skip,
@@ -124,10 +129,12 @@ export class UserService {
                 },
             }),
             prisma.user.count({ where }),
-            statsPromise,
+            prisma.user.count(),
+            prisma.user.count({ where: { status: 'ACTIVE' } }),
+            prisma.user.count({ where: { role: 'ADMIN' } }),
+            this.safeCountSmeUsers(),
+            prisma.user.count({ where: { createdAt: { gte: startOfMonth } } }),
         ])
-
-        const [totalUsers, activeUsers, adminUsers, newThisMonth] = statsCounts
 
         const formattedUsers = users.map(user => {
             const enrollmentCount = user.enrollments.length
@@ -156,6 +163,7 @@ export class UserService {
                 totalUsers,
                 activeUsers,
                 adminUsers,
+                smeUsers,
                 newThisMonth,
             },
             pagination: {

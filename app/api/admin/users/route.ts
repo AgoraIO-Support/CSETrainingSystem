@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { withAdminAuth } from '@/lib/auth-middleware'
+import { withAdminAuth, withSmeOrAdminAuth } from '@/lib/auth-middleware'
 import { UserService } from '@/lib/services/user.service'
 import type { UserRole, UserStatus } from '@prisma/client'
 import { adminCreateUserSchema } from '@/lib/validations'
 import { z } from 'zod'
 
 function parseRole(value: string | null): UserRole | undefined {
-    if (value === 'ADMIN' || value === 'USER') {
+    if (value === 'ADMIN' || value === 'SME' || value === 'USER') {
         return value
     }
     return undefined
@@ -19,7 +19,7 @@ function parseStatus(value: string | null): UserStatus | undefined {
     return undefined
 }
 
-export const GET = withAdminAuth(async (req: NextRequest) => {
+export const GET = withSmeOrAdminAuth(async (req: NextRequest) => {
     try {
         const { searchParams } = new URL(req.url)
 

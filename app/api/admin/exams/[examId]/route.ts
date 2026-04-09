@@ -6,8 +6,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { withAdminAuth } from '@/lib/auth-middleware';
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware';
 import { ExamService } from '@/lib/services/exam.service';
+import { TrainingOpsService } from '@/lib/services/training-ops.service';
 import { updateExamSchema } from '@/lib/validations';
 import {
   assertExamTimeRange,
@@ -21,10 +22,13 @@ type RouteContext = {
 };
 
 // GET /api/admin/exams/[examId] - Get exam details
-export const GET = withAdminAuth(
+export const GET = withSmeOrAdminAuth(
   async (req: NextRequest, user, context: RouteContext) => {
     try {
       const { examId } = await context.params;
+      if (user.role === 'SME') {
+        await TrainingOpsService.assertScopedExamAccess(user, examId);
+      }
 
       const exam = await ExamService.getExamById(examId);
 
@@ -47,6 +51,18 @@ export const GET = withAdminAuth(
       });
     } catch (error) {
       console.error('Get exam error:', error);
+      if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'AUTH_003',
+              message: 'Insufficient permissions',
+            },
+          },
+          { status: 403 }
+        );
+      }
       return NextResponse.json(
         {
           success: false,
@@ -62,10 +78,13 @@ export const GET = withAdminAuth(
 );
 
 // PATCH /api/admin/exams/[examId] - Update exam
-export const PATCH = withAdminAuth(
+export const PATCH = withSmeOrAdminAuth(
   async (req: NextRequest, user, context: RouteContext) => {
     try {
       const { examId } = await context.params;
+      if (user.role === 'SME') {
+        await TrainingOpsService.assertScopedExamAccess(user, examId);
+      }
       const body = await req.json();
       const data = updateExamSchema.parse(body);
       const existingExam = await ExamService.getExamById(examId);
@@ -126,6 +145,18 @@ export const PATCH = withAdminAuth(
       }
 
       if (error instanceof Error) {
+        if (error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+          return NextResponse.json(
+            {
+              success: false,
+              error: {
+                code: 'AUTH_003',
+                message: 'Insufficient permissions',
+              },
+            },
+            { status: 403 }
+          );
+        }
         if (
           error.message === 'INVALID_EXAM_LOCAL_TIME' ||
           error.message === 'INVALID_EXAM_DATETIME_FORMAT' ||
@@ -188,10 +219,13 @@ export const PATCH = withAdminAuth(
 );
 
 // DELETE /api/admin/exams/[examId] - Delete exam
-export const DELETE = withAdminAuth(
+export const DELETE = withSmeOrAdminAuth(
   async (req: NextRequest, user, context: RouteContext) => {
     try {
       const { examId } = await context.params;
+      if (user.role === 'SME') {
+        await TrainingOpsService.assertScopedExamAccess(user, examId);
+      }
 
       const { searchParams } = new URL(req.url);
       const force = searchParams.get('force') === '1';
@@ -204,6 +238,19 @@ export const DELETE = withAdminAuth(
       });
     } catch (error) {
       console.error('Delete exam error:', error);
+
+      if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'AUTH_003',
+              message: 'Insufficient permissions',
+            },
+          },
+          { status: 403 }
+        );
+      }
 
       if (error instanceof Error && error.message === 'EXAM_NOT_FOUND') {
         return NextResponse.json(

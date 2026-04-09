@@ -254,6 +254,11 @@ export default function ExamsPage() {
                                         <div className="flex-1">
                                             <div className="flex items-center gap-3 mb-2">
                                                 <h3 className="text-lg font-semibold tracking-[-0.03em]">{exam.title}</h3>
+                                                {exam.assessmentKind ? (
+                                                    <Badge variant="outline">
+                                                        {exam.assessmentKind}
+                                                    </Badge>
+                                                ) : null}
                                                 {exam.hasPassed && (
                                                     <Badge className="border-emerald-200 bg-emerald-100 text-emerald-800 dark:bg-green-900/20 dark:text-green-200">
                                                         <CheckCircle className="h-3 w-3 mr-1" />
@@ -271,6 +276,21 @@ export default function ExamsPage() {
                                                         Expired
                                                     </Badge>
                                                 )}
+                                                {exam.awardsStars && exam.starValue ? (
+                                                    <Badge variant="secondary">
+                                                        +{exam.starValue} stars on pass
+                                                    </Badge>
+                                                ) : null}
+                                                {exam.certificateEligible ? (
+                                                    <Badge variant="outline">
+                                                        Certificate on pass
+                                                    </Badge>
+                                                ) : null}
+                                                {exam.countsTowardPerformance ? (
+                                                    <Badge>
+                                                        Performance
+                                                    </Badge>
+                                                ) : null}
                                             </div>
 
                                             {exam.description && (
@@ -296,6 +316,19 @@ export default function ExamsPage() {
                                                 <span>
                                                     Attempts: {(exam.userAttempts ?? 0)}/{exam.maxAttempts}
                                                 </span>
+                                                {exam.assessmentKind === 'FORMAL' ? (
+                                                    <span>
+                                                        Formal assessment
+                                                    </span>
+                                                ) : exam.assessmentKind === 'READINESS' ? (
+                                                    <span>
+                                                        Release readiness
+                                                    </span>
+                                                ) : (
+                                                    <span>
+                                                        Practice assessment
+                                                    </span>
+                                                )}
                                                 {exam.deadline && (
                                                     <span className="flex items-center gap-1">
                                                         <Calendar className="h-4 w-4" />
@@ -305,10 +338,24 @@ export default function ExamsPage() {
                                             </div>
 
                                             {exam.bestScore !== null && (
-                                                <div className="mt-3">
-                                                    <div className="flex items-center justify-between text-sm mb-1">
-                                                        <span>Best Score</span>
-                                                        <span className="font-medium">{exam.bestScore}%</span>
+                                            <div className="mt-3">
+                                                {(exam.awardsStars && exam.starValue) || exam.certificateEligible ? (
+                                                    <div className="mb-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                                                        {exam.awardsStars && exam.starValue ? (
+                                                            <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
+                                                                Passing awards {exam.starValue} star{exam.starValue === 1 ? '' : 's'} and contributes to badge progression.
+                                                            </span>
+                                                        ) : null}
+                                                        {exam.certificateEligible ? (
+                                                            <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
+                                                                Passing can issue a formal certificate.
+                                                            </span>
+                                                        ) : null}
+                                                    </div>
+                                                ) : null}
+                                                <div className="flex items-center justify-between text-sm mb-1">
+                                                    <span>Best Score</span>
+                                                    <span className="font-medium">{exam.bestScore}%</span>
                                                     </div>
                                                     <Progress
                                                         value={exam.bestScore}
@@ -430,6 +477,14 @@ export default function ExamsPage() {
                                                 <p className="text-sm text-muted-foreground">
                                                     Best Score: {exam.bestScore}%
                                                 </p>
+                                                <div className="mt-2 flex flex-wrap gap-2">
+                                                    {exam.awardsStars && exam.starValue ? (
+                                                        <Badge variant="secondary">+{exam.starValue} stars</Badge>
+                                                    ) : null}
+                                                    {exam.certificateEligible ? (
+                                                        <Badge variant="outline">Certificate earned on pass</Badge>
+                                                    ) : null}
+                                                </div>
                                             </div>
                                         </div>
                                         <Link href={`/exams/${exam.id}`}>

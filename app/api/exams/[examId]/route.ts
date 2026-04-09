@@ -77,6 +77,11 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
         availableFrom: exam.availableFrom,
         showResultsImmediately: exam.showResultsImmediately,
         allowReview: exam.allowReview,
+        assessmentKind: exam.assessmentKind ?? null,
+        awardsStars: exam.awardsStars ?? false,
+        starValue: exam.starValue ?? null,
+        countsTowardPerformance: exam.countsTowardPerformance ?? false,
+        certificateEligible: exam.certificateEligible ?? false,
         questionCount: questions.length,
         course: exam.course
           ? {

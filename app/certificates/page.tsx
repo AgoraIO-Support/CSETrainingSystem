@@ -104,7 +104,7 @@ export default function CertificatesPage() {
                 <div>
                     <h1 className="text-3xl font-bold">My Certificates</h1>
                     <p className="text-muted-foreground mt-1">
-                        View your earned certificates
+                        View your formal certificates earned from qualifying assessments
                     </p>
                 </div>
 
@@ -114,6 +114,27 @@ export default function CertificatesPage() {
                         {error}
                     </div>
                 )}
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Certificate Policy</CardTitle>
+                        <CardDescription>Certificates are separate from stars and badges.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="grid gap-3 md:grid-cols-3 text-sm text-muted-foreground">
+                        <div className="rounded-lg border p-3">
+                            <p className="font-medium text-foreground">Formal only</p>
+                            <p className="mt-1">Certificates are intended for formal assessments, quarterly finals, or year-end exams.</p>
+                        </div>
+                        <div className="rounded-lg border p-3">
+                            <p className="font-medium text-foreground">Pass required</p>
+                            <p className="mt-1">A certificate is only issued when the learner passes and the exam has certificate-on-pass enabled.</p>
+                        </div>
+                        <div className="rounded-lg border p-3">
+                            <p className="font-medium text-foreground">Practice stays separate</p>
+                            <p className="mt-1">Weekly drills and readiness quizzes may award stars and badges, but they do not automatically issue certificates.</p>
+                        </div>
+                    </CardContent>
+                </Card>
 
                 {/* Stats */}
                 <div className="grid gap-4 md:grid-cols-3">

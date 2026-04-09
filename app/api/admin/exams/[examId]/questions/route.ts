@@ -5,8 +5,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { withAdminAuth } from '@/lib/auth-middleware';
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware';
 import { ExamService } from '@/lib/services/exam.service';
+import { TrainingOpsService } from '@/lib/services/training-ops.service';
 import { createExamQuestionSchema, reorderExamQuestionsSchema } from '@/lib/validations';
 import { z } from 'zod';
 
@@ -15,10 +16,13 @@ type RouteContext = {
 };
 
 // GET /api/admin/exams/[examId]/questions - Get exam questions
-export const GET = withAdminAuth(
+export const GET = withSmeOrAdminAuth(
   async (req: NextRequest, user, context: RouteContext) => {
     try {
       const { examId } = await context.params;
+      if (user.role === 'SME') {
+        await TrainingOpsService.assertScopedExamAccess(user, examId);
+      }
 
       // Verify exam exists
       const exam = await ExamService.getExamById(examId);
@@ -42,6 +46,18 @@ export const GET = withAdminAuth(
       });
     } catch (error) {
       console.error('Get exam questions error:', error);
+      if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'AUTH_003',
+              message: 'Insufficient permissions',
+            },
+          },
+          { status: 403 }
+        );
+      }
       return NextResponse.json(
         {
           success: false,
@@ -57,10 +73,13 @@ export const GET = withAdminAuth(
 );
 
 // POST /api/admin/exams/[examId]/questions - Add question to exam
-export const POST = withAdminAuth(
+export const POST = withSmeOrAdminAuth(
   async (req: NextRequest, user, context: RouteContext) => {
     try {
       const { examId } = await context.params;
+      if (user.role === 'SME') {
+        await TrainingOpsService.assertScopedExamAccess(user, examId);
+      }
       const body = await req.json();
       const data = createExamQuestionSchema.parse(body);
 
@@ -117,6 +136,19 @@ export const POST = withAdminAuth(
         );
       }
 
+      if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'AUTH_003',
+              message: 'Insufficient permissions',
+            },
+          },
+          { status: 403 }
+        );
+      }
+
       return NextResponse.json(
         {
           success: false,
@@ -132,10 +164,13 @@ export const POST = withAdminAuth(
 );
 
 // PUT /api/admin/exams/[examId]/questions - Reorder questions
-export const PUT = withAdminAuth(
+export const PUT = withSmeOrAdminAuth(
   async (req: NextRequest, user, context: RouteContext) => {
     try {
       const { examId } = await context.params;
+      if (user.role === 'SME') {
+        await TrainingOpsService.assertScopedExamAccess(user, examId);
+      }
       const body = await req.json();
       const { questionIds } = reorderExamQuestionsSchema.parse(body);
 
@@ -185,6 +220,19 @@ export const PUT = withAdminAuth(
             },
           },
           { status: 400 }
+        );
+      }
+
+      if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'AUTH_003',
+              message: 'Insufficient permissions',
+            },
+          },
+          { status: 403 }
         );
       }
 

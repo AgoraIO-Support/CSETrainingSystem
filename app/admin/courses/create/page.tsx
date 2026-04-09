@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -17,6 +17,8 @@ const levels: CourseLevel[] = ['BEGINNER', 'INTERMEDIATE', 'ADVANCED']
 
 export default function CreateCoursePage() {
     const router = useRouter()
+    const searchParams = useSearchParams()
+    const learningEventId = searchParams.get('learningEventId')
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState<string | null>(null)
@@ -84,12 +86,13 @@ export default function CreateCoursePage() {
                     .map(item => item.trim())
                     .filter(Boolean),
                 instructorId: form.instructorId,
+                learningEventId,
                 status: form.status as 'DRAFT' | 'PUBLISHED' | 'ARCHIVED',
             }
 
             await ApiClient.createCourse(payload)
             setSuccess('Course created successfully')
-            setTimeout(() => router.push('/admin/courses'), 1200)
+            setTimeout(() => router.push(learningEventId ? `/admin/training-ops/events/${learningEventId}` : '/admin/courses'), 1200)
         } catch (err) {
             if (err instanceof Error) {
                 setError(err.message)
@@ -111,6 +114,11 @@ export default function CreateCoursePage() {
                     <CardTitle>Create Course</CardTitle>
                 </CardHeader>
                 <CardContent>
+                    {learningEventId ? (
+                        <div className="mb-4 rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-800">
+                            This course will be linked to the current learning event after creation.
+                        </div>
+                    ) : null}
                     <form className="space-y-4" onSubmit={handleSubmit}>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
@@ -136,7 +144,7 @@ export default function CreateCoursePage() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                            <Label htmlFor="learningOutcomes">What you'll learn</Label>
+                            <Label htmlFor="learningOutcomes">What you&apos;ll learn</Label>
                             <Textarea
                                 id="learningOutcomes"
                                 rows={4}

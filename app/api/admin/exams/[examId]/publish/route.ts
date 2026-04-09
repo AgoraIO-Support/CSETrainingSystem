@@ -4,8 +4,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { withAdminAuth } from '@/lib/auth-middleware'
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
+import { TrainingOpsService } from '@/lib/services/training-ops.service'
 import { publishExamSchema } from '@/lib/validations'
 import { ExamStatus } from '@prisma/client'
 import { z } from 'zod'
@@ -15,13 +16,17 @@ type RouteContext = {
     params: Promise<{ examId: string }>
 }
 
-export const POST = withAdminAuth(async (req: NextRequest, _user, context: RouteContext) => {
+export const POST = withSmeOrAdminAuth(async (req: NextRequest, user, context: RouteContext) => {
     try {
         const { examId } = await context.params
         const body = await req.json().catch(() => ({}))
         const parsed = publishExamSchema.parse(body)
         const { userIds } = parsed
         const sendNotification = parsed.sendNotification ?? parsed.sendEmail ?? false
+
+        if (user.role === 'SME') {
+            await TrainingOpsService.assertScopedExamAccess(user, examId)
+        }
 
         const exam = await prisma.exam.findUnique({
             where: { id: examId },
@@ -203,6 +208,19 @@ export const POST = withAdminAuth(async (req: NextRequest, _user, context: Route
                     },
                 },
                 { status: 400 }
+            )
+        }
+
+        if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: {
+                        code: 'FORBIDDEN',
+                        message: 'Insufficient permissions',
+                    },
+                },
+                { status: 403 }
             )
         }
 

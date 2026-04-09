@@ -4,17 +4,23 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { withAdminAuth } from '@/lib/auth-middleware'
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
+import { TrainingOpsService } from '@/lib/services/training-ops.service'
+import { ExamAttemptStatus, type Prisma } from '@prisma/client'
 
 type RouteContext = {
     params: Promise<{ examId: string }>
 }
 
-export const GET = withAdminAuth(async (req: NextRequest, _user, context: RouteContext) => {
+export const GET = withSmeOrAdminAuth(async (req: NextRequest, user, context: RouteContext) => {
     try {
         const { examId } = await context.params
         const { searchParams } = new URL(req.url)
+
+        if (user.role === 'SME') {
+            await TrainingOpsService.assertScopedExamAccess(user, examId)
+        }
 
         const page = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10) || 1)
         const limit = Math.min(200, Math.max(1, Number.parseInt(searchParams.get('limit') || '50', 10) || 50))
@@ -31,9 +37,12 @@ export const GET = withAdminAuth(async (req: NextRequest, _user, context: RouteC
             )
         }
 
-        const where = {
+        const where: Prisma.ExamAttemptWhereInput = {
             examId,
-            ...(status ? { status: status as any } : {}),
+        }
+
+        if (status && Object.values(ExamAttemptStatus).includes(status as ExamAttemptStatus)) {
+            where.status = status as ExamAttemptStatus
         }
 
         const [total, attempts] = await Promise.all([
@@ -78,6 +87,18 @@ export const GET = withAdminAuth(async (req: NextRequest, _user, context: RouteC
         })
     } catch (error) {
         console.error('List attempts error:', error)
+        if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: {
+                        code: 'FORBIDDEN',
+                        message: 'Insufficient permissions',
+                    },
+                },
+                { status: 403 }
+            )
+        }
         return NextResponse.json(
             {
                 success: false,

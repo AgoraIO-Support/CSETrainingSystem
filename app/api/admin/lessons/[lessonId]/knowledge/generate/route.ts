@@ -4,18 +4,19 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { withAdminAuth } from '@/lib/auth-middleware';
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware';
 import prisma from '@/lib/prisma';
 import { KnowledgeContextService } from '@/lib/services/knowledge-context.service';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import s3Client, { ASSET_S3_BUCKET_NAME } from '@/lib/aws-s3';
 import { getPrimaryAiTranscriptTrack } from '@/lib/transcript-tracks';
+import { TrainingOpsService } from '@/lib/services/training-ops.service';
 
 /**
  * POST /api/admin/lessons/[lessonId]/knowledge/generate
  * Generate knowledge context from existing VTT transcript
  */
-export const POST = withAdminAuth(async (
+export const POST = withSmeOrAdminAuth(async (
   request: NextRequest,
   user,
   context: { params: Promise<{ lessonId: string }> }
@@ -23,6 +24,7 @@ export const POST = withAdminAuth(async (
   try {
     const params = await context.params;
     const { lessonId } = params;
+    if (user.role === 'SME') await TrainingOpsService.assertScopedLessonAccess(user, lessonId);
     const body = await request.json().catch(() => ({} as Record<string, unknown>));
 
     // Get lesson with full context

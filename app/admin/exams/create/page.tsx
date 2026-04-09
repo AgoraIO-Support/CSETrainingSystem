@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -18,13 +18,19 @@ import type { Course, ExamType } from '@/types'
 export default function CreateExamPage() {
     const timeZoneOptions = getExamTimeZoneOptions()
     const router = useRouter()
+    const searchParams = useSearchParams()
+    const learningEventId = searchParams.get('learningEventId')
+    const productDomainId = searchParams.get('productDomainId')
+    const learningSeriesId = searchParams.get('learningSeriesId')
+    const isSmeMode = searchParams.get('sme') === '1'
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [courses, setCourses] = useState<Course[]>([])
     const [loadingCourses, setLoadingCourses] = useState(true)
+    const [loadingLinkedEvent, setLoadingLinkedEvent] = useState(Boolean(learningEventId))
+    const [linkedEvent, setLinkedEvent] = useState<Awaited<ReturnType<typeof ApiClient.getTrainingOpsEvent>>['data'] | null>(null)
     const [badgeFile, setBadgeFile] = useState<File | null>(null)
     const [badgePreviewUrl, setBadgePreviewUrl] = useState<string | null>(null)
-
     const [form, setForm] = useState({
         title: '',
         description: '',
@@ -42,12 +48,20 @@ export default function CreateExamPage() {
         timezone: 'UTC',
         availableFrom: '',
         deadline: '',
+        assessmentKind: 'PRACTICE' as 'PRACTICE' | 'READINESS' | 'FORMAL',
+        awardsStars: false,
+        starValue: '0',
+        countsTowardPerformance: false,
         certificateEnabled: false,
         certificateTitle: '',
         certificateBadgeMode: 'AUTO' as 'AUTO' | 'UPLOADED',
     })
 
     useEffect(() => {
+        if (isSmeMode) {
+            setLoadingCourses(false)
+            return
+        }
         const loadCourses = async () => {
             try {
                 const response = await ApiClient.getAdminCourses({ limit: 100, status: 'ALL' })
@@ -59,7 +73,7 @@ export default function CreateExamPage() {
             }
         }
         loadCourses()
-    }, [])
+    }, [isSmeMode])
 
     useEffect(() => {
         setForm(prev => (
@@ -68,6 +82,40 @@ export default function CreateExamPage() {
                 : { ...prev, timezone: getBrowserTimeZone() }
         ))
     }, [])
+
+    useEffect(() => {
+        if (!learningEventId) {
+            setLoadingLinkedEvent(false)
+            return
+        }
+
+        const loadLinkedEvent = async () => {
+            try {
+                const response = await ApiClient.getTrainingOpsEvent(learningEventId)
+                setLinkedEvent(response.data)
+                setForm((prev) => ({
+                    ...prev,
+                    title: prev.title || response.data.title,
+                    assessmentKind:
+                        response.data.countsTowardPerformance || response.data.format === 'FINAL_EXAM'
+                            ? 'FORMAL'
+                            : response.data.format === 'RELEASE_BRIEFING'
+                                ? 'READINESS'
+                                : 'PRACTICE',
+                    awardsStars: (response.data.starValue ?? 0) > 0,
+                    starValue: response.data.starValue?.toString() ?? '0',
+                    countsTowardPerformance: response.data.countsTowardPerformance,
+                }))
+            } catch (err) {
+                console.error('Failed to load linked learning event:', err)
+                setError(err instanceof Error ? err.message : 'Failed to load linked learning event')
+            } finally {
+                setLoadingLinkedEvent(false)
+            }
+        }
+
+        void loadLinkedEvent()
+    }, [learningEventId])
 
     useEffect(() => {
         if (!badgeFile) return
@@ -101,10 +149,22 @@ export default function CreateExamPage() {
                 timezone: form.timezone,
                 availableFrom: form.availableFrom || undefined,
                 deadline: form.deadline || undefined,
+                assessmentKind: form.assessmentKind,
+                productDomainId: linkedEvent?.domain?.id ?? productDomainId ?? null,
+                learningSeriesId: linkedEvent?.series?.id ?? learningSeriesId ?? null,
+                learningEventId: linkedEvent?.id ?? null,
+                awardsStars: form.awardsStars,
+                starValue: form.awardsStars ? (parseInt(form.starValue) || 0) : 0,
+                countsTowardPerformance: form.countsTowardPerformance,
             }
 
             const response = await ApiClient.createExam(payload)
             const examId = response.data.id
+
+            if (isSmeMode) {
+                router.push(`/admin/exams/${examId}/edit?sme=1`)
+                return
+            }
 
             try {
                 let badgeS3Key: string | null = null
@@ -189,7 +249,7 @@ export default function CreateExamPage() {
                     <div>
                         <h1 className="text-3xl font-bold">Create Exam</h1>
                         <p className="text-muted-foreground mt-1">
-                            Set up a new exam with customizable settings
+                            {isSmeMode ? 'Create and edit an exam within your SME workspace' : 'Set up a new exam with customizable settings'}
                         </p>
                     </div>
                 </div>
@@ -201,6 +261,16 @@ export default function CreateExamPage() {
                             <CardDescription>Enter the basic details for your exam</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
+                            {loadingLinkedEvent ? (
+                                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                                    Loading linked learning event...
+                                </div>
+                            ) : null}
+                            {linkedEvent ? (
+                                <div className="rounded-lg border border-[#b8ecff] bg-[#effbff] px-4 py-3 text-sm text-[#006688]">
+                                    This exam will be created for learning event <span className="font-semibold">{linkedEvent.title}</span>.
+                                </div>
+                            ) : null}
                             <div className="space-y-2">
                                 <Label htmlFor="title">Exam Title *</Label>
                                 <Input
@@ -237,18 +307,22 @@ export default function CreateExamPage() {
                             <div className="grid gap-4 md:grid-cols-2">
                                 <div className="space-y-2">
                                     <Label htmlFor="examType">Exam Type *</Label>
-                                    <select
-                                        id="examType"
-                                        className="w-full h-10 px-3 border rounded-md bg-background"
-                                        value={form.examType}
-                                        onChange={(e) => updateForm('examType', e.target.value as ExamType)}
-                                    >
-                                        <option value="STANDALONE">Standalone Exam</option>
-                                        <option value="COURSE_BASED">Course-Based Exam</option>
-                                    </select>
+                                    {isSmeMode ? (
+                                        <Input id="examType" value="Standalone Exam" disabled />
+                                    ) : (
+                                        <select
+                                            id="examType"
+                                            className="w-full h-10 px-3 border rounded-md bg-background"
+                                            value={form.examType}
+                                            onChange={(e) => updateForm('examType', e.target.value as ExamType)}
+                                        >
+                                            <option value="STANDALONE">Standalone Exam</option>
+                                            <option value="COURSE_BASED">Course-Based Exam</option>
+                                        </select>
+                                    )}
                                 </div>
 
-                                {form.examType === 'COURSE_BASED' && (
+                                {!isSmeMode && form.examType === 'COURSE_BASED' && (
                                     <div className="space-y-2">
                                         <Label htmlFor="courseId">Course</Label>
                                         <select
@@ -317,6 +391,75 @@ export default function CreateExamPage() {
                         </CardContent>
                     </Card>
 
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Reward Policy</CardTitle>
+                            <CardDescription>Configure how this assessment contributes to learner rewards and formal recognition.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {linkedEvent ? (
+                                <div className="rounded-lg border border-[#b8ecff] bg-[#effbff] px-4 py-3 text-sm text-[#006688]">
+                                    Reward defaults were prefilled from the linked learning event. You can still override them for this exam.
+                                </div>
+                            ) : null}
+                            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="assessmentKind">Assessment Kind</Label>
+                                    <select
+                                        id="assessmentKind"
+                                        className="w-full h-10 px-3 border rounded-md bg-background"
+                                        value={form.assessmentKind}
+                                        onChange={(e) => updateForm('assessmentKind', e.target.value as 'PRACTICE' | 'READINESS' | 'FORMAL')}
+                                    >
+                                        <option value="PRACTICE">Practice</option>
+                                        <option value="READINESS">Readiness</option>
+                                        <option value="FORMAL">Formal</option>
+                                    </select>
+                                </div>
+                                <div className="flex items-center justify-between rounded-lg border bg-background/70 px-4 py-3 xl:col-span-1">
+                                    <div className="space-y-0.5">
+                                        <Label>Awards Stars</Label>
+                                        <p className="text-sm text-muted-foreground">Issue stars when the learner passes</p>
+                                    </div>
+                                    <Switch
+                                        checked={form.awardsStars}
+                                        onCheckedChange={(checked: boolean) => updateForm('awardsStars', checked)}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="starValue">Stars on Pass</Label>
+                                    <Input
+                                        id="starValue"
+                                        type="number"
+                                        min={0}
+                                        max={20}
+                                        value={form.starValue}
+                                        onChange={(e) => updateForm('starValue', e.target.value)}
+                                        disabled={!form.awardsStars}
+                                    />
+                                </div>
+                                <div className="flex items-center justify-between rounded-lg border bg-background/70 px-4 py-3 xl:col-span-1">
+                                    <div className="space-y-0.5">
+                                        <Label>Counts Toward Performance</Label>
+                                        <p className="text-sm text-muted-foreground">Use for formal or tracked assessments</p>
+                                    </div>
+                                    <Switch
+                                        checked={form.countsTowardPerformance}
+                                        onCheckedChange={(checked: boolean) => updateForm('countsTowardPerformance', checked)}
+                                    />
+                                </div>
+                            </div>
+                            <div className="rounded-lg border bg-background/70 p-4">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Certificate</p>
+                                <p className="mt-2 text-lg font-semibold">{form.certificateEnabled ? 'Enabled' : 'Not enabled'}</p>
+                                <p className="mt-1 text-sm text-muted-foreground">
+                                    Certificates should normally be reserved for formal assessments. Practice and readiness assessments are better suited to stars and badges.
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {!isSmeMode && (
                     <Card>
                         <CardHeader>
                             <CardTitle>Certificate (Optional)</CardTitle>
@@ -395,6 +538,7 @@ export default function CreateExamPage() {
                             )}
                         </CardContent>
                     </Card>
+                    )}
 
                     <Card>
                         <CardHeader>
@@ -524,7 +668,7 @@ export default function CreateExamPage() {
                     )}
 
                     <div className="flex items-center justify-end gap-4">
-                        <Link href="/admin/exams">
+                        <Link href={isSmeMode ? "/sme/training-ops/exams" : "/admin/exams"}>
                             <Button type="button" variant="outline">
                                 Cancel
                             </Button>

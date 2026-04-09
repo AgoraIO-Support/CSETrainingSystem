@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { CourseService } from '@/lib/services/course.service'
 import { withAuth } from '@/lib/auth-middleware'
+import { TrainingOpsService } from '@/lib/services/training-ops.service'
 
 export const GET = withAuth(async (req, user, { params }: { params: Promise<{ id: string }> }) => {
     try {
@@ -8,8 +9,13 @@ export const GET = withAuth(async (req, user, { params }: { params: Promise<{ id
 
         const course = await CourseService.getCourseById(courseId, user.id)
 
-        // 仅管理员可查看非发布课程，普通用户只能查看已发布
-        if (user.role !== 'ADMIN' && course.status !== 'PUBLISHED') {
+        let canViewDraftCourse = user.role === 'ADMIN'
+
+        if (!canViewDraftCourse && user.role === 'SME') {
+            canViewDraftCourse = await TrainingOpsService.canAccessScopedCourse(user, courseId)
+        }
+
+        if (!canViewDraftCourse && course.status !== 'PUBLISHED') {
             return NextResponse.json(
                 {
                     success: false,

@@ -4,19 +4,24 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { withAdminAuth } from '@/lib/auth-middleware'
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
 import { FileService } from '@/lib/services/file.service'
 import { resolveRichTextAssetUrls } from '@/lib/rich-text'
 import { parseEssayAIGradingBreakdown, parseEssayGradingCriteria } from '@/lib/essay-grading'
+import { TrainingOpsService } from '@/lib/services/training-ops.service'
 
 type RouteContext = {
     params: Promise<{ examId: string; attemptId: string }>
 }
 
-export const GET = withAdminAuth(async (_req: NextRequest, _user, context: RouteContext) => {
+export const GET = withSmeOrAdminAuth(async (_req: NextRequest, user, context: RouteContext) => {
     try {
         const { examId, attemptId } = await context.params
+
+        if (user.role === 'SME') {
+            await TrainingOpsService.assertScopedExamAccess(user, examId)
+        }
 
         const attempt = await prisma.examAttempt.findFirst({
             where: { id: attemptId, examId },
@@ -162,6 +167,18 @@ export const GET = withAdminAuth(async (_req: NextRequest, _user, context: Route
         })
     } catch (error) {
         console.error('Get attempt detail error:', error)
+        if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: {
+                        code: 'FORBIDDEN',
+                        message: 'Insufficient permissions',
+                    },
+                },
+                { status: 403 }
+            )
+        }
         return NextResponse.json(
             {
                 success: false,

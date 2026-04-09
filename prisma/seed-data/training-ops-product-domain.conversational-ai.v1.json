@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "scopeModel": "PRODUCT_DOMAIN",
+  "items": [
+    {
+      "name": "Conversational AI",
+      "slug": "conversational-ai",
+      "category": "AI",
+      "track": "AGILE",
+      "kpiMode": "DELTA",
+      "description": "Fast-changing AI product area requiring frequent weekly drills and release readiness exercises.",
+      "cadence": "Weekly",
+      "active": true,
+      "baselinePassRate": 10,
+      "targetPassRate": 80,
+      "challengeThreshold": 50
+    }
+  ]
+}

@@ -4,9 +4,10 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { withAdminAuth } from '@/lib/auth-middleware';
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware';
 import { PrismaClient } from '@prisma/client';
 import { getPrimaryAiTranscriptTrack } from '@/lib/transcript-tracks';
+import { TrainingOpsService } from '@/lib/services/training-ops.service';
 
 const prisma = new PrismaClient();
 
@@ -14,7 +15,7 @@ const prisma = new PrismaClient();
  * GET /api/admin/lessons/[lessonId]/transcript/chunks
  * Get chunks for a lesson's transcript
  */
-export const GET = withAdminAuth(async (
+export const GET = withSmeOrAdminAuth(async (
   request: NextRequest,
   user,
   context: { params: Promise<{ lessonId: string }> }
@@ -23,6 +24,7 @@ export const GET = withAdminAuth(async (
     // Await params
     const params = await context.params;
     const { lessonId } = params;
+    if (user.role === 'SME') await TrainingOpsService.assertScopedLessonAccess(user, lessonId);
 
     // 1. Get query parameters
     const { searchParams } = new URL(request.url);

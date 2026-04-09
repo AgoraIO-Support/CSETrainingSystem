@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { withAdminAuth } from '@/lib/auth-middleware'
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
 import { FileService } from '@/lib/services/file.service'
+import { TrainingOpsService } from '@/lib/services/training-ops.service'
 import { ASSET_S3_BUCKET_NAME, S3_ASSET_BASE_PREFIX } from '@/lib/aws-s3'
 import { v4 as uuidv4 } from 'uuid'
 import { z } from 'zod'
@@ -22,9 +23,12 @@ const joinPathSegments = (...segments: (string | undefined | null)[]) =>
         .filter((segment) => segment.length > 0)
         .join('/')
 
-export const POST = withAdminAuth(async (req: NextRequest, _user, context: RouteContext) => {
+export const POST = withSmeOrAdminAuth(async (req: NextRequest, user, context: RouteContext) => {
     try {
         const { examId, questionId } = await context.params
+        if (user.role === 'SME') {
+            await TrainingOpsService.assertScopedExamAccess(user, examId)
+        }
         const body = await req.json()
         const data = uploadUrlSchema.parse(body)
 
@@ -112,6 +116,13 @@ export const POST = withAdminAuth(async (req: NextRequest, _user, context: Route
                     },
                 },
                 { status: 400 }
+            )
+        }
+
+        if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+            return NextResponse.json(
+                { success: false, error: { code: 'AUTH_003', message: 'Insufficient permissions' } },
+                { status: 403 }
             )
         }
 

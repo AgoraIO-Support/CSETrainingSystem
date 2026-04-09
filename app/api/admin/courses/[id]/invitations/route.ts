@@ -5,19 +5,24 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { withAdminAuth } from '@/lib/auth-middleware'
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
 import { inviteUsersSchema } from '@/lib/validations'
 import { WecomWebhookService } from '@/lib/services/wecom-webhook.service'
+import { TrainingOpsService } from '@/lib/services/training-ops.service'
 import { z } from 'zod'
 
 type RouteContext = {
     params: Promise<{ id: string }>
 }
 
-export const GET = withAdminAuth(async (_req: NextRequest, _user, context: RouteContext) => {
+export const GET = withSmeOrAdminAuth(async (_req: NextRequest, user, context: RouteContext) => {
     try {
         const { id: courseId } = await context.params
+
+        if (user.role === 'SME') {
+            await TrainingOpsService.assertScopedCourseAccess(user, courseId)
+        }
 
         const course = await prisma.course.findUnique({
             where: { id: courseId },
@@ -57,6 +62,20 @@ export const GET = withAdminAuth(async (_req: NextRequest, _user, context: Route
         })
     } catch (error) {
         console.error('Get course invitations error:', error)
+
+        if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: {
+                        code: 'FORBIDDEN',
+                        message: 'Insufficient permissions',
+                    },
+                },
+                { status: 403 }
+            )
+        }
+
         return NextResponse.json(
             {
                 success: false,
@@ -70,9 +89,14 @@ export const GET = withAdminAuth(async (_req: NextRequest, _user, context: Route
     }
 })
 
-export const POST = withAdminAuth(async (req: NextRequest, _user, context: RouteContext) => {
+export const POST = withSmeOrAdminAuth(async (req: NextRequest, user, context: RouteContext) => {
     try {
         const { id: courseId } = await context.params
+
+        if (user.role === 'SME') {
+            await TrainingOpsService.assertScopedCourseAccess(user, courseId)
+        }
+
         const body = await req.json().catch(() => ({}))
         const parsed = inviteUsersSchema.parse(body)
         const { userIds } = parsed
@@ -199,6 +223,19 @@ export const POST = withAdminAuth(async (req: NextRequest, _user, context: Route
                     },
                 },
                 { status: 400 }
+            )
+        }
+
+        if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: {
+                        code: 'FORBIDDEN',
+                        message: 'Insufficient permissions',
+                    },
+                },
+                { status: 403 }
             )
         }
 

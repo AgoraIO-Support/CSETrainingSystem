@@ -40,6 +40,11 @@ export const GET = withAuth(async (req: NextRequest, user) => {
             title: true,
           },
         },
+        certificateTemplate: {
+          select: {
+            isEnabled: true,
+          },
+        },
         _count: {
           select: {
             questions: true,
@@ -79,6 +84,11 @@ export const GET = withAuth(async (req: NextRequest, user) => {
         title: exam.title,
         description: exam.description,
         examType: exam.examType,
+        assessmentKind: exam.assessmentKind,
+        awardsStars: exam.awardsStars,
+        starValue: exam.starValue,
+        countsTowardPerformance: exam.countsTowardPerformance,
+        certificateEligible: exam.assessmentKind === 'FORMAL' && Boolean(exam.certificateTemplate?.isEnabled),
         course: exam.course,
         timeLimit: exam.timeLimit,
         totalScore: exam.totalScore,

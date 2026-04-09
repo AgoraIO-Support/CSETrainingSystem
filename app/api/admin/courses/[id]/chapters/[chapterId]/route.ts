@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server'
-import { withAdminAuth } from '@/lib/auth-middleware'
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware'
 import { CascadeDeleteService } from '@/lib/services/cascade-delete.service'
+import { TrainingOpsService } from '@/lib/services/training-ops.service'
 
 // DELETE /api/admin/courses/:id/chapters/:chapterId
-export const DELETE = withAdminAuth(async (req, user, { params }: { params: Promise<{ id: string; chapterId: string }> }) => {
+export const DELETE = withSmeOrAdminAuth(async (req, user, { params }: { params: Promise<{ id: string; chapterId: string }> }) => {
   try {
     const { id: courseId, chapterId } = await params
+    if (user.role === 'SME') await TrainingOpsService.assertScopedCourseAccess(user, courseId)
 
     // Validate hierarchy: chapter belongs to course
     const isValid = await CascadeDeleteService.validateChapterHierarchy(courseId, chapterId)
@@ -21,6 +23,13 @@ export const DELETE = withAdminAuth(async (req, user, { params }: { params: Prom
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Chapter delete error:', error)
+
+    if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+      return NextResponse.json(
+        { success: false, error: { code: 'TRAINING_OPS_SCOPE_FORBIDDEN', message: 'You do not have access to this course' } },
+        { status: 403 }
+      )
+    }
 
     // S3 cleanup failure returns 502 to indicate partial failure
     if (error instanceof Error && error.message.startsWith('S3_CLEANUP_FAILED')) {

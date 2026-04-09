@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, use } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -36,8 +37,14 @@ interface LeaderboardEntry {
     completedAt: string
 }
 
+type LeaderboardEnvelope = {
+    leaderboard?: LeaderboardEntry[]
+}
+
 export default function ExamAnalyticsPage({ params }: PageProps) {
     const { id: examId } = use(params)
+    const searchParams = useSearchParams()
+    const isSmeMode = searchParams.get('sme') === '1'
     const [exam, setExam] = useState<Exam | null>(null)
     const [analytics, setAnalytics] = useState<ExamAnalytics | null>(null)
     const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
@@ -60,11 +67,15 @@ export default function ExamAnalyticsPage({ params }: PageProps) {
             setExam(examRes.data)
             setAnalytics(analyticsRes.data)
             // Backward/forward compatible: some API versions return `{ leaderboard: [...] }`.
-            const leaderboardData: any = (leaderboardRes as any)?.data
+            const leaderboardData = (leaderboardRes as { data?: unknown })?.data
+            const leaderboardEnvelope =
+                leaderboardData && typeof leaderboardData === 'object'
+                    ? (leaderboardData as LeaderboardEnvelope)
+                    : null
             const nextLeaderboard = Array.isArray(leaderboardData)
                 ? leaderboardData
-                : Array.isArray(leaderboardData?.leaderboard)
-                    ? leaderboardData.leaderboard
+                : Array.isArray(leaderboardEnvelope?.leaderboard)
+                    ? leaderboardEnvelope.leaderboard
                     : []
             setLeaderboard(nextLeaderboard)
         } catch (err) {
@@ -129,7 +140,7 @@ export default function ExamAnalyticsPage({ params }: PageProps) {
                     <p className="text-muted-foreground">
                         {error || 'No analytics data available'}
                     </p>
-                    <Link href="/admin/exams">
+                    <Link href={isSmeMode ? '/sme/training-ops/exams' : '/admin/exams'}>
                         <Button className="mt-4">Back to Exams</Button>
                     </Link>
                 </div>
@@ -145,7 +156,7 @@ export default function ExamAnalyticsPage({ params }: PageProps) {
             <div className="space-y-6">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                        <Link href="/admin/exams">
+                        <Link href={isSmeMode ? '/sme/training-ops/exams' : '/admin/exams'}>
                             <Button variant="ghost" size="icon">
                                 <ArrowLeft className="h-4 w-4" />
                             </Button>
@@ -354,25 +365,25 @@ export default function ExamAnalyticsPage({ params }: PageProps) {
                     </CardHeader>
                     <CardContent>
                         <div className="flex flex-wrap gap-2">
-                            <Link href={`/admin/exams/${examId}/attempts`}>
+                            <Link href={`/admin/exams/${examId}/attempts${isSmeMode ? '?sme=1' : ''}`}>
                                 <Button variant="outline">
                                     <Users className="h-4 w-4 mr-2" />
                                     View All Attempts
                                 </Button>
                             </Link>
-                            <Link href={`/admin/exams/${examId}/questions`}>
+                            <Link href={`/admin/exams/${examId}/questions${isSmeMode ? '?sme=1' : ''}`}>
                                 <Button variant="outline">
                                     <BarChart3 className="h-4 w-4 mr-2" />
                                     Manage Questions
                                 </Button>
                             </Link>
-                            <Link href={`/admin/exams/${examId}/invitations`}>
+                            <Link href={`/admin/exams/${examId}/invitations${isSmeMode ? '?sme=1' : ''}`}>
                                 <Button variant="outline">
                                     <Users className="h-4 w-4 mr-2" />
                                     Manage Invitations
                                 </Button>
                             </Link>
-                            <Link href={`/admin/exams/${examId}/edit`}>
+                            <Link href={`/admin/exams/${examId}/edit${isSmeMode ? '?sme=1' : ''}`}>
                                 <Button variant="outline">
                                     Edit Exam Settings
                                 </Button>

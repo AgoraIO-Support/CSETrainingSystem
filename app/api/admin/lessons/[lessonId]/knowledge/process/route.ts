@@ -4,22 +4,24 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { withAdminAuth } from '@/lib/auth-middleware'
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
 import { KnowledgeContextJobService } from '@/lib/services/knowledge-context-job.service'
 import { getPrimaryAiTranscriptTrack } from '@/lib/transcript-tracks'
+import { TrainingOpsService } from '@/lib/services/training-ops.service'
 
 /**
  * POST /api/admin/lessons/[lessonId]/knowledge/process
  * Enqueue Knowledge Context generation from the selected or primary VTT transcript
  */
-export const POST = withAdminAuth(async (
+export const POST = withSmeOrAdminAuth(async (
     request: NextRequest,
     user,
     context: { params: Promise<{ lessonId: string }> }
 ) => {
     try {
         const { lessonId } = await context.params
+        if (user.role === 'SME') await TrainingOpsService.assertScopedLessonAccess(user, lessonId)
         const body = await request.json().catch(() => ({} as Record<string, unknown>))
 
         const lesson = await prisma.lesson.findUnique({

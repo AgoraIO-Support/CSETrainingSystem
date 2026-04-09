@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "scopeModel": "LEARNING_SERIES",
+  "activeDomains": [
+    "conversational-ai",
+    "rtc"
+  ],
+  "items": [
+    {
+      "name": "Conversational AI Weekly Drill",
+      "slug": "conversational-ai-weekly-drill",
+      "type": "WEEKLY_DRILL",
+      "domainSlug": "conversational-ai",
+      "domainName": "Conversational AI",
+      "description": "Weekly case-study drill for Conversational AI. Designed for fast iteration, release awareness, and practical troubleshooting readiness.",
+      "cadence": "Weekly",
+      "isActive": true,
+      "badgeEligible": true,
+      "countsTowardPerformance": false,
+      "defaultStarValue": 1
+    },
+    {
+      "name": "RTC Weekly Case Study",
+      "slug": "rtc-weekly-case-study",
+      "type": "CASE_STUDY",
+      "domainSlug": "rtc",
+      "domainName": "RTC",
+      "description": "Weekly RTC case-study program focused on recurring incidents, escalation readiness, and troubleshooting quality.",
+      "cadence": "Weekly",
+      "isActive": true,
+      "badgeEligible": true,
+      "countsTowardPerformance": false,
+      "defaultStarValue": 1
+    }
+  ]
+}

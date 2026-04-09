@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
-import { withAdminAuth, AuthUser } from '@/lib/auth-middleware'
+import { withSmeOrAdminAuth, AuthUser } from '@/lib/auth-middleware'
+import { TrainingOpsService } from '@/lib/services/training-ops.service'
 import { z } from 'zod'
 
 const courseAIConfigSchema = z.object({
@@ -19,13 +20,17 @@ const UNUSED_COURSE_AI_SYSTEM_PROMPT =
     'AI assistant prompt/model settings are managed in Admin > AI Configuration.'
 
 // GET - Fetch course AI configuration
-export const GET = withAdminAuth(async (
+export const GET = withSmeOrAdminAuth(async (
     req: NextRequest,
     user: AuthUser,
     context: { params: Promise<{ id: string }> }
 ) => {
     try {
         const { id: courseId } = await context.params
+
+        if (user.role === 'SME') {
+            await TrainingOpsService.assertScopedCourseAccess(user, courseId)
+        }
 
         // Verify course exists
         const course = await prisma.course.findUnique({
@@ -56,6 +61,18 @@ export const GET = withAdminAuth(async (
         })
     } catch (error) {
         console.error('Failed to fetch course AI config:', error)
+        if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: {
+                        code: 'AUTH_003',
+                        message: 'You can only manage AI settings for courses within your SME scope'
+                    }
+                },
+                { status: 403 }
+            )
+        }
         return NextResponse.json(
             {
                 success: false,
@@ -67,16 +84,19 @@ export const GET = withAdminAuth(async (
             { status: 500 }
         )
     }
-}) 
+})
 
 // PATCH - Enable/disable course AI assistant
-export const PATCH = withAdminAuth(async (
+export const PATCH = withSmeOrAdminAuth(async (
     req: NextRequest,
     user: AuthUser,
     context: { params: Promise<{ id: string }> }
 ) => {
     try {
         const { id: courseId } = await context.params
+        if (user.role === 'SME') {
+            await TrainingOpsService.assertScopedCourseAccess(user, courseId)
+        }
         const body = await req.json()
         const payload = courseAIEnableSchema.parse(body)
 
@@ -114,6 +134,12 @@ export const PATCH = withAdminAuth(async (
                 { status: 400 }
             )
         }
+        if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+            return NextResponse.json(
+                { success: false, error: { code: 'AUTH_003', message: 'You can only manage AI settings for courses within your SME scope' } },
+                { status: 403 }
+            )
+        }
         return NextResponse.json(
             { success: false, error: { code: 'SYSTEM_001', message: 'Failed to update AI assistant setting' } },
             { status: 500 }
@@ -122,13 +148,16 @@ export const PATCH = withAdminAuth(async (
 })
 
 // PUT - Create or update course AI configuration
-export const PUT = withAdminAuth(async (
+export const PUT = withSmeOrAdminAuth(async (
     req: NextRequest,
     user: AuthUser,
     context: { params: Promise<{ id: string }> }
 ) => {
     try {
         const { id: courseId } = await context.params
+        if (user.role === 'SME') {
+            await TrainingOpsService.assertScopedCourseAccess(user, courseId)
+        }
         const body = await req.json()
 
         // Validate input
@@ -195,6 +224,18 @@ export const PUT = withAdminAuth(async (
         })
     } catch (error) {
         console.error('Failed to save course AI config:', error)
+        if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: {
+                        code: 'AUTH_003',
+                        message: 'You can only manage AI settings for courses within your SME scope'
+                    }
+                },
+                { status: 403 }
+            )
+        }
         return NextResponse.json(
             {
                 success: false,
@@ -209,13 +250,16 @@ export const PUT = withAdminAuth(async (
 })
 
 // DELETE - Remove course AI configuration
-export const DELETE = withAdminAuth(async (
+export const DELETE = withSmeOrAdminAuth(async (
     req: NextRequest,
     user: AuthUser,
     context: { params: Promise<{ id: string }> }
 ) => {
     try {
         const { id: courseId } = await context.params
+        if (user.role === 'SME') {
+            await TrainingOpsService.assertScopedCourseAccess(user, courseId)
+        }
 
         // Check if config exists
         const existing = await prisma.courseAIConfig.findUnique({
@@ -245,6 +289,18 @@ export const DELETE = withAdminAuth(async (
         })
     } catch (error) {
         console.error('Failed to delete course AI config:', error)
+        if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: {
+                        code: 'AUTH_003',
+                        message: 'You can only manage AI settings for courses within your SME scope'
+                    }
+                },
+                { status: 403 }
+            )
+        }
         return NextResponse.json(
             {
                 success: false,

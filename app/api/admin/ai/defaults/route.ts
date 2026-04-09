@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { withAdminAuth } from '@/lib/auth-middleware'
+import { withAdminAuth, withSmeOrAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
 import { AIPromptUseCase } from '@prisma/client'
 import { z } from 'zod'
@@ -10,7 +10,7 @@ const setDefaultSchema = z.object({
 })
 
 // GET /api/admin/ai/defaults
-export const GET = withAdminAuth(async () => {
+export const GET = withSmeOrAdminAuth(async () => {
     try {
         const defaults = await prisma.aIPromptDefault.findMany({
             include: {

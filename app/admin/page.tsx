@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ApiClient } from '@/lib/api-client'
-import { Users, BookOpen, TrendingUp, Plus, RefreshCcw } from 'lucide-react'
+import { Users, BookOpen, TrendingUp, Plus, RefreshCcw, Sparkles } from 'lucide-react'
 import type { AdminAnalyticsSummary, AdminUser, Course } from '@/types'
 
 type RecentCourse = Pick<Course, 'id' | 'title' | 'status'> & {
@@ -92,6 +92,12 @@ export default function AdminDashboardPage() {
                     </Card>
 
                     <div className="flex space-x-2">
+                        <Link href="/admin/training-ops">
+                            <Button variant="outline" className="border-slate-200 bg-slate-50 text-slate-700 hover:border-[#b8ecff] hover:bg-[#f8fdff] hover:text-[#006688]">
+                                <Sparkles className="h-4 w-4 mr-2" />
+                                Training Ops
+                            </Button>
+                        </Link>
                         <Button
                             variant="outline"
                             onClick={() => setRefreshIndex(prev => prev + 1)}
@@ -236,7 +242,7 @@ export default function AdminDashboardPage() {
                         <CardDescription>Common administrative tasks</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <div className="grid gap-4 md:grid-cols-3">
+                        <div className="grid gap-4 md:grid-cols-4">
                             <Link href="/admin/courses/create">
                                 <Button variant="outline" className="flex h-auto w-full flex-col py-5">
                                     <BookOpen className="h-6 w-6 mb-2" />
@@ -253,6 +259,12 @@ export default function AdminDashboardPage() {
                                 <Button variant="outline" className="flex h-auto w-full flex-col py-5">
                                     <TrendingUp className="h-6 w-6 mb-2" />
                                     <span>View Analytics</span>
+                                </Button>
+                            </Link>
+                            <Link href="/admin/training-ops">
+                                <Button variant="outline" className="flex h-auto w-full flex-col py-5">
+                                    <Sparkles className="h-6 w-6 mb-2" />
+                                    <span>Training Ops</span>
                                 </Button>
                             </Link>
                         </div>

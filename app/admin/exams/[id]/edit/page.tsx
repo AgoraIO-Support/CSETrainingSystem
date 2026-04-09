@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, use } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -33,6 +33,8 @@ export default function EditExamPage({ params }: PageProps) {
     const timeZoneOptions = getExamTimeZoneOptions()
     const { id: examId } = use(params)
     const router = useRouter()
+    const searchParams = useSearchParams()
+    const isSmeMode = searchParams.get('sme') === '1'
     const [exam, setExam] = useState<Exam | null>(null)
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
@@ -76,6 +78,10 @@ export default function EditExamPage({ params }: PageProps) {
         timezone: 'UTC',
         availableFrom: '',
         deadline: '',
+        assessmentKind: 'PRACTICE' as 'PRACTICE' | 'READINESS' | 'FORMAL',
+        awardsStars: false,
+        starValue: '0',
+        countsTowardPerformance: false,
     })
 
     useEffect(() => {
@@ -99,6 +105,10 @@ export default function EditExamPage({ params }: PageProps) {
                     timezone: data.timezone,
                     availableFrom: utcToLocalDateTimeInputValue(data.availableFrom, data.timezone),
                     deadline: utcToLocalDateTimeInputValue(data.deadline, data.timezone),
+                    assessmentKind: data.assessmentKind ?? 'PRACTICE',
+                    awardsStars: data.awardsStars ?? false,
+                    starValue: data.starValue?.toString() ?? '0',
+                    countsTowardPerformance: data.countsTowardPerformance ?? false,
                 })
             } catch (err) {
                 setError(err instanceof Error ? err.message : 'Failed to load exam')
@@ -110,6 +120,9 @@ export default function EditExamPage({ params }: PageProps) {
     }, [examId])
 
     useEffect(() => {
+        if (isSmeMode) {
+            return
+        }
         let cancelled = false
         const loadTemplate = async () => {
             try {
@@ -132,7 +145,7 @@ export default function EditExamPage({ params }: PageProps) {
         }
         loadTemplate()
         return () => { cancelled = true }
-    }, [examId])
+    }, [examId, exam?.title, isSmeMode])
 
     useEffect(() => {
         if (!exam) return
@@ -147,7 +160,10 @@ export default function EditExamPage({ params }: PageProps) {
             try {
                 const res = await ApiClient.getExamQuestions(examId)
                 if (cancelled) return
-                const total = (res.data || []).reduce((sum: number, q: any) => sum + (q.points || 0), 0)
+                const total = (res.data || []).reduce(
+                    (sum: number, q: { points?: number | null }) => sum + (q.points || 0),
+                    0
+                )
                 setQuestionPointsSum(total)
             } catch {
                 if (!cancelled) setQuestionPointsSum(null)
@@ -183,6 +199,10 @@ export default function EditExamPage({ params }: PageProps) {
                 timezone: form.timezone,
                 availableFrom: form.availableFrom || null,
                 deadline: form.deadline || null,
+                assessmentKind: form.assessmentKind,
+                awardsStars: form.awardsStars,
+                starValue: form.awardsStars ? (parseInt(form.starValue) || 0) : 0,
+                countsTowardPerformance: form.countsTowardPerformance,
             }
 
             const response = await ApiClient.updateExam(examId, payload)
@@ -295,7 +315,7 @@ export default function EditExamPage({ params }: PageProps) {
             <DashboardLayout>
                 <div className="text-center py-12">
                     <p className="text-muted-foreground">Exam not found</p>
-                    <Link href="/admin/exams">
+                    <Link href={isSmeMode ? "/sme/training-ops/exams" : "/admin/exams"}>
                         <Button className="mt-4">Back to Exams</Button>
                     </Link>
                 </div>
@@ -317,7 +337,7 @@ export default function EditExamPage({ params }: PageProps) {
             <div className="space-y-6">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                        <Link href="/admin/exams">
+                        <Link href={isSmeMode ? "/sme/training-ops/exams" : "/admin/exams"}>
                             <Button variant="ghost" size="icon">
                                 <ArrowLeft className="h-4 w-4" />
                             </Button>
@@ -333,11 +353,11 @@ export default function EditExamPage({ params }: PageProps) {
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <Link href={`/admin/exams/${examId}/questions`}>
+                        <Link href={`/admin/exams/${examId}/questions${isSmeMode ? '?sme=1' : ''}`}>
                             <Button variant="outline">Manage Questions</Button>
                         </Link>
                         {canPublish && (
-                            <Button onClick={() => router.push(`/admin/exams/${examId}/invitations`)}>
+                            <Button onClick={() => router.push(`/admin/exams/${examId}/invitations${isSmeMode ? '?sme=1' : ''}`)}>
                                 <Send className="h-4 w-4 mr-2" />
                                 Publish & Assign Users
                             </Button>
@@ -571,6 +591,73 @@ export default function EditExamPage({ params }: PageProps) {
 
                     <Card>
                         <CardHeader>
+                            <CardTitle>Reward Policy</CardTitle>
+                            <CardDescription>Configure how this assessment contributes to rewards and certification.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="assessmentKind">Assessment Kind</Label>
+                                    <select
+                                        id="assessmentKind"
+                                        className="w-full h-10 px-3 border rounded-md bg-background"
+                                        value={form.assessmentKind}
+                                        onChange={(e) => updateForm('assessmentKind', e.target.value as 'PRACTICE' | 'READINESS' | 'FORMAL')}
+                                        disabled={!canEditExam}
+                                    >
+                                        <option value="PRACTICE">Practice</option>
+                                        <option value="READINESS">Readiness</option>
+                                        <option value="FORMAL">Formal</option>
+                                    </select>
+                                </div>
+                                <div className="flex items-center justify-between rounded-lg border bg-background/70 px-4 py-3 xl:col-span-1">
+                                    <div className="space-y-0.5">
+                                        <Label>Awards Stars</Label>
+                                        <p className="text-sm text-muted-foreground">Issue stars when the learner passes</p>
+                                    </div>
+                                    <Switch
+                                        checked={form.awardsStars}
+                                        onCheckedChange={(checked: boolean) => updateForm('awardsStars', checked)}
+                                        disabled={!canEditExam}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="starValue">Stars on Pass</Label>
+                                    <Input
+                                        id="starValue"
+                                        type="number"
+                                        min={0}
+                                        max={20}
+                                        value={form.starValue}
+                                        onChange={(e) => updateForm('starValue', e.target.value)}
+                                        disabled={!canEditExam || !form.awardsStars}
+                                    />
+                                </div>
+                                <div className="flex items-center justify-between rounded-lg border bg-background/70 px-4 py-3 xl:col-span-1">
+                                    <div className="space-y-0.5">
+                                        <Label>Counts Toward Performance</Label>
+                                        <p className="text-sm text-muted-foreground">Use for tracked or formal assessments</p>
+                                    </div>
+                                    <Switch
+                                        checked={form.countsTowardPerformance}
+                                        onCheckedChange={(checked: boolean) => updateForm('countsTowardPerformance', checked)}
+                                        disabled={!canEditExam}
+                                    />
+                                </div>
+                            </div>
+                            <div className="rounded-lg border bg-background/70 p-4">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Certificate</p>
+                                <p className="mt-2 text-lg font-semibold">{certificateForm.isEnabled ? 'Enabled' : 'Not enabled'}</p>
+                                <p className="mt-1 text-sm text-muted-foreground">
+                                    Certificates should normally be reserved for formal assessments. Practice and readiness assessments are better suited to stars and badges.
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {!isSmeMode && (
+                    <Card>
+                        <CardHeader>
                             <CardTitle>Certificate (Optional)</CardTitle>
                             <CardDescription>Issue a certificate automatically when the learner passes</CardDescription>
                         </CardHeader>
@@ -667,6 +754,7 @@ export default function EditExamPage({ params }: PageProps) {
                             </div>
                         </CardContent>
                     </Card>
+                    )}
 
                     <Card>
                         <CardHeader>
@@ -798,7 +886,7 @@ export default function EditExamPage({ params }: PageProps) {
                     </Card>
 
                     <div className="flex items-center justify-end gap-4">
-                        <Link href="/admin/exams">
+                        <Link href={isSmeMode ? "/sme/training-ops/exams" : "/admin/exams"}>
                             <Button type="button" variant="outline">
                                 Cancel
                             </Button>

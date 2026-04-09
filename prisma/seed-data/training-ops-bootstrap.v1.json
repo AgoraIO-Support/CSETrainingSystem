@@ -1,0 +1,238 @@
+{
+  "version": 1,
+  "scopeModel": "TRAINING_OPS_BOOTSTRAP",
+  "domains": {
+    "version": 1,
+    "scopeModel": "PRODUCT_DOMAIN",
+    "items": [
+      {
+        "name": "Conversational AI",
+        "slug": "conversational-ai",
+        "category": "AI",
+        "track": "AGILE",
+        "kpiMode": "DELTA",
+        "description": "Fast-changing AI product area requiring frequent weekly drills and release readiness exercises.",
+        "cadence": "Weekly",
+        "active": true,
+        "baselinePassRate": 10,
+        "targetPassRate": 80,
+        "challengeThreshold": 50
+      },
+      {
+        "name": "RTC",
+        "slug": "rtc",
+        "category": "RTE",
+        "track": "MASTERY",
+        "kpiMode": "RETENTION",
+        "description": "Core RTC support domain focused on recurring case studies, troubleshooting readiness, and sustained pass-rate health.",
+        "cadence": "Weekly",
+        "active": true,
+        "baselinePassRate": 70,
+        "targetPassRate": 90,
+        "challengeThreshold": 90
+      },
+      {
+        "name": "RTM",
+        "slug": "rtm",
+        "category": "RTE",
+        "track": "MASTERY",
+        "kpiMode": "RETENTION",
+        "description": "Core RTM support domain focused on recurring case studies, troubleshooting readiness, and sustained pass-rate health.",
+        "cadence": "Weekly",
+        "active": true,
+        "baselinePassRate": 70,
+        "targetPassRate": 90,
+        "challengeThreshold": 90
+      },
+      {
+        "name": "Cloud Recording",
+        "slug": "cloud-recording",
+        "category": "RTE",
+        "track": "MASTERY",
+        "kpiMode": "RETENTION",
+        "description": "Cloud Recording support domain focused on recurring case studies, troubleshooting readiness, and stable support quality.",
+        "cadence": "Weekly",
+        "active": true,
+        "baselinePassRate": 70,
+        "targetPassRate": 90,
+        "challengeThreshold": 90
+      },
+      {
+        "name": "STT",
+        "slug": "stt",
+        "category": "RTE",
+        "track": "MASTERY",
+        "kpiMode": "RETENTION",
+        "description": "Speech-to-Text support domain focused on weekly troubleshooting drills and sustained support quality.",
+        "cadence": "Weekly",
+        "active": true,
+        "baselinePassRate": 70,
+        "targetPassRate": 90,
+        "challengeThreshold": 90
+      },
+      {
+        "name": "Signaling",
+        "slug": "signaling",
+        "category": "RTE",
+        "track": "MASTERY",
+        "kpiMode": "RETENTION",
+        "description": "Signaling support domain focused on recurring case studies, troubleshooting readiness, and sustained pass-rate health.",
+        "cadence": "Weekly",
+        "active": true,
+        "baselinePassRate": 70,
+        "targetPassRate": 90,
+        "challengeThreshold": 90
+      }
+    ]
+  },
+  "series": {
+    "version": 1,
+    "scopeModel": "LEARNING_SERIES",
+    "activeDomains": [
+      "conversational-ai",
+      "rtc"
+    ],
+    "items": [
+      {
+        "name": "Conversational AI Weekly Drill",
+        "slug": "conversational-ai-weekly-drill",
+        "type": "WEEKLY_DRILL",
+        "domainSlug": "conversational-ai",
+        "domainName": "Conversational AI",
+        "description": "Weekly case-study drill for Conversational AI. Designed for fast iteration, release awareness, and practical troubleshooting readiness.",
+        "cadence": "Weekly",
+        "isActive": true,
+        "badgeEligible": true,
+        "countsTowardPerformance": false,
+        "defaultStarValue": 1
+      },
+      {
+        "name": "RTC Weekly Case Study",
+        "slug": "rtc-weekly-case-study",
+        "type": "CASE_STUDY",
+        "domainSlug": "rtc",
+        "domainName": "RTC",
+        "description": "Weekly RTC case-study program focused on recurring incidents, escalation readiness, and troubleshooting quality.",
+        "cadence": "Weekly",
+        "isActive": true,
+        "badgeEligible": true,
+        "countsTowardPerformance": false,
+        "defaultStarValue": 1
+      }
+    ]
+  },
+  "badges": {
+    "version": 1,
+    "scopeModel": "LEARNING_SERIES",
+    "activeSeries": [
+      "conversational-ai-weekly-drill",
+      "rtc-weekly-case-study"
+    ],
+    "items": [
+      {
+        "scope": "SERIES",
+        "learningSeriesSlug": "conversational-ai-weekly-drill",
+        "learningSeriesName": "Conversational AI Weekly Drill",
+        "domainSlug": "conversational-ai",
+        "level": "READY",
+        "name": "Convo AI Ready",
+        "slug": "convo-ai-ready",
+        "description": "Earned through steady participation in the Conversational AI weekly drill series.",
+        "thresholdStars": 4,
+        "sortOrder": 10,
+        "active": true
+      },
+      {
+        "scope": "SERIES",
+        "learningSeriesSlug": "conversational-ai-weekly-drill",
+        "learningSeriesName": "Conversational AI Weekly Drill",
+        "domainSlug": "conversational-ai",
+        "level": "PRACTITIONER",
+        "name": "Convo AI Practitioner",
+        "slug": "convo-ai-practitioner",
+        "description": "Demonstrates consistent hands-on practice across Conversational AI case studies.",
+        "thresholdStars": 10,
+        "sortOrder": 20,
+        "active": true
+      },
+      {
+        "scope": "SERIES",
+        "learningSeriesSlug": "conversational-ai-weekly-drill",
+        "learningSeriesName": "Conversational AI Weekly Drill",
+        "domainSlug": "conversational-ai",
+        "level": "TROUBLESHOOTER",
+        "name": "Convo AI Troubleshooter",
+        "slug": "convo-ai-troubleshooter",
+        "description": "Shows strong problem-solving ability in Conversational AI scenarios and escalations.",
+        "thresholdStars": 18,
+        "sortOrder": 30,
+        "active": true
+      },
+      {
+        "scope": "SERIES",
+        "learningSeriesSlug": "conversational-ai-weekly-drill",
+        "learningSeriesName": "Conversational AI Weekly Drill",
+        "domainSlug": "conversational-ai",
+        "level": "DOMAIN_SPECIALIST",
+        "name": "Convo AI Domain Specialist",
+        "slug": "convo-ai-domain-specialist",
+        "description": "Recognizes sustained mastery and reliable performance in Conversational AI weekly practice.",
+        "thresholdStars": 28,
+        "sortOrder": 40,
+        "active": true
+      },
+      {
+        "scope": "SERIES",
+        "learningSeriesSlug": "rtc-weekly-case-study",
+        "learningSeriesName": "RTC Weekly Case Study",
+        "domainSlug": "rtc",
+        "level": "READY",
+        "name": "RTC Ready",
+        "slug": "rtc-ready",
+        "description": "Earned through steady participation in RTC weekly case studies.",
+        "thresholdStars": 4,
+        "sortOrder": 10,
+        "active": true
+      },
+      {
+        "scope": "SERIES",
+        "learningSeriesSlug": "rtc-weekly-case-study",
+        "learningSeriesName": "RTC Weekly Case Study",
+        "domainSlug": "rtc",
+        "level": "PRACTITIONER",
+        "name": "RTC Practitioner",
+        "slug": "rtc-practitioner",
+        "description": "Demonstrates consistent RTC practice and technical review participation.",
+        "thresholdStars": 10,
+        "sortOrder": 20,
+        "active": true
+      },
+      {
+        "scope": "SERIES",
+        "learningSeriesSlug": "rtc-weekly-case-study",
+        "learningSeriesName": "RTC Weekly Case Study",
+        "domainSlug": "rtc",
+        "level": "TROUBLESHOOTER",
+        "name": "RTC Troubleshooter",
+        "slug": "rtc-troubleshooter",
+        "description": "Shows strong troubleshooting capability in RTC support and escalation scenarios.",
+        "thresholdStars": 18,
+        "sortOrder": 30,
+        "active": true
+      },
+      {
+        "scope": "SERIES",
+        "learningSeriesSlug": "rtc-weekly-case-study",
+        "learningSeriesName": "RTC Weekly Case Study",
+        "domainSlug": "rtc",
+        "level": "DOMAIN_SPECIALIST",
+        "name": "RTC Domain Specialist",
+        "slug": "rtc-domain-specialist",
+        "description": "Recognizes sustained RTC expertise developed through repeated case-study performance.",
+        "thresholdStars": 28,
+        "sortOrder": 40,
+        "active": true
+      }
+    ]
+  }
+}

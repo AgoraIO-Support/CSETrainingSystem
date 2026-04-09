@@ -15,6 +15,7 @@ import {
 import OpenAI from 'openai';
 import { log, timeAsync } from '@/lib/logger';
 import { CertificateService } from '@/lib/services/certificate.service';
+import { TrainingOpsRewardService } from '@/lib/services/training-ops-reward.service';
 import { AIPromptResolverService } from '@/lib/services/ai-prompt-resolver.service';
 import { getChatCompletionsTokenBudget } from '@/lib/services/openai-models';
 import { stripRichTextToPlainText } from '@/lib/rich-text';
@@ -803,6 +804,15 @@ Please evaluate this essay and provide a score out of ${maxPoints} points, along
     });
 
     if (passed) {
+      try {
+        await TrainingOpsRewardService.issueRewardsForPassedExamAttempt(attemptId);
+      } catch (error) {
+        log('API', 'error', 'training ops reward issuance failed', {
+          attemptId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+
       try {
         await CertificateService.autoIssueForAttempt(attemptId);
       } catch (error) {

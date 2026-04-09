@@ -4,12 +4,13 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { withAdminAuth } from '@/lib/auth-middleware'
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware'
 import { z } from 'zod'
 import { FileService } from '@/lib/services/file.service'
 import prisma from '@/lib/prisma'
 import { S3_ASSET_BASE_PREFIX } from '@/lib/aws-s3'
 import { v4 as uuidv4 } from 'uuid'
+import { TrainingOpsService } from '@/lib/services/training-ops.service'
 import {
     getActiveTranscriptTracks,
     getDefaultSubtitleTrack,
@@ -87,9 +88,10 @@ async function getLessonTracks(lessonId: string) {
  * POST /api/admin/lessons/[lessonId]/transcript
  * Generate presigned URL for transcript upload.
  */
-export const POST = withAdminAuth(async (request: NextRequest, _user, context: { params: Promise<{ lessonId: string }> }) => {
+export const POST = withSmeOrAdminAuth(async (request: NextRequest, user, context: { params: Promise<{ lessonId: string }> }) => {
     try {
         const { lessonId } = await context.params
+        if (user.role === 'SME') await TrainingOpsService.assertScopedLessonAccess(user, lessonId)
         const body = await request.json()
         const validatedData = transcriptUploadSchema.parse(body)
 
@@ -247,9 +249,10 @@ export const POST = withAdminAuth(async (request: NextRequest, _user, context: {
  * GET /api/admin/lessons/[lessonId]/transcript
  * Get transcript tracks and the current primary AI status.
  */
-export const GET = withAdminAuth(async (_request: NextRequest, _user, context: { params: Promise<{ lessonId: string }> }) => {
+export const GET = withSmeOrAdminAuth(async (_request: NextRequest, user, context: { params: Promise<{ lessonId: string }> }) => {
     try {
         const { lessonId } = await context.params
+        if (user.role === 'SME') await TrainingOpsService.assertScopedLessonAccess(user, lessonId)
 
         const lesson = await prisma.lesson.findUnique({
             where: { id: lessonId },
@@ -356,9 +359,10 @@ export const GET = withAdminAuth(async (_request: NextRequest, _user, context: {
  * PATCH /api/admin/lessons/[lessonId]/transcript
  * Update transcript track metadata/flags.
  */
-export const PATCH = withAdminAuth(async (request: NextRequest, _user, context: { params: Promise<{ lessonId: string }> }) => {
+export const PATCH = withSmeOrAdminAuth(async (request: NextRequest, user, context: { params: Promise<{ lessonId: string }> }) => {
     try {
         const { lessonId } = await context.params
+        if (user.role === 'SME') await TrainingOpsService.assertScopedLessonAccess(user, lessonId)
         const body = await request.json()
         const validatedData = transcriptUpdateSchema.parse(body)
 
@@ -428,9 +432,10 @@ export const PATCH = withAdminAuth(async (request: NextRequest, _user, context: 
  * DELETE /api/admin/lessons/[lessonId]/transcript?transcriptId=...
  * Delete a specific transcript track.
  */
-export const DELETE = withAdminAuth(async (request: NextRequest, _user, context: { params: Promise<{ lessonId: string }> }) => {
+export const DELETE = withSmeOrAdminAuth(async (request: NextRequest, user, context: { params: Promise<{ lessonId: string }> }) => {
     try {
         const { lessonId } = await context.params
+        if (user.role === 'SME') await TrainingOpsService.assertScopedLessonAccess(user, lessonId)
         const { searchParams } = new URL(request.url)
         const transcriptId = searchParams.get('transcriptId')
 

@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server'
-import { withAdminAuth } from '@/lib/auth-middleware'
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
 
-export const GET = withAdminAuth(async () => {
+export const GET = withSmeOrAdminAuth(async (_req, user) => {
     try {
         const instructors = await prisma.user.findMany({
+            where: user.role === 'SME' ? { id: user.id } : undefined,
             select: {
                 id: true,
                 name: true,

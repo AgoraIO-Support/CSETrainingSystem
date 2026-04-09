@@ -5,7 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { withAdminAuth } from '@/lib/auth-middleware';
+import { withAdminAuth, withSmeOrAdminAuth } from '@/lib/auth-middleware';
 import { ExamService } from '@/lib/services/exam.service';
 import { createExamSchema } from '@/lib/validations';
 import {
@@ -58,7 +58,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
 });
 
 // POST /api/admin/exams - Create new exam
-export const POST = withAdminAuth(async (req: NextRequest, user) => {
+export const POST = withSmeOrAdminAuth(async (req: NextRequest, user) => {
   try {
     const body = await req.json();
     const data = createExamSchema.parse(body);
@@ -143,6 +143,45 @@ export const POST = withAdminAuth(async (req: NextRequest, user) => {
             error: {
               code: 'EXAM_003',
               message: 'Course not found',
+            },
+          },
+          { status: 404 }
+        );
+      }
+
+      if (error.message === 'LEARNING_EVENT_NOT_FOUND') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'EVENT_NOT_FOUND',
+              message: 'Linked learning event not found',
+            },
+          },
+          { status: 404 }
+        );
+      }
+
+      if (error.message === 'LEARNING_SERIES_NOT_FOUND') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'SERIES_NOT_FOUND',
+              message: 'Linked learning series not found',
+            },
+          },
+          { status: 404 }
+        );
+      }
+
+      if (error.message === 'PRODUCT_DOMAIN_NOT_FOUND') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'DOMAIN_NOT_FOUND',
+              message: 'Linked product domain not found',
             },
           },
           { status: 404 }

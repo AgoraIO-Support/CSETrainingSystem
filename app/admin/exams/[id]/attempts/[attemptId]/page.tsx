@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, use } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -105,6 +106,8 @@ interface AttemptDetail {
 
 export default function AttemptDetailPage({ params }: PageProps) {
     const { id: examId, attemptId } = use(params)
+    const searchParams = useSearchParams()
+    const isSmeMode = searchParams.get('sme') === '1'
     const [attempt, setAttempt] = useState<AttemptDetail | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
@@ -307,7 +310,7 @@ export default function AttemptDetailPage({ params }: PageProps) {
             <DashboardLayout>
                 <div className="text-center py-12">
                     <p className="text-muted-foreground">Attempt not found</p>
-                    <Link href={`/admin/exams/${examId}/attempts`}>
+                    <Link href={`/admin/exams/${examId}/attempts${isSmeMode ? '?sme=1' : ''}`}>
                         <Button className="mt-4">Back to Attempts</Button>
                     </Link>
                 </div>
@@ -325,7 +328,7 @@ export default function AttemptDetailPage({ params }: PageProps) {
             <div className="space-y-6">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                        <Link href={`/admin/exams/${examId}/attempts`}>
+                        <Link href={`/admin/exams/${examId}/attempts${isSmeMode ? '?sme=1' : ''}`}>
                             <Button variant="ghost" size="icon">
                                 <ArrowLeft className="h-4 w-4" />
                             </Button>

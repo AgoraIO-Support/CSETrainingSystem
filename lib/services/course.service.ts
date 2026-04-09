@@ -271,6 +271,7 @@ export class CourseService {
         learningOutcomes?: string[]
         requirements?: string[]
         instructorId: string
+        learningEventId?: string | null
         status?: CourseStatus
     }) {
         // Check if slug already exists
@@ -295,6 +296,17 @@ export class CourseService {
             }
             if (suffix >= 1000) {
                 throw new Error('SLUG_EXISTS')
+            }
+        }
+
+        if (data.learningEventId) {
+            const linkedEvent = await prisma.learningEvent.findUnique({
+                where: { id: data.learningEventId },
+                select: { id: true },
+            })
+
+            if (!linkedEvent) {
+                throw new Error('LEARNING_EVENT_NOT_FOUND')
             }
         }
 

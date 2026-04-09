@@ -7,6 +7,7 @@ import {
     Home,
     BookOpen,
     TrendingUp,
+    Trophy,
     User,
     Settings,
     LayoutDashboard,
@@ -15,34 +16,48 @@ import {
     Bot,
     GraduationCap,
     Award,
+    CalendarClock,
+    FileText,
 } from 'lucide-react'
+import type { AuthUser } from '@/lib/auth-middleware'
 
 interface NavItem {
     title: string
     href: string
     icon: React.ComponentType<{ className?: string }>
-    adminOnly?: boolean
 }
 
 const navItems: NavItem[] = [
     { title: 'Dashboard', href: '/', icon: Home },
     { title: 'Courses', href: '/courses', icon: BookOpen },
     { title: 'My Progress', href: '/progress', icon: TrendingUp },
+    { title: 'My Training', href: '/training', icon: CalendarClock },
     { title: 'My Exams', href: '/exams', icon: GraduationCap },
+    { title: 'My Rewards', href: '/rewards', icon: Trophy },
     { title: 'My Certificates', href: '/certificates', icon: Award },
     { title: 'Profile', href: '/profile', icon: User },
 ]
 
 const adminNavItems: NavItem[] = [
-    { title: 'Admin Dashboard', href: '/admin', icon: LayoutDashboard, adminOnly: true },
-    { title: 'Course Management', href: '/admin/courses', icon: BookOpen, adminOnly: true },
-    { title: 'User Management', href: '/admin/users', icon: Users, adminOnly: true },
-    { title: 'Analytics', href: '/admin/analytics', icon: BarChart3, adminOnly: true },
-    { title: 'AI Configuration', href: '/admin/ai-config', icon: Bot, adminOnly: true },
-    { title: 'Exams', href: '/admin/exams', icon: GraduationCap, adminOnly: true },
+    { title: 'Admin Dashboard', href: '/admin', icon: LayoutDashboard },
+    { title: 'Training Ops', href: '/admin/training-ops', icon: CalendarClock },
+    { title: 'Course Management', href: '/admin/courses', icon: BookOpen },
+    { title: 'User Management', href: '/admin/users', icon: Users },
+    { title: 'Analytics', href: '/admin/analytics', icon: BarChart3 },
+    { title: 'AI Configuration', href: '/admin/ai-config', icon: Bot },
+    { title: 'Exams', href: '/admin/exams', icon: GraduationCap },
 ]
 
-import type { AuthUser } from '@/lib/auth-middleware'
+const smeNavItems: NavItem[] = [
+    { title: 'SME Dashboard', href: '/sme', icon: LayoutDashboard },
+    { title: 'My Domains', href: '/sme/training-ops/domains', icon: BookOpen },
+    { title: 'My Series', href: '/sme/training-ops/series', icon: GraduationCap },
+    { title: 'Managed Courses', href: '/sme/training-ops/courses', icon: BookOpen },
+    { title: 'My Badges', href: '/sme/training-ops/badges', icon: Trophy },
+    { title: 'My Events', href: '/sme/training-ops/events', icon: CalendarClock },
+    { title: 'Managed Exams', href: '/sme/training-ops/exams', icon: FileText },
+    { title: 'Effectiveness', href: '/sme/training-ops/effectiveness', icon: BarChart3 },
+]
 
 interface SidebarProps {
     user?: AuthUser | null
@@ -51,6 +66,7 @@ interface SidebarProps {
 export function Sidebar({ user }: SidebarProps) {
     const pathname = usePathname()
     const isAdmin = user?.role === 'ADMIN'
+    const isSme = user?.role === 'SME'
 
     return (
         <div className="hidden h-screen w-64 flex-col border-r border-slate-200/30 bg-slate-50 pt-20 lg:flex">
@@ -101,6 +117,37 @@ export function Sidebar({ user }: SidebarProps) {
                             })}
                         </div>
                     </div>
+
+                    {isSme && (
+                        <div className="mt-8">
+                            <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                SME
+                            </p>
+                            <div className="mt-3 space-y-1.5">
+                                {smeNavItems.map((item) => {
+                                    const Icon = item.icon
+                                    const isActive =
+                                        pathname === item.href ||
+                                        (pathname.startsWith(item.href + '/') && item.href !== '/sme')
+                                    return (
+                                        <Link
+                                            key={item.href}
+                                            href={item.href}
+                                            className={cn(
+                                                'group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200',
+                                                isActive
+                                                    ? 'border-r-2 border-[#006688] bg-white/70 font-semibold text-[#006688]'
+                                                    : 'text-muted-foreground hover:bg-white/50 hover:text-[#006688]'
+                                            )}
+                                        >
+                                            <Icon className="h-5 w-5" />
+                                            <span>{item.title}</span>
+                                        </Link>
+                                    )
+                                })}
+                            </div>
+                        </div>
+                    )}
 
                     {isAdmin && (
                         <div className="mt-8">

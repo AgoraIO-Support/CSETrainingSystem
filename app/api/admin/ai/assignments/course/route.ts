@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
-import { withAdminAuth } from '@/lib/auth-middleware'
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
 import { AIPromptUseCase } from '@prisma/client'
 import { z } from 'zod'
 import { SUPPORTED_OPENAI_MODELS } from '@/lib/services/openai-models'
+import { TrainingOpsService } from '@/lib/services/training-ops.service'
 
 const upsertAssignmentSchema = z.object({
     courseId: z.string().uuid(),
@@ -21,7 +22,7 @@ const deleteAssignmentSchema = z.object({
 })
 
 // GET /api/admin/ai/assignments/course?courseId=...
-export const GET = withAdminAuth(async (req) => {
+export const GET = withSmeOrAdminAuth(async (req, user) => {
     try {
         const { searchParams } = new URL(req.url)
         const courseId = searchParams.get('courseId')
@@ -30,6 +31,10 @@ export const GET = withAdminAuth(async (req) => {
                 { success: false, error: { code: 'AI_ASSIGN_400', message: 'courseId is required' } },
                 { status: 400 }
             )
+        }
+
+        if (user.role === 'SME') {
+            await TrainingOpsService.assertScopedCourseAccess(user, courseId)
         }
 
         const rows = await prisma.courseAIPromptAssignment.findMany({
@@ -41,6 +46,18 @@ export const GET = withAdminAuth(async (req) => {
         return NextResponse.json({ success: true, data: rows })
     } catch (error) {
         console.error('List course prompt assignments error:', error)
+        if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: {
+                        code: 'AUTH_003',
+                        message: 'Insufficient permissions',
+                    },
+                },
+                { status: 403 }
+            )
+        }
         if ((error as any)?.code === 'P2021') {
             return NextResponse.json(
                 {
@@ -61,10 +78,14 @@ export const GET = withAdminAuth(async (req) => {
 })
 
 // PUT /api/admin/ai/assignments/course
-export const PUT = withAdminAuth(async (req) => {
+export const PUT = withSmeOrAdminAuth(async (req, user) => {
     try {
         const body = await req.json()
         const data = upsertAssignmentSchema.parse(body)
+
+        if (user.role === 'SME') {
+            await TrainingOpsService.assertScopedCourseAccess(user, data.courseId)
+        }
 
         const template = await prisma.aIPromptTemplate.findUnique({ where: { id: data.templateId } })
         if (!template) {
@@ -104,6 +125,12 @@ export const PUT = withAdminAuth(async (req) => {
         return NextResponse.json({ success: true, data: row })
     } catch (error) {
         console.error('Upsert course prompt assignment error:', error)
+        if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+            return NextResponse.json(
+                { success: false, error: { code: 'AUTH_003', message: 'Insufficient permissions' } },
+                { status: 403 }
+            )
+        }
         if (error instanceof z.ZodError) {
             return NextResponse.json(
                 { success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: error.errors } },
@@ -130,10 +157,14 @@ export const PUT = withAdminAuth(async (req) => {
 })
 
 // DELETE /api/admin/ai/assignments/course
-export const DELETE = withAdminAuth(async (req) => {
+export const DELETE = withSmeOrAdminAuth(async (req, user) => {
     try {
         const body = await req.json()
         const data = deleteAssignmentSchema.parse(body)
+
+        if (user.role === 'SME') {
+            await TrainingOpsService.assertScopedCourseAccess(user, data.courseId)
+        }
 
         await prisma.courseAIPromptAssignment.delete({
             where: { courseId_useCase: { courseId: data.courseId, useCase: data.useCase } },
@@ -142,6 +173,12 @@ export const DELETE = withAdminAuth(async (req) => {
         return NextResponse.json({ success: true })
     } catch (error) {
         console.error('Delete course prompt assignment error:', error)
+        if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+            return NextResponse.json(
+                { success: false, error: { code: 'AUTH_003', message: 'Insufficient permissions' } },
+                { status: 403 }
+            )
+        }
         if (error instanceof z.ZodError) {
             return NextResponse.json(
                 { success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: error.errors } },
