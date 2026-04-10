@@ -3003,6 +3003,8 @@ export class TrainingOpsService {
             createdById: event.createdBy?.id ?? null,
         })
 
+        await this.assertScopedExamAccess(user, examId)
+
         return this.attachExamToEvent(eventId, examId)
     }
 
@@ -3016,6 +3018,8 @@ export class TrainingOpsService {
             hostId: event.host?.id ?? null,
             createdById: event.createdBy?.id ?? null,
         })
+
+        await this.assertScopedCourseAccess(user, courseId)
 
         return this.attachCourseToEvent(eventId, courseId)
     }
@@ -3031,6 +3035,8 @@ export class TrainingOpsService {
             createdById: event.createdBy?.id ?? null,
         })
 
+        await this.assertScopedExamAccess(user, examId)
+
         return this.detachExamFromEvent(eventId, examId)
     }
 
@@ -3044,6 +3050,8 @@ export class TrainingOpsService {
             hostId: event.host?.id ?? null,
             createdById: event.createdBy?.id ?? null,
         })
+
+        await this.assertScopedCourseAccess(user, courseId)
 
         return this.detachCourseFromEvent(eventId, courseId)
     }
