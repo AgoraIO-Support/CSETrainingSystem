@@ -40,6 +40,7 @@ export const GET = withSmeOrAdminAuth(async (req: NextRequest, user) => {
             search: searchParams.get('search') || undefined,
             format: parseFormat(searchParams.get('format')),
             status: parseStatus(searchParams.get('status')),
+            seriesId: searchParams.get('seriesId') || undefined,
         })
 
         return NextResponse.json({

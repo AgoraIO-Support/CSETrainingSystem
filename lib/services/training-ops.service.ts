@@ -2458,11 +2458,13 @@ export class TrainingOpsService {
             search?: string
             status?: LearningEventStatus
             format?: LearningEventFormat
+            seriesId?: string
         } = {}
     ) {
         const { events } = await this.getScopedSummary(user)
 
         return events.filter((event) => {
+            if (params.seriesId && event.series?.id !== params.seriesId) return false
             if (params.status && event.status !== params.status) return false
             if (params.format && event.format !== params.format) return false
             if (params.search?.trim()) {

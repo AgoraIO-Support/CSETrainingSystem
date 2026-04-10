@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -9,20 +10,58 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ApiClient } from '@/lib/api-client'
-import type { LearningEventSummary } from '@/types'
+import type { LearningEventSummary, LearningSeriesSummary } from '@/types'
 import { CalendarDays, Loader2, Plus } from 'lucide-react'
 
 const EMPTY_OPTION = '__all__'
 
 export default function SmeTrainingOpsEventsPage() {
+    const router = useRouter()
+    const pathname = usePathname()
+    const searchParams = useSearchParams()
+    const seriesIdFromUrl = searchParams.get('seriesId') || ''
+
     const [loading, setLoading] = useState(true)
+    const [seriesLoading, setSeriesLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [events, setEvents] = useState<LearningEventSummary[]>([])
+    const [seriesOptions, setSeriesOptions] = useState<LearningSeriesSummary[]>([])
     const [filters, setFilters] = useState({
         search: '',
         status: EMPTY_OPTION,
         format: EMPTY_OPTION,
+        seriesId: seriesIdFromUrl || EMPTY_OPTION,
     })
+
+    useEffect(() => {
+        setFilters((current) => {
+            const nextSeriesId = seriesIdFromUrl || EMPTY_OPTION
+            if (current.seriesId === nextSeriesId) {
+                return current
+            }
+
+            return {
+                ...current,
+                seriesId: nextSeriesId,
+            }
+        })
+    }, [seriesIdFromUrl])
+
+    useEffect(() => {
+        const loadSeries = async () => {
+            try {
+                setSeriesLoading(true)
+                const response = await ApiClient.getSmeTrainingOpsSeries()
+                setSeriesOptions(response.data)
+            } catch {
+                setSeriesOptions([])
+            } finally {
+                setSeriesLoading(false)
+            }
+        }
+
+        void loadSeries()
+    }, [])
 
     useEffect(() => {
         const loadEvents = async () => {
@@ -33,6 +72,7 @@ export default function SmeTrainingOpsEventsPage() {
                     search: filters.search || undefined,
                     status: filters.status === EMPTY_OPTION ? undefined : filters.status,
                     format: filters.format === EMPTY_OPTION ? undefined : filters.format,
+                    seriesId: filters.seriesId === EMPTY_OPTION ? undefined : filters.seriesId,
                 })
                 setEvents(response.data)
             } catch (err) {
@@ -44,6 +84,11 @@ export default function SmeTrainingOpsEventsPage() {
 
         void loadEvents()
     }, [filters])
+
+    const selectedSeries = useMemo(
+        () => seriesOptions.find((item) => item.id === filters.seriesId) ?? null,
+        [filters.seriesId, seriesOptions]
+    )
 
     const stats = useMemo(() => {
         const scheduled = events.filter((event) => event.status === 'SCHEDULED').length
@@ -58,6 +103,22 @@ export default function SmeTrainingOpsEventsPage() {
         }
     }, [events])
 
+    const updateSeriesFilter = (value: string) => {
+        setFilters((prev) => ({ ...prev, seriesId: value }))
+
+        const nextSeriesId = value === EMPTY_OPTION ? '' : value
+        const nextSearch = new URLSearchParams(searchParams.toString())
+
+        if (nextSeriesId) {
+            nextSearch.set('seriesId', nextSeriesId)
+        } else {
+            nextSearch.delete('seriesId')
+        }
+
+        const query = nextSearch.toString()
+        router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
+    }
+
     return (
         <DashboardLayout>
             <div className="space-y-6">
@@ -65,7 +126,9 @@ export default function SmeTrainingOpsEventsPage() {
                     <div>
                         <h1 className="text-3xl font-bold">My Learning Events</h1>
                         <p className="mt-1 text-muted-foreground">
-                            Manage the events inside your SME scope and connect them to existing exams.
+                            {selectedSeries
+                                ? `Manage the events inside "${selectedSeries.name}" and connect them to existing exams.`
+                                : 'Manage the events inside your SME scope and connect them to existing exams.'}
                         </p>
                     </div>
 
@@ -73,7 +136,7 @@ export default function SmeTrainingOpsEventsPage() {
                         <Link href="/sme/training-ops/effectiveness">
                             <Button variant="outline">Effectiveness</Button>
                         </Link>
-                        <Link href="/sme/training-ops/events/new">
+                        <Link href={selectedSeries ? `/sme/training-ops/events/new?seriesId=${selectedSeries.id}` : '/sme/training-ops/events/new'}>
                             <Button>
                                 <Plus className="mr-2 h-4 w-4" />
                                 Create Learning Event
@@ -89,12 +152,23 @@ export default function SmeTrainingOpsEventsPage() {
                     <Card><CardHeader className="pb-2"><CardDescription>Performance Events</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.performanceEvents}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Sessions mapped to formal performance tracking.</p></CardContent></Card>
                 </div>
 
+                {selectedSeries ? (
+                    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+                        <span>
+                            Showing events for series: <span className="font-semibold">{selectedSeries.name}</span>
+                        </span>
+                        <Button variant="outline" size="sm" onClick={() => updateSeriesFilter(EMPTY_OPTION)}>
+                            Clear Series Filter
+                        </Button>
+                    </div>
+                ) : null}
+
                 <Card>
                     <CardHeader>
                         <CardTitle>Filters</CardTitle>
-                        <CardDescription>Search by title or narrow the list by status and format.</CardDescription>
+                        <CardDescription>Search by title or narrow the list by series, status, and format.</CardDescription>
                     </CardHeader>
-                    <CardContent className="grid gap-4 md:grid-cols-3">
+                    <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                         <div className="space-y-2">
                             <Label htmlFor="search">Search</Label>
                             <Input
@@ -103,6 +177,23 @@ export default function SmeTrainingOpsEventsPage() {
                                 onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
                                 placeholder="Search event title..."
                             />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="seriesId">Series</Label>
+                            <select
+                                id="seriesId"
+                                className="h-10 w-full rounded-md border bg-background px-3"
+                                value={filters.seriesId}
+                                onChange={(e) => updateSeriesFilter(e.target.value)}
+                                disabled={seriesLoading}
+                            >
+                                <option value={EMPTY_OPTION}>All series</option>
+                                {seriesOptions.map((series) => (
+                                    <option key={series.id} value={series.id}>
+                                        {series.name}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="status">Status</Label>
@@ -160,7 +251,9 @@ export default function SmeTrainingOpsEventsPage() {
                             </div>
                         ) : events.length === 0 ? (
                             <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-                                No SME-scoped learning events match the current filters.
+                                {selectedSeries
+                                    ? `No events in "${selectedSeries.name}" match the current filters.`
+                                    : 'No SME-scoped learning events match the current filters.'}
                             </div>
                         ) : (
                             events.map((event) => (

@@ -98,7 +98,7 @@ export default function SmeTrainingOpsSeriesPage() {
                                             <Link href={`/sme/training-ops/events/new?seriesId=${item.id}`}>
                                                 <Button variant="outline">Create Event</Button>
                                             </Link>
-                                            <Link href="/sme/training-ops/events">
+                                            <Link href={`/sme/training-ops/events?seriesId=${item.id}`}>
                                                 <Button variant="outline">My Events</Button>
                                             </Link>
                                         </div>
