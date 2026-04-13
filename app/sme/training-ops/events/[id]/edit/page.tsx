@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, Loader2, Save } from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -29,10 +29,12 @@ const toInputDateTime = (value?: string | Date | null) => {
 
 const toIsoStringOrNull = (value: string) => (value ? new Date(value).toISOString() : null)
 
-export default function EditSmeLearningEventPage() {
+function EditSmeLearningEventPageContent() {
     const params = useParams<{ id: string }>()
     const router = useRouter()
+    const searchParams = useSearchParams()
     const eventId = params.id
+    const initialSeriesContextId = searchParams.get('seriesId')
 
     const [loading, setLoading] = useState(false)
     const [loadingOptions, setLoadingOptions] = useState(true)
@@ -110,6 +112,9 @@ export default function EditSmeLearningEventPage() {
     const updateForm = <K extends keyof typeof form>(key: K, value: typeof form[K]) => {
         setForm((prev) => ({ ...prev, [key]: value }))
     }
+    const detailHref = initialSeriesContextId
+        ? `/sme/training-ops/events/${eventId}?seriesId=${initialSeriesContextId}`
+        : `/sme/training-ops/events/${eventId}`
 
     const handleDomainChange = (value: string) => {
         setForm((prev) => {
@@ -161,7 +166,12 @@ export default function EditSmeLearningEventPage() {
                 countsTowardPerformance: form.countsTowardPerformance,
             })
 
-            router.push(`/sme/training-ops/events/${response.data.id}`)
+            const nextSeriesId = response.data.series?.id ?? form.seriesId ?? null
+            router.push(
+                nextSeriesId
+                    ? `/sme/training-ops/events/${response.data.id}?seriesId=${nextSeriesId}`
+                    : `/sme/training-ops/events/${response.data.id}`
+            )
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to update learning event')
         } finally {
@@ -184,7 +194,7 @@ export default function EditSmeLearningEventPage() {
         <DashboardLayout>
             <div className="space-y-6">
                 <div className="flex items-center gap-4">
-                    <Link href={`/sme/training-ops/events/${eventId}`}>
+                    <Link href={detailHref}>
                         <Button variant="ghost" size="icon">
                             <ArrowLeft className="h-4 w-4" />
                         </Button>
@@ -328,7 +338,7 @@ export default function EditSmeLearningEventPage() {
                     </Card>
 
                     <div className="flex items-center justify-end gap-3">
-                        <Link href={`/sme/training-ops/events/${eventId}`}>
+                        <Link href={detailHref}>
                             <Button type="button" variant="outline">Cancel</Button>
                         </Link>
                         <Button type="submit" disabled={loading || loadingOptions || !form.title.trim()}>
@@ -339,5 +349,13 @@ export default function EditSmeLearningEventPage() {
                 </form>
             </div>
         </DashboardLayout>
+    )
+}
+
+export default function EditSmeLearningEventPage() {
+    return (
+        <Suspense fallback={null}>
+            <EditSmeLearningEventPageContent />
+        </Suspense>
     )
 }

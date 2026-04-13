@@ -95,11 +95,11 @@ export default function SmeTrainingOpsSeriesPage() {
                                             </div>
                                         </div>
                                         <div className="flex gap-2">
-                                            <Link href={`/sme/training-ops/events/new?seriesId=${item.id}`}>
-                                                <Button variant="outline">Create Event</Button>
+                                            <Link href={`/sme/training-ops/series/${item.id}`}>
+                                                <Button variant="outline">Open Series</Button>
                                             </Link>
                                             <Link href={`/sme/training-ops/events?seriesId=${item.id}`}>
-                                                <Button variant="outline">My Events</Button>
+                                                <Button variant="outline">View Events</Button>
                                             </Link>
                                         </div>
                                     </div>

@@ -194,6 +194,39 @@ export class ApiClient {
         return this.request('/auth/me')
     }
 
+    static async callSmeMcp<T = unknown>(tool: string, input: Record<string, unknown> = {}): Promise<{
+        success: boolean
+        summary?: string
+        data?: T
+        nextActions?: string[]
+        warnings?: string[]
+    }> {
+        return this.request('/sme/mcp', {
+            method: 'POST',
+            body: JSON.stringify({ tool, input }),
+        })
+    }
+
+    static async getAiPromptTemplates(params: Record<string, string | number | boolean | undefined> = {}): Promise<{
+        success: boolean
+        data: Array<{
+            id: string
+            name: string
+            slug: string
+            useCase: string
+            isActive: boolean
+        }>
+    }> {
+        const query = new URLSearchParams()
+        Object.entries(params).forEach(([key, value]) => {
+            if (value !== undefined && value !== null && value !== '') {
+                query.set(key, String(value))
+            }
+        })
+        const search = query.toString() ? `?${query.toString()}` : ''
+        return this.request(`/admin/ai/prompt-templates${search}`)
+    }
+
     static async getProfile(): Promise<{ success: boolean; data: UserProfile }> {
         return this.request('/profile')
     }
@@ -1062,11 +1095,18 @@ export class ApiClient {
         })
     }
 
-    static async deleteSmeTrainingOpsEvent(eventId: string): Promise<{
+    static async deleteSmeTrainingOpsEvent(eventId: string, options?: {
+        cascadeDraftAssets?: boolean
+    }): Promise<{
         success: boolean
         data: { id: string }
     }> {
-        return this.request(`/sme/training-ops/events/${eventId}`, {
+        const search = new URLSearchParams()
+        if (options?.cascadeDraftAssets) {
+            search.set('cascadeDraftAssets', '1')
+        }
+
+        return this.request(`/sme/training-ops/events/${eventId}${search.toString() ? `?${search.toString()}` : ''}`, {
             method: 'DELETE',
         })
     }

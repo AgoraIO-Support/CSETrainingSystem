@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { ArrowLeft, Loader2, PencilLine } from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -11,13 +11,21 @@ import { Button } from '@/components/ui/button'
 import { ApiClient } from '@/lib/api-client'
 import type { SmeManagedCourseDetail } from '@/types'
 
-export default function SmeTrainingOpsCourseDetailPage() {
+function SmeTrainingOpsCourseDetailPageContent() {
     const params = useParams<{ id: string }>()
+    const searchParams = useSearchParams()
     const courseId = params.id
 
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [course, setCourse] = useState<SmeManagedCourseDetail | null>(null)
+    const eventContextId = searchParams.get('eventId')
+    const seriesContextId = searchParams.get('seriesId')
+    const backHref = eventContextId
+        ? `/sme/training-ops/events/${eventContextId}${seriesContextId ? `?seriesId=${seriesContextId}` : ''}`
+        : seriesContextId
+            ? `/sme/training-ops/series/${seriesContextId}`
+            : '/sme/training-ops/courses'
 
     useEffect(() => {
         const load = async () => {
@@ -61,7 +69,7 @@ export default function SmeTrainingOpsCourseDetailPage() {
         <DashboardLayout>
             <div className="space-y-6">
                 <div className="flex items-center gap-4">
-                    <Link href="/sme/training-ops/courses">
+                    <Link href={backHref}>
                         <Button variant="ghost" size="icon">
                             <ArrowLeft className="h-4 w-4" />
                         </Button>
@@ -111,6 +119,18 @@ export default function SmeTrainingOpsCourseDetailPage() {
                                 <p className="text-sm text-muted-foreground">
                                     {course.event ? `${course.event.format} · ${course.event.status}` : 'No event metadata'}
                                 </p>
+                                {course.event?.id ? (
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        <Button asChild variant="outline" size="sm">
+                                            <Link href={`/sme/training-ops/events/${course.event.id}${seriesContextId ? `?seriesId=${seriesContextId}` : ''}`}>Open Event</Link>
+                                        </Button>
+                                        {seriesContextId ? (
+                                            <Button asChild variant="outline" size="sm">
+                                                <Link href={`/sme/training-ops/series/${seriesContextId}`}>Open Series</Link>
+                                            </Button>
+                                        ) : null}
+                                    </div>
+                                ) : null}
                             </div>
                         </div>
 
@@ -150,5 +170,13 @@ export default function SmeTrainingOpsCourseDetailPage() {
                 </Card>
             </div>
         </DashboardLayout>
+    )
+}
+
+export default function SmeTrainingOpsCourseDetailPage() {
+    return (
+        <Suspense fallback={null}>
+            <SmeTrainingOpsCourseDetailPageContent />
+        </Suspense>
     )
 }

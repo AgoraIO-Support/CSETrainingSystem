@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { ApiClient } from '@/lib/api-client'
@@ -13,7 +13,7 @@ import {
     type LearningSeriesFormValue,
 } from '@/app/admin/training-ops/_components/series-form'
 
-export default function NewTrainingOpsSeriesPage() {
+function NewTrainingOpsSeriesPageContent() {
     const router = useRouter()
     const searchParams = useSearchParams()
     const [users, setUsers] = useState<AdminUser[]>([])
@@ -82,5 +82,13 @@ export default function NewTrainingOpsSeriesPage() {
                 onSubmit={handleSubmit}
             />
         </DashboardLayout>
+    )
+}
+
+export default function NewTrainingOpsSeriesPage() {
+    return (
+        <Suspense fallback={null}>
+            <NewTrainingOpsSeriesPageContent />
+        </Suspense>
     )
 }

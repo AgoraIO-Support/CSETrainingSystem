@@ -1,6 +1,6 @@
 'use client'
 
-import { use } from 'react'
+import { Suspense, use } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Trophy, CheckCircle, XCircle, Award, Home, RotateCcw } from 'lucide-react'
 
-export default function QuizResultPage({ params }: { params: Promise<{ id: string }> }) {
+function QuizResultPageContent({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params)
     const searchParams = useSearchParams()
     const score = parseInt(searchParams.get('score') || '0')
@@ -151,5 +151,13 @@ export default function QuizResultPage({ params }: { params: Promise<{ id: strin
                 </div>
             </div>
         </DashboardLayout>
+    )
+}
+
+export default function QuizResultPage({ params }: { params: Promise<{ id: string }> }) {
+    return (
+        <Suspense fallback={null}>
+            <QuizResultPageContent params={params} />
+        </Suspense>
     )
 }

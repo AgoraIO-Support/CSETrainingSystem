@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, Loader2, Save } from 'lucide-react'
@@ -18,9 +18,10 @@ const EMPTY_OPTION = '__none__'
 
 const toIsoStringOrNull = (value: string) => (value ? new Date(value).toISOString() : null)
 
-export default function NewSmeLearningEventPage() {
+function NewSmeLearningEventPageContent() {
     const router = useRouter()
     const searchParams = useSearchParams()
+    const initialSeriesContextId = searchParams.get('seriesId')
     const [loading, setLoading] = useState(false)
     const [loadingOptions, setLoadingOptions] = useState(true)
     const [error, setError] = useState<string | null>(null)
@@ -89,6 +90,9 @@ export default function NewSmeLearningEventPage() {
     const updateForm = <K extends keyof typeof form>(key: K, value: typeof form[K]) => {
         setForm((prev) => ({ ...prev, [key]: value }))
     }
+    const backHref = initialSeriesContextId
+        ? `/sme/training-ops/series/${initialSeriesContextId}`
+        : '/sme/training-ops/events'
 
     const handleDomainChange = (value: string) => {
         setForm((prev) => {
@@ -140,7 +144,12 @@ export default function NewSmeLearningEventPage() {
                 countsTowardPerformance: form.countsTowardPerformance,
             })
 
-            router.push(`/sme/training-ops/events/${response.data.id}`)
+            const nextSeriesId = response.data.series?.id ?? form.seriesId ?? null
+            router.push(
+                nextSeriesId
+                    ? `/sme/training-ops/events/${response.data.id}?seriesId=${nextSeriesId}`
+                    : `/sme/training-ops/events/${response.data.id}`
+            )
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to create learning event')
         } finally {
@@ -152,7 +161,7 @@ export default function NewSmeLearningEventPage() {
         <DashboardLayout>
             <div className="space-y-6">
                 <div className="flex items-center gap-4">
-                    <Link href="/sme/training-ops/events">
+                    <Link href={backHref}>
                         <Button variant="ghost" size="icon">
                             <ArrowLeft className="h-4 w-4" />
                         </Button>
@@ -350,7 +359,7 @@ export default function NewSmeLearningEventPage() {
                     </Card>
 
                     <div className="flex items-center justify-end gap-3">
-                        <Link href="/sme/training-ops/events">
+                        <Link href={backHref}>
                             <Button type="button" variant="outline">Cancel</Button>
                         </Link>
                         <Button type="submit" disabled={loading || loadingOptions || !form.title.trim() || !form.domainId}>
@@ -361,5 +370,13 @@ export default function NewSmeLearningEventPage() {
                 </form>
             </div>
         </DashboardLayout>
+    )
+}
+
+export default function NewSmeLearningEventPage() {
+    return (
+        <Suspense fallback={null}>
+            <NewSmeLearningEventPageContent />
+        </Suspense>
     )
 }

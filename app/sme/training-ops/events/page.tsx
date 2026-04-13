@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
@@ -15,7 +15,7 @@ import { CalendarDays, Loader2, Plus } from 'lucide-react'
 
 const EMPTY_OPTION = '__all__'
 
-export default function SmeTrainingOpsEventsPage() {
+function SmeTrainingOpsEventsPageContent() {
     const router = useRouter()
     const pathname = usePathname()
     const searchParams = useSearchParams()
@@ -268,7 +268,11 @@ export default function SmeTrainingOpsEventsPage() {
                                             <div>
                                                 <p className="text-lg font-semibold">{event.title}</p>
                                                 <p className="mt-1 text-sm text-muted-foreground">
-                                                    {event.series?.name || 'No learning series'}
+                                                    {event.series ? (
+                                                        <Link href={`/sme/training-ops/series/${event.series.id}`} className="font-medium text-[#006688] hover:underline">
+                                                            {event.series.name}
+                                                        </Link>
+                                                    ) : 'No learning series'}
                                                     {event.host ? ` · Host ${event.host.name}` : ' · No host assigned'}
                                                 </p>
                                             </div>
@@ -282,10 +286,10 @@ export default function SmeTrainingOpsEventsPage() {
                                             </div>
                                         </div>
                                         <div className="flex flex-wrap gap-2">
-                                            <Link href={`/sme/training-ops/events/${event.id}`}>
+                                            <Link href={selectedSeries ? `/sme/training-ops/events/${event.id}?seriesId=${selectedSeries.id}` : `/sme/training-ops/events/${event.id}`}>
                                                 <Button variant="outline">Open Event</Button>
                                             </Link>
-                                            <Link href={`/sme/training-ops/events/${event.id}/edit`}>
+                                            <Link href={selectedSeries ? `/sme/training-ops/events/${event.id}/edit?seriesId=${selectedSeries.id}` : `/sme/training-ops/events/${event.id}/edit`}>
                                                 <Button variant="outline">Edit</Button>
                                             </Link>
                                         </div>
@@ -297,5 +301,13 @@ export default function SmeTrainingOpsEventsPage() {
                 </Card>
             </div>
         </DashboardLayout>
+    )
+}
+
+export default function SmeTrainingOpsEventsPage() {
+    return (
+        <Suspense fallback={null}>
+            <SmeTrainingOpsEventsPageContent />
+        </Suspense>
     )
 }

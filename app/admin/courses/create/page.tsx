@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -15,7 +15,7 @@ import Link from 'next/link'
 
 const levels: CourseLevel[] = ['BEGINNER', 'INTERMEDIATE', 'ADVANCED']
 
-export default function CreateCoursePage() {
+function CreateCoursePageContent() {
     const router = useRouter()
     const searchParams = useSearchParams()
     const learningEventId = searchParams.get('learningEventId')
@@ -254,5 +254,13 @@ export default function CreateCoursePage() {
                 </CardContent>
             </Card>
         </DashboardLayout>
+    )
+}
+
+export default function CreateCoursePage() {
+    return (
+        <Suspense fallback={null}>
+            <CreateCoursePageContent />
+        </Suspense>
     )
 }

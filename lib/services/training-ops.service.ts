@@ -2,6 +2,7 @@ import prisma from '@/lib/prisma'
 import { Prisma, ProductDomainCategory, ProductTrack, SmeKpiMode, LearningSeriesType, LearningEventFormat, LearningEventStatus, AssessmentKind, ExamStatus, ExamAttemptStatus } from '@prisma/client'
 import { ExamService } from '@/lib/services/exam.service'
 import { CourseService } from '@/lib/services/course.service'
+import { CascadeDeleteService } from '@/lib/services/cascade-delete.service'
 
 type TrainingOpsOperatorRole = 'USER' | 'SME' | 'ADMIN'
 type TrainingOpsOperator = {
@@ -14,7 +15,7 @@ type TrainingOpsScope = {
     eventIds: string[]
 }
 
-type LearningEventWithRelations = Prisma.LearningEventGetPayload<{
+type EventSummaryBase<TExam, TCourse> = Prisma.LearningEventGetPayload<{
     include: {
         domain: {
             select: {
@@ -45,26 +46,47 @@ type LearningEventWithRelations = Prisma.LearningEventGetPayload<{
                 email: true
             }
         }
-        exams: {
-            select: {
-                id: true
-                title: true
-                status: true
-                publishedAt: true
-            }
-        }
-        courses: {
-            select: {
-                id: true
-                title: true
-                slug: true
-                status: true
-                publishedAt: true
-                enrolledCount: true
-            }
-        }
     }
-}>
+}> & {
+    exams: TExam[]
+    courses: TCourse[]
+}
+
+type EventCourseDeletionView = {
+    id: string
+    title: string
+    slug: string
+    status: string
+    publishedAt?: Date | null
+    enrolledCount: number
+    sourceLearningEventId?: string | null
+    linkedExamCount: number
+    cascadeDeleteEligible: boolean
+    cascadeDeleteReason: string | null
+}
+
+type EventExamDeletionView = {
+    id: string
+    title: string
+    status: string
+    publishedAt?: Date | null
+    sourceLearningEventId?: string | null
+    invitationCount: number
+    attemptCount: number
+    gradedAttemptCount: number
+    passedCount: number
+    failedCount: number
+    passRate: number
+    cascadeDeleteEligible: boolean
+    cascadeDeleteReason: string | null
+}
+
+type EventDeletionImpact = {
+    eligibleCourseCount: number
+    eligibleExamCount: number
+    detachableCourseCount: number
+    detachableExamCount: number
+}
 
 export class TrainingOpsService {
     private static ensureTrainingOpsOperator(user: TrainingOpsOperator) {
@@ -204,7 +226,7 @@ export class TrainingOpsService {
         }
     }
 
-    private static mapEvent(event: LearningEventWithRelations) {
+    private static mapEvent<TExam, TCourse>(event: EventSummaryBase<TExam, TCourse>) {
         return {
             id: event.id,
             title: event.title,
@@ -227,6 +249,86 @@ export class TrainingOpsService {
             createdAt: event.createdAt,
             updatedAt: event.updatedAt,
             completedAt: event.completedAt,
+        }
+    }
+
+    private static getCourseCascadeDeleteState(course: {
+        status: string
+        enrolledCount: number
+        sourceLearningEventId?: string | null
+        linkedExamCount: number
+    }, eventId: string) {
+        if (course.sourceLearningEventId !== eventId) {
+            return {
+                cascadeDeleteEligible: false,
+                cascadeDeleteReason: 'Attached existing course. It will only be unlinked.',
+            }
+        }
+
+        if (course.status !== 'DRAFT') {
+            return {
+                cascadeDeleteEligible: false,
+                cascadeDeleteReason: 'Published or archived courses cannot be deleted with the event.',
+            }
+        }
+
+        if (course.enrolledCount > 0) {
+            return {
+                cascadeDeleteEligible: false,
+                cascadeDeleteReason: 'Courses with enrollments cannot be deleted with the event.',
+            }
+        }
+
+        if (course.linkedExamCount > 0) {
+            return {
+                cascadeDeleteEligible: false,
+                cascadeDeleteReason: 'Courses with linked exams cannot be deleted with the event.',
+            }
+        }
+
+        return {
+            cascadeDeleteEligible: true,
+            cascadeDeleteReason: null,
+        }
+    }
+
+    private static getExamCascadeDeleteState(exam: {
+        status: string
+        invitationCount: number
+        attemptCount: number
+        sourceLearningEventId?: string | null
+    }, eventId: string) {
+        if (exam.sourceLearningEventId !== eventId) {
+            return {
+                cascadeDeleteEligible: false,
+                cascadeDeleteReason: 'Attached existing exam. It will only be unlinked.',
+            }
+        }
+
+        if (exam.status !== 'DRAFT') {
+            return {
+                cascadeDeleteEligible: false,
+                cascadeDeleteReason: 'Published or archived exams cannot be deleted with the event.',
+            }
+        }
+
+        if (exam.invitationCount > 0) {
+            return {
+                cascadeDeleteEligible: false,
+                cascadeDeleteReason: 'Exams with invitations cannot be deleted with the event.',
+            }
+        }
+
+        if (exam.attemptCount > 0) {
+            return {
+                cascadeDeleteEligible: false,
+                cascadeDeleteReason: 'Exams with attempts cannot be deleted with the event.',
+            }
+        }
+
+        return {
+            cascadeDeleteEligible: true,
+            cascadeDeleteReason: null,
         }
     }
 
@@ -1888,6 +1990,7 @@ export class TrainingOpsService {
                         title: true,
                         status: true,
                         publishedAt: true,
+                        sourceLearningEventId: true,
                     },
                     orderBy: [{ publishedAt: 'desc' }, { updatedAt: 'desc' }],
                 },
@@ -1899,6 +2002,12 @@ export class TrainingOpsService {
                         status: true,
                         publishedAt: true,
                         enrolledCount: true,
+                        sourceLearningEventId: true,
+                        _count: {
+                            select: {
+                                exams: true,
+                            },
+                        },
                     },
                     orderBy: [{ publishedAt: 'desc' }, { updatedAt: 'desc' }],
                 },
@@ -1925,10 +2034,9 @@ export class TrainingOpsService {
             }),
         ])
 
-        const exams = event.exams.map((exam) => {
+        const exams: EventExamDeletionView[] = event.exams.map((exam) => {
             const stats = examStats.get(exam.id)
-
-            return {
+            const examWithStats = {
                 ...exam,
                 invitationCount: stats?.invitationCount ?? 0,
                 attemptCount: stats?.attemptCount ?? 0,
@@ -1937,7 +2045,33 @@ export class TrainingOpsService {
                 failedCount: stats?.failedCount ?? 0,
                 passRate: stats?.passRate ?? 0,
             }
+            const cascadeState = this.getExamCascadeDeleteState(examWithStats, event.id)
+
+            return {
+                ...examWithStats,
+                ...cascadeState,
+            }
         })
+
+        const courses: EventCourseDeletionView[] = event.courses.map((course) => {
+            const courseWithCounts = {
+                ...course,
+                linkedExamCount: course._count.exams,
+            }
+            const cascadeState = this.getCourseCascadeDeleteState(courseWithCounts, event.id)
+
+            return {
+                ...courseWithCounts,
+                ...cascadeState,
+            }
+        })
+
+        const deletionImpact: EventDeletionImpact = {
+            eligibleCourseCount: courses.filter((course) => course.cascadeDeleteEligible).length,
+            eligibleExamCount: exams.filter((exam) => exam.cascadeDeleteEligible).length,
+            detachableCourseCount: courses.filter((course) => !course.cascadeDeleteEligible).length,
+            detachableExamCount: exams.filter((exam) => !exam.cascadeDeleteEligible).length,
+        }
 
         const analytics = exams.reduce(
             (summary, exam) => {
@@ -1971,6 +2105,8 @@ export class TrainingOpsService {
         return {
             ...this.mapEvent(event),
             exams,
+            courses,
+            deletionImpact,
             analytics,
         }
     }
@@ -3075,6 +3211,7 @@ export class TrainingOpsService {
                 instructions: event.description ?? undefined,
                 timezone: 'UTC',
                 learningEventId: event.id,
+                sourceLearningEventId: event.id,
                 learningSeriesId: event.series?.id ?? null,
                 productDomainId: event.domain?.id ?? null,
             },
@@ -3106,6 +3243,7 @@ export class TrainingOpsService {
             requirements: [],
             instructorId: user.id,
             learningEventId: event.id,
+            sourceLearningEventId: event.id,
             status: 'DRAFT',
         })
     }
@@ -3125,7 +3263,11 @@ export class TrainingOpsService {
         })
     }
 
-    static async deleteScopedLearningEventForUser(user: TrainingOpsOperator, eventId: string) {
+    static async deleteScopedLearningEventForUser(
+        user: TrainingOpsOperator,
+        eventId: string,
+        options?: { cascadeDraftAssets?: boolean }
+    ) {
         const event = await this.getLearningEventById(eventId)
 
         await this.assertScopeAccess(user, {
@@ -3135,6 +3277,16 @@ export class TrainingOpsService {
             hostId: event.host?.id ?? null,
             createdById: event.createdBy?.id ?? null,
         })
+
+        if (options?.cascadeDraftAssets) {
+            for (const exam of event.exams.filter((item) => item.cascadeDeleteEligible)) {
+                await ExamService.deleteExam(exam.id, { force: true })
+            }
+
+            for (const course of event.courses.filter((item) => item.cascadeDeleteEligible)) {
+                await CascadeDeleteService.deleteCourseCascade(course.id)
+            }
+        }
 
         await this.deleteLearningEvent(eventId)
     }

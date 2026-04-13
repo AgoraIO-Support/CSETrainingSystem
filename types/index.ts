@@ -545,12 +545,15 @@ export interface LearningEventSummary {
         title: string
         status: string
         publishedAt?: string | Date | null
+        sourceLearningEventId?: string | null
         invitationCount?: number
         attemptCount?: number
         gradedAttemptCount?: number
         passedCount?: number
         failedCount?: number
         passRate?: number
+        cascadeDeleteEligible?: boolean
+        cascadeDeleteReason?: string | null
     }>
     courses: Array<{
         id: string
@@ -559,7 +562,17 @@ export interface LearningEventSummary {
         status: string
         publishedAt?: string | Date | null
         enrolledCount: number
+        sourceLearningEventId?: string | null
+        linkedExamCount?: number
+        cascadeDeleteEligible?: boolean
+        cascadeDeleteReason?: string | null
     }>
+    deletionImpact?: {
+        eligibleCourseCount: number
+        eligibleExamCount: number
+        detachableCourseCount: number
+        detachableExamCount: number
+    }
     analytics?: {
         linkedCourseCount: number
         linkedExamCount: number

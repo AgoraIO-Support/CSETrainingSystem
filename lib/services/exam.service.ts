@@ -41,6 +41,7 @@ export interface CreateExamInput {
   productDomainId?: string | null;
   learningSeriesId?: string | null;
   learningEventId?: string | null;
+  sourceLearningEventId?: string | null;
   awardsStars?: boolean;
   starValue?: number | null;
   countsTowardPerformance?: boolean;
@@ -426,6 +427,17 @@ export class ExamService {
         data.starValue ?? event.starValue ?? null
     }
 
+    if (data.sourceLearningEventId) {
+      const sourceEvent = await prisma.learningEvent.findUnique({
+        where: { id: data.sourceLearningEventId },
+        select: { id: true },
+      })
+
+      if (!sourceEvent) {
+        throw new Error('LEARNING_EVENT_NOT_FOUND')
+      }
+    }
+
     if (resolvedLearningSeriesId) {
       const series = await prisma.learningSeries.findUnique({
         where: { id: resolvedLearningSeriesId },
@@ -474,6 +486,7 @@ export class ExamService {
         productDomainId: resolvedProductDomainId,
         learningSeriesId: resolvedLearningSeriesId,
         learningEventId: resolvedLearningEventId,
+        sourceLearningEventId: data.sourceLearningEventId ?? null,
         awardsStars: resolvedAwardsStars,
         starValue: resolvedStarValue,
         countsTowardPerformance: resolvedCountsTowardPerformance,

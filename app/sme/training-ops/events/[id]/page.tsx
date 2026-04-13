@@ -1,22 +1,24 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, Link2, Loader2, Trash2, Unlink2 } from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { ApiClient } from '@/lib/api-client'
 import type { LearningEventSummary, TrainingOpsCourseSummary, TrainingOpsExamSummary } from '@/types'
 
 const EMPTY_OPTION = '__none__'
 
-export default function SmeTrainingOpsEventDetailPage() {
+function SmeTrainingOpsEventDetailPageContent() {
     const params = useParams<{ id: string }>()
     const router = useRouter()
+    const searchParams = useSearchParams()
     const eventId = params.id
 
     const [loading, setLoading] = useState(true)
@@ -24,6 +26,8 @@ export default function SmeTrainingOpsEventDetailPage() {
     const [creatingDraftExam, setCreatingDraftExam] = useState(false)
     const [creatingDraftCourse, setCreatingDraftCourse] = useState(false)
     const [deletingEvent, setDeletingEvent] = useState(false)
+    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+    const [cascadeDraftAssets, setCascadeDraftAssets] = useState(false)
     const [detachingExamId, setDetachingExamId] = useState<string | null>(null)
     const [detachingCourseId, setDetachingCourseId] = useState<string | null>(null)
     const [error, setError] = useState<string | null>(null)
@@ -69,6 +73,9 @@ export default function SmeTrainingOpsEventDetailPage() {
         () => courses.filter((course) => !linkedCourseIds.has(course.id) && course.status !== 'ARCHIVED'),
         [courses, linkedCourseIds]
     )
+    const seriesContextId = searchParams.get('seriesId') ?? event?.series?.id ?? null
+    const backHref = seriesContextId ? `/sme/training-ops/series/${seriesContextId}` : '/sme/training-ops/events'
+    const allEventsHref = seriesContextId ? `/sme/training-ops/events?seriesId=${seriesContextId}` : '/sme/training-ops/events'
 
     const handleAttach = async () => {
         if (!selectedExamId || selectedExamId === EMPTY_OPTION) return
@@ -175,18 +182,15 @@ export default function SmeTrainingOpsEventDetailPage() {
     }
 
     const handleDeleteEvent = async () => {
-        const confirmed = window.confirm(
-            'Delete this learning event? Linked courses and exams will be unlinked, but not deleted.'
-        )
-
-        if (!confirmed) return
-
         try {
             setDeletingEvent(true)
             setError(null)
             setSuccess(null)
-            await ApiClient.deleteSmeTrainingOpsEvent(eventId)
-            router.push('/sme/training-ops/events')
+            await ApiClient.deleteSmeTrainingOpsEvent(eventId, {
+                cascadeDraftAssets,
+            })
+            setDeleteDialogOpen(false)
+            router.push(allEventsHref)
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to delete learning event')
         } finally {
@@ -215,11 +219,17 @@ export default function SmeTrainingOpsEventDetailPage() {
         )
     }
 
+    const eligibleCourses = event.courses.filter((course) => course.cascadeDeleteEligible)
+    const eligibleExams = event.exams.filter((exam) => exam.cascadeDeleteEligible)
+    const detachableCourses = event.courses.filter((course) => !course.cascadeDeleteEligible)
+    const detachableExams = event.exams.filter((exam) => !exam.cascadeDeleteEligible)
+    const hasEligibleDraftAssets = eligibleCourses.length > 0 || eligibleExams.length > 0
+
     return (
         <DashboardLayout>
             <div className="space-y-6">
                 <div className="flex items-center gap-4">
-                    <Link href="/sme/training-ops/events">
+                    <Link href={backHref}>
                         <Button variant="ghost" size="icon">
                             <ArrowLeft className="h-4 w-4" />
                         </Button>
@@ -231,9 +241,16 @@ export default function SmeTrainingOpsEventDetailPage() {
                         </p>
                     </div>
                     <div className="ml-auto">
-                        <Button variant="destructive" onClick={handleDeleteEvent} disabled={deletingEvent}>
+                        <Button
+                            variant="destructive"
+                            onClick={() => {
+                                setCascadeDraftAssets(false)
+                                setDeleteDialogOpen(true)
+                            }}
+                            disabled={deletingEvent}
+                        >
                             <Trash2 className="mr-2 h-4 w-4" />
-                            {deletingEvent ? 'Deleting…' : 'Delete Event'}
+                            Delete Event
                         </Button>
                     </div>
                 </div>
@@ -288,7 +305,12 @@ export default function SmeTrainingOpsEventDetailPage() {
                             </div>
 
                             <div className="flex flex-wrap gap-3">
-                                <Link href={`/sme/training-ops/events/${event.id}/edit`}>
+                                {event.series ? (
+                                    <Link href={`/sme/training-ops/series/${event.series.id}`}>
+                                        <Button variant="outline">Open Series</Button>
+                                    </Link>
+                                ) : null}
+                                <Link href={`/sme/training-ops/events/${event.id}/edit${seriesContextId ? `?seriesId=${seriesContextId}` : ''}`}>
                                     <Button variant="outline">Edit Event</Button>
                                 </Link>
                                 <Button variant="outline" onClick={handleCreateDraftCourse} disabled={creatingDraftCourse}>
@@ -299,8 +321,8 @@ export default function SmeTrainingOpsEventDetailPage() {
                                     {creatingDraftExam ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Link2 className="mr-2 h-4 w-4" />}
                                     Create Draft Exam
                                 </Button>
-                                <Link href="/sme/training-ops/events">
-                                    <Button variant="outline">All Events</Button>
+                                <Link href={allEventsHref}>
+                                    <Button variant="outline">{seriesContextId ? 'Series Events' : 'All Events'}</Button>
                                 </Link>
                             </div>
                         </CardContent>
@@ -408,7 +430,7 @@ export default function SmeTrainingOpsEventDetailPage() {
                                         </div>
                                     </div>
                                     <div className="flex flex-wrap gap-2">
-                                        <Link href={`/sme/training-ops/courses/${course.id}`}>
+                                        <Link href={`/sme/training-ops/courses/${course.id}?eventId=${event.id}${seriesContextId ? `&seriesId=${seriesContextId}` : ''}`}>
                                             <Button variant="outline" size="sm">Open Course</Button>
                                         </Link>
                                         <Button
@@ -458,7 +480,7 @@ export default function SmeTrainingOpsEventDetailPage() {
                                     </div>
                                     <div className="flex flex-wrap gap-2">
                                         {accessibleExamIds.has(exam.id) ? (
-                                            <Link href={`/admin/exams/${exam.id}/edit?sme=1`}>
+                                            <Link href={`/sme/training-ops/exams/${exam.id}?eventId=${event.id}${seriesContextId ? `&seriesId=${seriesContextId}` : ''}`}>
                                                 <Button variant="outline">Open Exam</Button>
                                             </Link>
                                         ) : (
@@ -485,6 +507,102 @@ export default function SmeTrainingOpsEventDetailPage() {
                     </CardContent>
                 </Card>
             </div>
+
+            <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Delete Learning Event</DialogTitle>
+                        <DialogDescription>
+                            Deleting the event always removes the event record itself. Existing attached courses and exams are kept and unlinked.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 text-sm">
+                        <div className="rounded-lg border p-4">
+                            <p className="font-medium text-foreground">Default behavior</p>
+                            <p className="mt-1 text-muted-foreground">
+                                Courses and exams that do not qualify for cascade delete will remain in the system and only lose their link to this event.
+                            </p>
+                        </div>
+
+                        {hasEligibleDraftAssets ? (
+                            <label className="flex items-start gap-3 rounded-lg border p-4">
+                                <input
+                                    type="checkbox"
+                                    className="mt-1 h-4 w-4 rounded border-slate-300"
+                                    checked={cascadeDraftAssets}
+                                    onChange={(e) => setCascadeDraftAssets(e.target.checked)}
+                                />
+                                <span>
+                                    <span className="block font-medium text-foreground">
+                                        Also delete eligible draft assets
+                                    </span>
+                                    <span className="mt-1 block text-muted-foreground">
+                                        {eligibleCourses.length} course(s) and {eligibleExams.length} exam(s) were created from this event, are still draft, and have no learner activity.
+                                    </span>
+                                </span>
+                            </label>
+                        ) : null}
+
+                        {eligibleCourses.length > 0 || eligibleExams.length > 0 ? (
+                            <div className="rounded-lg border p-4">
+                                <p className="font-medium text-foreground">Eligible For Cascade Delete</p>
+                                <div className="mt-3 space-y-2 text-muted-foreground">
+                                    {eligibleCourses.map((course) => (
+                                        <div key={`delete-course-${course.id}`} className="flex items-center justify-between gap-4 rounded-md bg-slate-50 px-3 py-2">
+                                            <span>Course: {course.title}</span>
+                                            <Badge variant="outline">Draft</Badge>
+                                        </div>
+                                    ))}
+                                    {eligibleExams.map((exam) => (
+                                        <div key={`delete-exam-${exam.id}`} className="flex items-center justify-between gap-4 rounded-md bg-slate-50 px-3 py-2">
+                                            <span>Exam: {exam.title}</span>
+                                            <Badge variant="outline">Draft</Badge>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : null}
+
+                        {detachableCourses.length > 0 || detachableExams.length > 0 ? (
+                            <div className="rounded-lg border p-4">
+                                <p className="font-medium text-foreground">Will Be Unlinked Only</p>
+                                <div className="mt-3 space-y-2 text-muted-foreground">
+                                    {detachableCourses.map((course) => (
+                                        <div key={`detach-course-${course.id}`} className="rounded-md bg-slate-50 px-3 py-2">
+                                            <p>Course: {course.title}</p>
+                                            <p className="mt-1 text-xs">{course.cascadeDeleteReason}</p>
+                                        </div>
+                                    ))}
+                                    {detachableExams.map((exam) => (
+                                        <div key={`detach-exam-${exam.id}`} className="rounded-md bg-slate-50 px-3 py-2">
+                                            <p>Exam: {exam.title}</p>
+                                            <p className="mt-1 text-xs">{exam.cascadeDeleteReason}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : null}
+                    </div>
+
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <Button type="button" variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deletingEvent}>
+                            Cancel
+                        </Button>
+                        <Button type="button" variant="destructive" onClick={handleDeleteEvent} disabled={deletingEvent}>
+                            {deletingEvent ? 'Deleting…' : cascadeDraftAssets ? 'Delete Event And Eligible Draft Assets' : 'Delete Event'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </DashboardLayout>
+    )
+}
+
+export default function SmeTrainingOpsEventDetailPage() {
+    return (
+        <Suspense fallback={null}>
+            <SmeTrainingOpsEventDetailPageContent />
+        </Suspense>
     )
 }

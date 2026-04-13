@@ -272,6 +272,7 @@ export class CourseService {
         requirements?: string[]
         instructorId: string
         learningEventId?: string | null
+        sourceLearningEventId?: string | null
         status?: CourseStatus
     }) {
         // Check if slug already exists
@@ -306,6 +307,17 @@ export class CourseService {
             })
 
             if (!linkedEvent) {
+                throw new Error('LEARNING_EVENT_NOT_FOUND')
+            }
+        }
+
+        if (data.sourceLearningEventId) {
+            const sourceEvent = await prisma.learningEvent.findUnique({
+                where: { id: data.sourceLearningEventId },
+                select: { id: true },
+            })
+
+            if (!sourceEvent) {
                 throw new Error('LEARNING_EVENT_NOT_FOUND')
             }
         }

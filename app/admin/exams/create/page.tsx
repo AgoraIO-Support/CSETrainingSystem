@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { Suspense, useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -15,7 +15,7 @@ import { ArrowLeft, Loader2, Save } from 'lucide-react'
 import Link from 'next/link'
 import type { Course, ExamType } from '@/types'
 
-export default function CreateExamPage() {
+function CreateExamPageContent() {
     const timeZoneOptions = getExamTimeZoneOptions()
     const router = useRouter()
     const searchParams = useSearchParams()
@@ -690,5 +690,13 @@ export default function CreateExamPage() {
                 </form>
             </div>
         </DashboardLayout>
+    )
+}
+
+export default function CreateExamPage() {
+    return (
+        <Suspense fallback={null}>
+            <CreateExamPageContent />
+        </Suspense>
     )
 }

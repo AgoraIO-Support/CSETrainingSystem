@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, use } from 'react'
+import { Suspense, useState, useEffect, use } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -104,7 +104,7 @@ interface AttemptDetail {
     }>
 }
 
-export default function AttemptDetailPage({ params }: PageProps) {
+function AttemptDetailPageContent({ params }: PageProps) {
     const { id: examId, attemptId } = use(params)
     const searchParams = useSearchParams()
     const isSmeMode = searchParams.get('sme') === '1'
@@ -751,5 +751,13 @@ export default function AttemptDetailPage({ params }: PageProps) {
                 </div>
             </div>
         </DashboardLayout>
+    )
+}
+
+export default function AttemptDetailPage({ params }: PageProps) {
+    return (
+        <Suspense fallback={null}>
+            <AttemptDetailPageContent params={params} />
+        </Suspense>
     )
 }

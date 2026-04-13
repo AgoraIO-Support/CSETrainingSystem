@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, use } from 'react'
+import { Suspense, useState, useEffect, use } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -41,7 +41,7 @@ type LeaderboardEnvelope = {
     leaderboard?: LeaderboardEntry[]
 }
 
-export default function ExamAnalyticsPage({ params }: PageProps) {
+function ExamAnalyticsPageContent({ params }: PageProps) {
     const { id: examId } = use(params)
     const searchParams = useSearchParams()
     const isSmeMode = searchParams.get('sme') === '1'
@@ -397,5 +397,13 @@ export default function ExamAnalyticsPage({ params }: PageProps) {
                 </p>
             </div>
         </DashboardLayout>
+    )
+}
+
+export default function ExamAnalyticsPage({ params }: PageProps) {
+    return (
+        <Suspense fallback={null}>
+            <ExamAnalyticsPageContent params={params} />
+        </Suspense>
     )
 }

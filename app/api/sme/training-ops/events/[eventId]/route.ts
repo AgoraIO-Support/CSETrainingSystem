@@ -88,7 +88,8 @@ export const PATCH = withSmeOrAdminAuth(async (req: NextRequest, user, context: 
 export const DELETE = withSmeOrAdminAuth(async (_req: NextRequest, user, context: RouteContext) => {
     try {
         const { eventId } = await context.params
-        await TrainingOpsService.deleteScopedLearningEventForUser(user, eventId)
+        const cascadeDraftAssets = new URL(_req.url).searchParams.get('cascadeDraftAssets') === '1'
+        await TrainingOpsService.deleteScopedLearningEventForUser(user, eventId, { cascadeDraftAssets })
 
         return NextResponse.json({
             success: true,

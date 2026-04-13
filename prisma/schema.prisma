@@ -258,6 +258,8 @@ model LearningEvent {
 
   exams       Exam[]
   courses     Course[]
+  createdExams Exam[]   @relation("EventCreatedExams")
+  createdCourses Course[] @relation("EventCreatedCourses")
   starAwards  StarAward[]
   badgeAwards BadgeAward[]
 
@@ -398,6 +400,9 @@ model Course {
   learningEventId String?
   learningEvent   LearningEvent? @relation(fields: [learningEventId], references: [id], onDelete: SetNull)
 
+  sourceLearningEventId String?
+  sourceLearningEvent   LearningEvent? @relation("EventCreatedCourses", fields: [sourceLearningEventId], references: [id], onDelete: SetNull)
+
   // Course metadata
   level            CourseLevel
   status           CourseStatus @default(DRAFT)
@@ -440,6 +445,7 @@ model Course {
   @@index([category])
   @@index([instructorId])
   @@index([learningEventId])
+  @@index([sourceLearningEventId])
   @@map("courses")
 }
 
@@ -1547,6 +1553,8 @@ model Exam {
   learningSeries   LearningSeries? @relation(fields: [learningSeriesId], references: [id], onDelete: SetNull)
   learningEventId  String?
   learningEvent    LearningEvent?  @relation(fields: [learningEventId], references: [id], onDelete: SetNull)
+  sourceLearningEventId String?
+  sourceLearningEvent   LearningEvent? @relation("EventCreatedExams", fields: [sourceLearningEventId], references: [id], onDelete: SetNull)
 
   // Timing
   timeLimit     Int? // Minutes (null = no limit)
@@ -1604,6 +1612,7 @@ model Exam {
   @@index([productDomainId])
   @@index([learningSeriesId])
   @@index([learningEventId])
+  @@index([sourceLearningEventId])
   @@index([createdById])
   @@index([version])
   @@map("exams")

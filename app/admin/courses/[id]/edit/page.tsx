@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useEffect, useRef, useState } from 'react'
+import { Suspense, use, useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -113,7 +113,7 @@ const formatStatusLabel = (value: string | null) => {
     return value.charAt(0) + value.slice(1).toLowerCase()
 }
 
-export default function EditCoursePage({ params }: { params: Promise<{ id: string }> }) {
+function EditCoursePageContent({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params)
     const router = useRouter()
     const searchParams = useSearchParams()
@@ -2192,5 +2192,13 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                 </Dialog>
             </div>
         </DashboardLayout>
+    )
+}
+
+export default function EditCoursePage({ params }: { params: Promise<{ id: string }> }) {
+    return (
+        <Suspense fallback={null}>
+            <EditCoursePageContent params={params} />
+        </Suspense>
     )
 }

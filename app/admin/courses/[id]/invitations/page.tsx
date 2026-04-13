@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, use, useCallback } from 'react'
+import { Suspense, useState, useEffect, use, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -25,8 +26,10 @@ type PageProps = {
     params: Promise<{ id: string }>
 }
 
-export default function CourseInvitationsPage({ params }: PageProps) {
+function CourseInvitationsPageContent({ params }: PageProps) {
     const { id: courseId } = use(params)
+    const searchParams = useSearchParams()
+    const isSmeMode = searchParams.get('sme') === '1'
     const [course, setCourse] = useState<Course | null>(null)
     const [invitations, setInvitations] = useState<CourseInvitation[]>([])
     const [users, setUsers] = useState<AdminUser[]>([])
@@ -62,6 +65,7 @@ export default function CourseInvitationsPage({ params }: PageProps) {
     }, [loadData])
 
     const invitedUserIds = new Set(invitations.map((inv) => inv.userId))
+    const backHref = isSmeMode ? '/sme/training-ops/courses' : '/admin/courses'
 
     const filteredUsers = users.filter((user) => {
         if (user.status !== 'ACTIVE') return false
@@ -153,7 +157,7 @@ export default function CourseInvitationsPage({ params }: PageProps) {
             <DashboardLayout>
                 <div className="text-center py-12">
                     <p className="text-muted-foreground">Course not found</p>
-                    <Link href="/admin/courses">
+                    <Link href={backHref}>
                         <Button className="mt-4">Back to Courses</Button>
                     </Link>
                 </div>
@@ -170,7 +174,7 @@ export default function CourseInvitationsPage({ params }: PageProps) {
             <div className="space-y-6">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                        <Link href="/admin/courses">
+                        <Link href={backHref}>
                             <Button variant="ghost" size="icon">
                                 <ArrowLeft className="h-4 w-4" />
                             </Button>
@@ -378,5 +382,13 @@ export default function CourseInvitationsPage({ params }: PageProps) {
                 </Card>
             </div>
         </DashboardLayout>
+    )
+}
+
+export default function CourseInvitationsPage({ params }: PageProps) {
+    return (
+        <Suspense fallback={null}>
+            <CourseInvitationsPageContent params={params} />
+        </Suspense>
     )
 }

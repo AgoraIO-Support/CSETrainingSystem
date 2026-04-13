@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -11,13 +11,21 @@ import { Button } from '@/components/ui/button'
 import { ApiClient } from '@/lib/api-client'
 import type { SmeManagedExamDetail } from '@/types'
 
-export default function SmeTrainingOpsExamDetailPage() {
+function SmeTrainingOpsExamDetailPageContent() {
     const params = useParams<{ id: string }>()
+    const searchParams = useSearchParams()
     const examId = params.id
 
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [exam, setExam] = useState<SmeManagedExamDetail | null>(null)
+    const eventContextId = searchParams.get('eventId')
+    const seriesContextId = searchParams.get('seriesId')
+    const backHref = eventContextId
+        ? `/sme/training-ops/events/${eventContextId}${seriesContextId ? `?seriesId=${seriesContextId}` : ''}`
+        : seriesContextId
+            ? `/sme/training-ops/series/${seriesContextId}`
+            : '/sme/training-ops/exams'
 
     useEffect(() => {
         const load = async () => {
@@ -61,7 +69,7 @@ export default function SmeTrainingOpsExamDetailPage() {
         <DashboardLayout>
             <div className="space-y-6">
                 <div className="flex items-center gap-4">
-                    <Link href="/sme/training-ops/exams">
+                    <Link href={backHref}>
                         <Button variant="ghost" size="icon">
                             <ArrowLeft className="h-4 w-4" />
                         </Button>
@@ -107,6 +115,18 @@ export default function SmeTrainingOpsExamDetailPage() {
                                 <p className="text-sm text-muted-foreground">
                                     {exam.event ? `${exam.event.format} · ${exam.event.status}` : 'No event metadata'}
                                 </p>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    {exam.event?.id ? (
+                                        <Button asChild variant="outline" size="sm">
+                                            <Link href={`/sme/training-ops/events/${exam.event.id}${seriesContextId ? `?seriesId=${seriesContextId}` : ''}`}>Open Event</Link>
+                                        </Button>
+                                    ) : null}
+                                    {(exam.series?.id || seriesContextId) ? (
+                                        <Button asChild variant="outline" size="sm">
+                                            <Link href={`/sme/training-ops/series/${exam.series?.id ?? seriesContextId}`}>Open Series</Link>
+                                        </Button>
+                                    ) : null}
+                                </div>
                             </div>
                             <div className="rounded-lg border p-4">
                                 <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Reward Policy</p>
@@ -138,5 +158,13 @@ export default function SmeTrainingOpsExamDetailPage() {
                 </Card>
             </div>
         </DashboardLayout>
+    )
+}
+
+export default function SmeTrainingOpsExamDetailPage() {
+    return (
+        <Suspense fallback={null}>
+            <SmeTrainingOpsExamDetailPageContent />
+        </Suspense>
     )
 }

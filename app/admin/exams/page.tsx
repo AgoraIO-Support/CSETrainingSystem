@@ -7,21 +7,18 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { ExamManagementActions } from '@/components/exam/exam-management-actions'
 import { ApiClient } from '@/lib/api-client'
 import { formatDateTimeInExamTimeZone } from '@/lib/exam-timezone'
 import {
     Search,
     Plus,
-    Edit,
-    Trash2,
     Loader2,
     FileQuestion,
     Users,
-    BarChart3,
     Clock,
     CheckCircle,
     AlertCircle,
-    Send,
     ClipboardList,
     BookOpen,
     GraduationCap,
@@ -284,42 +281,14 @@ export default function AdminExamsPage() {
                                                 </div>
                                             )}
                                         </div>
-                                        <div className="flex items-center gap-1">
-                                            <Link href={`/admin/exams/${exam.id}/questions`}>
-                                                <Button variant="ghost" size="icon" title="Manage Questions">
-                                                    <FileQuestion className="h-4 w-4" />
-                                                </Button>
-                                            </Link>
-                                            <Link href={`/admin/exams/${exam.id}/invitations`}>
-                                                <Button variant="ghost" size="icon" title="Manage Invitations">
-                                                    <Send className="h-4 w-4" />
-                                                </Button>
-                                            </Link>
-                                            <Link href={`/admin/exams/${exam.id}/attempts`}>
-                                                <Button variant="ghost" size="icon" title="View Attempts">
-                                                    <Users className="h-4 w-4" />
-                                                </Button>
-                                            </Link>
-                                            <Link href={`/admin/exams/${exam.id}/analytics`}>
-                                                <Button variant="ghost" size="icon" title="View Analytics">
-                                                    <BarChart3 className="h-4 w-4" />
-                                                </Button>
-                                            </Link>
-                                            <Link href={`/admin/exams/${exam.id}/edit`}>
-                                                <Button variant="ghost" size="icon" title="Edit Exam">
-                                                    <Edit className="h-4 w-4" />
-                                                </Button>
-                                            </Link>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="text-red-500 hover:text-red-600"
-                                                onClick={() => handleDelete(exam.id)}
-                                                title="Delete Exam"
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
-                                        </div>
+                                        <ExamManagementActions
+                                            questionsHref={`/admin/exams/${exam.id}/questions`}
+                                            invitationsHref={`/admin/exams/${exam.id}/invitations`}
+                                            attemptsHref={`/admin/exams/${exam.id}/attempts`}
+                                            analyticsHref={`/admin/exams/${exam.id}/analytics`}
+                                            editHref={`/admin/exams/${exam.id}/edit`}
+                                            onDelete={() => handleDelete(exam.id)}
+                                        />
                                     </div>
                                 ))}
                                 {filteredExams.length === 0 && (

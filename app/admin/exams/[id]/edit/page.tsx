@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, use } from 'react'
+import { Suspense, useState, useEffect, use } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -29,7 +29,7 @@ type PageProps = {
     params: Promise<{ id: string }>
 }
 
-export default function EditExamPage({ params }: PageProps) {
+function EditExamPageContent({ params }: PageProps) {
     const timeZoneOptions = getExamTimeZoneOptions()
     const { id: examId } = use(params)
     const router = useRouter()
@@ -908,5 +908,13 @@ export default function EditExamPage({ params }: PageProps) {
                 </form>
             </div>
         </DashboardLayout>
+    )
+}
+
+export default function EditExamPage({ params }: PageProps) {
+    return (
+        <Suspense fallback={null}>
+            <EditExamPageContent params={params} />
+        </Suspense>
     )
 }

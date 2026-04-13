@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { BarChart3, Edit, FileQuestion, Loader2, Send, Trash2, Users } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { ExamManagementActions } from '@/components/exam/exam-management-actions'
 import { ApiClient } from '@/lib/api-client'
 import type { TrainingOpsExamSummary } from '@/types'
 
@@ -123,42 +124,16 @@ export default function SmeTrainingOpsExamsPage() {
                                                 <span>{exam.passRate ?? 0}% pass rate</span>
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-1">
-                                            <Link href={`/admin/exams/${exam.id}/questions?sme=1`}>
-                                                <Button variant="ghost" size="icon" title="Manage Questions">
-                                                    <FileQuestion className="h-4 w-4" />
-                                                </Button>
-                                            </Link>
-                                            <Link href={`/admin/exams/${exam.id}/invitations?sme=1`}>
-                                                <Button variant="ghost" size="icon" title="Manage Invitations">
-                                                    <Send className="h-4 w-4" />
-                                                </Button>
-                                            </Link>
-                                            <Link href={`/admin/exams/${exam.id}/attempts?sme=1`}>
-                                                <Button variant="ghost" size="icon" title="View Attempts">
-                                                    <Users className="h-4 w-4" />
-                                                </Button>
-                                            </Link>
-                                            <Link href={`/admin/exams/${exam.id}/analytics?sme=1`}>
-                                                <Button variant="ghost" size="icon" title="View Analytics">
-                                                    <BarChart3 className="h-4 w-4" />
-                                                </Button>
-                                            </Link>
-                                            <Link href={`/admin/exams/${exam.id}/edit?sme=1`}>
-                                                <Button variant="ghost" size="icon" title="Edit Exam">
-                                                    <Edit className="h-4 w-4" />
-                                                </Button>
-                                            </Link>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                title="Delete Exam"
-                                                className="text-red-500 hover:text-red-600"
-                                                onClick={() => setDeleteTarget(exam)}
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
-                                        </div>
+                                        <ExamManagementActions
+                                            openHref={`/sme/training-ops/exams/${exam.id}`}
+                                            openTitle="Open exam overview"
+                                            questionsHref={`/admin/exams/${exam.id}/questions?sme=1`}
+                                            invitationsHref={`/admin/exams/${exam.id}/invitations?sme=1`}
+                                            attemptsHref={`/admin/exams/${exam.id}/attempts?sme=1`}
+                                            analyticsHref={`/admin/exams/${exam.id}/analytics?sme=1`}
+                                            editHref={`/admin/exams/${exam.id}/edit?sme=1`}
+                                            onDelete={() => setDeleteTarget(exam)}
+                                        />
                                     </div>
                                 ))}
                             </div>

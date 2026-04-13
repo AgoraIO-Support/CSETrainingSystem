@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, Loader2, Save } from 'lucide-react'
@@ -18,7 +18,7 @@ const EMPTY_OPTION = '__none__'
 
 const toIsoStringOrNull = (value: string) => (value ? new Date(value).toISOString() : null)
 
-export default function NewLearningEventPage() {
+function NewLearningEventPageContent() {
     const router = useRouter()
     const searchParams = useSearchParams()
     const [loading, setLoading] = useState(false)
@@ -389,5 +389,13 @@ export default function NewLearningEventPage() {
                 </form>
             </div>
         </DashboardLayout>
+    )
+}
+
+export default function NewLearningEventPage() {
+    return (
+        <Suspense fallback={null}>
+            <NewLearningEventPageContent />
+        </Suspense>
     )
 }
