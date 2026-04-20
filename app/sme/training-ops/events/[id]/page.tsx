@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, Link2, Loader2, Trash2, Unlink2 } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Link2, Loader2, Trash2, Unlink2 } from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -228,6 +228,33 @@ function SmeTrainingOpsEventDetailPageContent() {
     return (
         <DashboardLayout>
             <div className="space-y-6">
+                <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                    {seriesContextId && event.series ? (
+                        <>
+                            <Link href="/sme/training-ops/domains" className="transition-colors hover:text-foreground">
+                                My Domains
+                            </Link>
+                            <ChevronRight className="h-4 w-4" />
+                            <Link href="/sme/training-ops/series" className="transition-colors hover:text-foreground">
+                                My Series
+                            </Link>
+                            <ChevronRight className="h-4 w-4" />
+                            <Link href={`/sme/training-ops/series/${seriesContextId}`} className="transition-colors hover:text-foreground">
+                                {event.series.name}
+                            </Link>
+                            <ChevronRight className="h-4 w-4" />
+                        </>
+                    ) : (
+                        <>
+                            <Link href="/sme/training-ops/events" className="transition-colors hover:text-foreground">
+                                My Events
+                            </Link>
+                            <ChevronRight className="h-4 w-4" />
+                        </>
+                    )}
+                    <span className="font-medium text-foreground">{event.title}</span>
+                </nav>
+
                 <div className="flex items-center gap-4">
                     <Link href={backHref}>
                         <Button variant="ghost" size="icon">

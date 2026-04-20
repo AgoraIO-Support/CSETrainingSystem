@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { ApiClient } from '@/lib/api-client'
-import type { LearningSeriesSummary, ProductDomainSummary } from '@/types'
+import type { ProductDomainSummary } from '@/types'
 import {
     BadgeMilestoneForm,
     createEmptyBadgeMilestoneForm,
@@ -15,7 +15,6 @@ import {
 export default function NewTrainingOpsBadgePage() {
     const router = useRouter()
     const [domains, setDomains] = useState<ProductDomainSummary[]>([])
-    const [series, setSeries] = useState<LearningSeriesSummary[]>([])
     const [form, setForm] = useState<BadgeMilestoneFormValue>(createEmptyBadgeMilestoneForm())
     const [loading, setLoading] = useState(false)
     const [loadingOptions, setLoadingOptions] = useState(true)
@@ -24,12 +23,8 @@ export default function NewTrainingOpsBadgePage() {
     useEffect(() => {
         const loadOptions = async () => {
             try {
-                const [domainsResponse, seriesResponse] = await Promise.all([
-                    ApiClient.getTrainingOpsDomains({ limit: 100 }),
-                    ApiClient.getTrainingOpsSeries({ limit: 100 }),
-                ])
+                const domainsResponse = await ApiClient.getTrainingOpsDomains({ limit: 100 })
                 setDomains(domainsResponse.data)
-                setSeries(seriesResponse.data)
             } catch (err) {
                 setError(err instanceof Error ? err.message : 'Failed to load badge configuration options')
             } finally {
@@ -63,10 +58,9 @@ export default function NewTrainingOpsBadgePage() {
         <DashboardLayout>
             <BadgeMilestoneForm
                 title="Create Badge Milestone"
-                description="Create a recognition rule that converts earned stars into visible learner milestones."
+                description="Create a domain-based recognition rule that converts earned stars into visible learner milestones."
                 backHref="/admin/training-ops/badges"
                 domains={domains}
-                series={series}
                 value={form}
                 loading={loading || loadingOptions}
                 error={error}

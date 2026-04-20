@@ -50,8 +50,14 @@ export default function SmeTrainingOpsDomainsPage() {
                         </p>
                     </div>
                     <div className="flex gap-3">
+                        <Link href="/sme/training-ops/series/new">
+                            <Button>Create Series</Button>
+                        </Link>
+                        <Link href="/sme/training-ops/badges">
+                            <Button variant="outline">Domain Badges</Button>
+                        </Link>
                         <Link href="/sme/training-ops/series">
-                            <Button>My Series</Button>
+                            <Button variant="outline">My Series</Button>
                         </Link>
                         <Link href="/sme/training-ops/effectiveness">
                             <Button variant="outline">Effectiveness</Button>
@@ -95,6 +101,12 @@ export default function SmeTrainingOpsDomainsPage() {
                                             </div>
                                         </div>
                                         <div className="flex gap-2">
+                                            <Link href={`/sme/training-ops/series/new?domainId=${domain.id}`}>
+                                                <Button>Create Series</Button>
+                                            </Link>
+                                            <Link href={`/sme/training-ops/badges/new?domainId=${domain.id}`}>
+                                                <Button variant="outline">Create Badge</Button>
+                                            </Link>
                                             <Link href="/sme/training-ops/series">
                                                 <Button variant="outline">View Series</Button>
                                             </Link>

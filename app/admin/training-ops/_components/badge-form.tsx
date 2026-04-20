@@ -9,12 +9,9 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import type { BadgeMilestoneSummary, LearningSeriesSummary, ProductDomainSummary } from '@/types'
+import type { BadgeMilestoneSummary, ProductDomainSummary } from '@/types'
 
 const EMPTY_OPTION = '__none__'
-const SCOPE_GLOBAL = 'GLOBAL'
-const SCOPE_SERIES = 'SERIES'
-const SCOPE_DOMAIN = 'DOMAIN'
 
 const slugify = (value: string) =>
     value
@@ -30,9 +27,7 @@ export type BadgeMilestoneFormValue = {
     icon: string
     thresholdStars: string
     active: boolean
-    scope: typeof SCOPE_GLOBAL | typeof SCOPE_SERIES | typeof SCOPE_DOMAIN
     domainId: string
-    learningSeriesId: string
 }
 
 export function createEmptyBadgeMilestoneForm(): BadgeMilestoneFormValue {
@@ -43,9 +38,7 @@ export function createEmptyBadgeMilestoneForm(): BadgeMilestoneFormValue {
         icon: '',
         thresholdStars: '4',
         active: true,
-        scope: SCOPE_GLOBAL,
         domainId: '',
-        learningSeriesId: '',
     }
 }
 
@@ -57,9 +50,7 @@ export function badgeMilestoneToFormValue(badge: BadgeMilestoneSummary): BadgeMi
         icon: badge.icon ?? '',
         thresholdStars: badge.thresholdStars.toString(),
         active: badge.active,
-        scope: badge.learningSeries?.id ? SCOPE_SERIES : badge.domain?.id ? SCOPE_DOMAIN : SCOPE_GLOBAL,
         domainId: badge.domain?.id ?? '',
-        learningSeriesId: badge.learningSeries?.id ?? '',
     }
 }
 
@@ -71,8 +62,7 @@ export function normalizeBadgeMilestonePayload(form: BadgeMilestoneFormValue) {
         icon: form.icon.trim() || null,
         thresholdStars: Number(form.thresholdStars),
         active: form.active,
-        domainId: form.domainId || null,
-        learningSeriesId: form.learningSeriesId || null,
+        domainId: form.domainId,
     }
 }
 
@@ -81,11 +71,14 @@ export function BadgeMilestoneForm({
     description,
     backHref,
     domains,
-    series,
     value,
     loading,
     error,
     submitLabel,
+    disableDomainSelection = false,
+    disableThresholdInput = false,
+    domainHelpText,
+    thresholdHelpText,
     onChange,
     onSubmit,
 }: {
@@ -93,11 +86,14 @@ export function BadgeMilestoneForm({
     description: string
     backHref: string
     domains: ProductDomainSummary[]
-    series: LearningSeriesSummary[]
     value: BadgeMilestoneFormValue
     loading: boolean
     error: string | null
     submitLabel: string
+    disableDomainSelection?: boolean
+    disableThresholdInput?: boolean
+    domainHelpText?: string
+    thresholdHelpText?: string
     onChange: <K extends keyof BadgeMilestoneFormValue>(key: K, nextValue: BadgeMilestoneFormValue[K]) => void
     onSubmit: (event: React.FormEvent<HTMLFormElement>) => void
 }) {
@@ -118,7 +114,7 @@ export function BadgeMilestoneForm({
             <Card>
                 <CardHeader>
                     <CardTitle>Badge Milestone</CardTitle>
-                    <CardDescription>Define the star threshold and choose whether this badge is global, series-scoped, or domain-scoped.</CardDescription>
+                    <CardDescription>Define the star threshold for a specific product domain.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     {error ? (
@@ -154,77 +150,20 @@ export function BadgeMilestoneForm({
 
                     <div className="grid gap-4 md:grid-cols-4">
                         <div className="space-y-2">
-                            <Label htmlFor="scope">Scope</Label>
-                            <Select
-                                value={value.scope}
-                                onValueChange={(nextScope) => {
-                                    onChange('scope', nextScope as BadgeMilestoneFormValue['scope'])
-                                    if (nextScope === SCOPE_GLOBAL) {
-                                        onChange('learningSeriesId', '')
-                                        onChange('domainId', '')
-                                    } else if (nextScope === SCOPE_SERIES) {
-                                        onChange('domainId', '')
-                                    } else if (nextScope === SCOPE_DOMAIN) {
-                                        onChange('learningSeriesId', '')
-                                    }
-                                }}
-                            >
-                                <SelectTrigger id="scope">
-                                    <SelectValue placeholder="Select a scope" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value={SCOPE_GLOBAL}>Global</SelectItem>
-                                    <SelectItem value={SCOPE_SERIES}>Learning Series</SelectItem>
-                                    <SelectItem value={SCOPE_DOMAIN}>Domain</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="learningSeriesId">Learning Series Scope</Label>
-                            <Select
-                                value={value.learningSeriesId || EMPTY_OPTION}
-                                onValueChange={(nextValue) => {
-                                    const normalizedValue = nextValue === EMPTY_OPTION ? '' : nextValue
-                                    onChange('learningSeriesId', normalizedValue)
-                                    onChange('scope', normalizedValue ? SCOPE_SERIES : SCOPE_GLOBAL)
-                                    if (normalizedValue) {
-                                        onChange('domainId', '')
-                                    }
-                                }}
-                                disabled={value.scope !== SCOPE_SERIES}
-                            >
-                                <SelectTrigger id="learningSeriesId">
-                                    <SelectValue placeholder="Select a learning series" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value={EMPTY_OPTION}>Select a learning series</SelectItem>
-                                    {series.map((item) => (
-                                        <SelectItem key={item.id} value={item.id}>
-                                            {item.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="domainId">Domain Scope</Label>
+                            <Label htmlFor="domainId">Domain *</Label>
                             <Select
                                 value={value.domainId || EMPTY_OPTION}
                                 onValueChange={(nextValue) => {
                                     const normalizedValue = nextValue === EMPTY_OPTION ? '' : nextValue
                                     onChange('domainId', normalizedValue)
-                                    onChange('scope', normalizedValue ? SCOPE_DOMAIN : SCOPE_GLOBAL)
-                                    if (normalizedValue) {
-                                        onChange('learningSeriesId', '')
-                                    }
                                 }}
-                                disabled={value.scope !== SCOPE_DOMAIN}
+                                disabled={disableDomainSelection}
                             >
                                 <SelectTrigger id="domainId">
-                                    <SelectValue placeholder="Global badge" />
+                                    <SelectValue placeholder="Select a product domain" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value={EMPTY_OPTION}>Global badge</SelectItem>
+                                    <SelectItem value={EMPTY_OPTION}>Select a product domain</SelectItem>
                                     {domains.map((domain) => (
                                         <SelectItem key={domain.id} value={domain.id}>
                                             {domain.name}
@@ -232,6 +171,9 @@ export function BadgeMilestoneForm({
                                     ))}
                                 </SelectContent>
                             </Select>
+                            <p className="text-sm text-muted-foreground">
+                                {domainHelpText ?? 'Learners unlock this badge after reaching the threshold inside the selected domain.'}
+                            </p>
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="thresholdStars">Threshold Stars *</Label>
@@ -243,8 +185,12 @@ export function BadgeMilestoneForm({
                                 step="1"
                                 value={value.thresholdStars}
                                 onChange={(event) => onChange('thresholdStars', event.target.value)}
+                                disabled={disableThresholdInput}
                                 required
                             />
+                            {thresholdHelpText ? (
+                                <p className="text-sm text-muted-foreground">{thresholdHelpText}</p>
+                            ) : null}
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="icon">Icon</Label>

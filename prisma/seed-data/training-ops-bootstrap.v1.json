@@ -123,42 +123,36 @@
   },
   "badges": {
     "version": 1,
-    "scopeModel": "LEARNING_SERIES",
-    "activeSeries": [
-      "conversational-ai-weekly-drill",
-      "rtc-weekly-case-study"
+    "scopeModel": "PRODUCT_DOMAIN",
+    "activeDomains": [
+      "conversational-ai",
+      "rtc"
     ],
     "items": [
       {
-        "scope": "SERIES",
-        "learningSeriesSlug": "conversational-ai-weekly-drill",
-        "learningSeriesName": "Conversational AI Weekly Drill",
+        "scope": "DOMAIN",
         "domainSlug": "conversational-ai",
         "level": "READY",
         "name": "Convo AI Ready",
         "slug": "convo-ai-ready",
-        "description": "Earned through steady participation in the Conversational AI weekly drill series.",
+        "description": "Earned through steady participation across the Conversational AI domain.",
         "thresholdStars": 4,
         "sortOrder": 10,
         "active": true
       },
       {
-        "scope": "SERIES",
-        "learningSeriesSlug": "conversational-ai-weekly-drill",
-        "learningSeriesName": "Conversational AI Weekly Drill",
+        "scope": "DOMAIN",
         "domainSlug": "conversational-ai",
         "level": "PRACTITIONER",
         "name": "Convo AI Practitioner",
         "slug": "convo-ai-practitioner",
-        "description": "Demonstrates consistent hands-on practice across Conversational AI case studies.",
+        "description": "Demonstrates consistent hands-on practice across Conversational AI training and assessments.",
         "thresholdStars": 10,
         "sortOrder": 20,
         "active": true
       },
       {
-        "scope": "SERIES",
-        "learningSeriesSlug": "conversational-ai-weekly-drill",
-        "learningSeriesName": "Conversational AI Weekly Drill",
+        "scope": "DOMAIN",
         "domainSlug": "conversational-ai",
         "level": "TROUBLESHOOTER",
         "name": "Convo AI Troubleshooter",
@@ -169,48 +163,40 @@
         "active": true
       },
       {
-        "scope": "SERIES",
-        "learningSeriesSlug": "conversational-ai-weekly-drill",
-        "learningSeriesName": "Conversational AI Weekly Drill",
+        "scope": "DOMAIN",
         "domainSlug": "conversational-ai",
         "level": "DOMAIN_SPECIALIST",
         "name": "Convo AI Domain Specialist",
         "slug": "convo-ai-domain-specialist",
-        "description": "Recognizes sustained mastery and reliable performance in Conversational AI weekly practice.",
+        "description": "Recognizes sustained mastery and reliable performance across the Conversational AI domain.",
         "thresholdStars": 28,
         "sortOrder": 40,
         "active": true
       },
       {
-        "scope": "SERIES",
-        "learningSeriesSlug": "rtc-weekly-case-study",
-        "learningSeriesName": "RTC Weekly Case Study",
+        "scope": "DOMAIN",
         "domainSlug": "rtc",
         "level": "READY",
         "name": "RTC Ready",
         "slug": "rtc-ready",
-        "description": "Earned through steady participation in RTC weekly case studies.",
+        "description": "Earned through steady participation across the RTC domain.",
         "thresholdStars": 4,
         "sortOrder": 10,
         "active": true
       },
       {
-        "scope": "SERIES",
-        "learningSeriesSlug": "rtc-weekly-case-study",
-        "learningSeriesName": "RTC Weekly Case Study",
+        "scope": "DOMAIN",
         "domainSlug": "rtc",
         "level": "PRACTITIONER",
         "name": "RTC Practitioner",
         "slug": "rtc-practitioner",
-        "description": "Demonstrates consistent RTC practice and technical review participation.",
+        "description": "Demonstrates consistent RTC practice and technical review participation across the domain.",
         "thresholdStars": 10,
         "sortOrder": 20,
         "active": true
       },
       {
-        "scope": "SERIES",
-        "learningSeriesSlug": "rtc-weekly-case-study",
-        "learningSeriesName": "RTC Weekly Case Study",
+        "scope": "DOMAIN",
         "domainSlug": "rtc",
         "level": "TROUBLESHOOTER",
         "name": "RTC Troubleshooter",
@@ -221,14 +207,12 @@
         "active": true
       },
       {
-        "scope": "SERIES",
-        "learningSeriesSlug": "rtc-weekly-case-study",
-        "learningSeriesName": "RTC Weekly Case Study",
+        "scope": "DOMAIN",
         "domainSlug": "rtc",
         "level": "DOMAIN_SPECIALIST",
         "name": "RTC Domain Specialist",
         "slug": "rtc-domain-specialist",
-        "description": "Recognizes sustained RTC expertise developed through repeated case-study performance.",
+        "description": "Recognizes sustained RTC expertise developed across repeated domain practice and assessment.",
         "thresholdStars": 28,
         "sortOrder": 40,
         "active": true

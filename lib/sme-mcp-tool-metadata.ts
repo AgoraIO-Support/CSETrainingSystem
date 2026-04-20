@@ -421,8 +421,8 @@ export const smeMcpToolMetadata: SmeMcpToolMetadata[] = [
     },
     {
         key: 'list_my_series_badges',
-        label: 'List My Series Badges',
-        description: 'Show badge ladders for badge-enabled scoped learning series.',
+        label: 'List My Domain Badges',
+        description: 'Show domain badge progressions for the product domains in SME scope.',
         category: 'Insights',
         inputSummary: 'No parameters. Leave the JSON as an empty object.',
         parameters: [],

@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useSearchParams } from 'next/navigation'
-import { ArrowLeft, Loader2, PencilLine } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Loader2, PencilLine } from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -68,6 +68,44 @@ function SmeTrainingOpsCourseDetailPageContent() {
     return (
         <DashboardLayout>
             <div className="space-y-6">
+                <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                    {seriesContextId ? (
+                        <>
+                            <Link href="/sme/training-ops/domains" className="transition-colors hover:text-foreground">
+                                My Domains
+                            </Link>
+                            <ChevronRight className="h-4 w-4" />
+                            <Link href="/sme/training-ops/series" className="transition-colors hover:text-foreground">
+                                My Series
+                            </Link>
+                            <ChevronRight className="h-4 w-4" />
+                            <Link href={`/sme/training-ops/series/${seriesContextId}`} className="transition-colors hover:text-foreground">
+                                Series
+                            </Link>
+                            <ChevronRight className="h-4 w-4" />
+                        </>
+                    ) : null}
+                    {course.event?.id ? (
+                        <>
+                            <Link
+                                href={`/sme/training-ops/events/${course.event.id}${seriesContextId ? `?seriesId=${seriesContextId}` : ''}`}
+                                className="transition-colors hover:text-foreground"
+                            >
+                                {course.event.title}
+                            </Link>
+                            <ChevronRight className="h-4 w-4" />
+                        </>
+                    ) : !seriesContextId ? (
+                        <>
+                            <Link href="/sme/training-ops/courses" className="transition-colors hover:text-foreground">
+                                Managed Courses
+                            </Link>
+                            <ChevronRight className="h-4 w-4" />
+                        </>
+                    ) : null}
+                    <span className="font-medium text-foreground">{course.title}</span>
+                </nav>
+
                 <div className="flex items-center gap-4">
                     <Link href={backHref}>
                         <Button variant="ghost" size="icon">

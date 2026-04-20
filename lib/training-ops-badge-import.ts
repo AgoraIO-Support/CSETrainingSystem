@@ -1,13 +1,11 @@
 import { z } from 'zod'
 import prisma from '@/lib/prisma'
 
-const badgeScopes = ['SERIES', 'GLOBAL', 'DOMAIN'] as const
+const badgeScopes = ['DOMAIN'] as const
 const badgeLevels = ['READY', 'PRACTITIONER', 'TROUBLESHOOTER', 'DOMAIN_SPECIALIST'] as const
 
 const badgeSeedItemSchema = z.object({
     scope: z.enum(badgeScopes),
-    learningSeriesSlug: z.string().trim().min(1).optional(),
-    learningSeriesName: z.string().trim().min(1).optional(),
     domainSlug: z.string().trim().min(1).optional(),
     level: z.enum(badgeLevels),
     name: z.string().trim().min(1),
@@ -21,7 +19,7 @@ const badgeSeedItemSchema = z.object({
 const badgeSeedFileSchema = z.object({
     version: z.number().int().positive(),
     scopeModel: z.string().trim().min(1),
-    activeSeries: z.array(z.string().trim().min(1)).default([]),
+    activeDomains: z.array(z.string().trim().min(1)).default([]),
     items: z.array(badgeSeedItemSchema).min(1),
 })
 
@@ -31,7 +29,6 @@ export interface TrainingOpsBadgeImportItemSummary {
     slug: string
     name: string
     scope: (typeof badgeScopes)[number]
-    learningSeriesSlug?: string | null
     domainSlug?: string | null
     thresholdStars: number
     action: 'plan' | 'upserted'
@@ -40,7 +37,7 @@ export interface TrainingOpsBadgeImportItemSummary {
 export interface TrainingOpsBadgeImportSummary {
     version: number
     scopeModel: string
-    activeSeries: string[]
+    activeDomains: string[]
     dryRun: boolean
     totals: {
         items: number
@@ -59,47 +56,21 @@ export async function importTrainingOpsBadgeMilestones(
 ): Promise<TrainingOpsBadgeImportSummary> {
     const payload = parseTrainingOpsBadgeImportPayload(input)
 
-    const uniqueSeriesSlugs = [...new Set(payload.items.map((item) => item.learningSeriesSlug).filter(Boolean))] as string[]
-    const uniqueSeriesNames = [...new Set(payload.items.map((item) => item.learningSeriesName).filter(Boolean))] as string[]
     const uniqueDomainSlugs = [...new Set(payload.items.map((item) => item.domainSlug).filter(Boolean))] as string[]
 
-    const [seriesRows, domainRows] = await Promise.all([
-        uniqueSeriesSlugs.length > 0 || uniqueSeriesNames.length > 0
-            ? prisma.learningSeries.findMany({
-                  where: {
-                      OR: [
-                          ...(uniqueSeriesSlugs.length > 0 ? [{ slug: { in: uniqueSeriesSlugs } }] : []),
-                          ...(uniqueSeriesNames.length > 0 ? [{ name: { in: uniqueSeriesNames } }] : []),
-                      ],
-                  },
-                  select: { id: true, slug: true, name: true },
-              })
-            : Promise.resolve([]),
-        uniqueDomainSlugs.length > 0
-            ? prisma.productDomain.findMany({
-                  where: { slug: { in: uniqueDomainSlugs } },
-                  select: { id: true, slug: true },
-              })
-            : Promise.resolve([]),
-    ])
-
-    const seriesBySlug = new Map(seriesRows.map((row) => [row.slug, row]))
-    const seriesByName = new Map(seriesRows.map((row) => [row.name, row]))
+    const domainRows = uniqueDomainSlugs.length > 0
+        ? await prisma.productDomain.findMany({
+              where: { slug: { in: uniqueDomainSlugs } },
+              select: { id: true, slug: true },
+          })
+        : []
     const domainsBySlug = new Map(domainRows.map((row) => [row.slug, row]))
 
-    const missingSeries = payload.items
-        .filter((item) => item.scope === 'SERIES')
-        .filter((item) => {
-            const bySlug = item.learningSeriesSlug ? seriesBySlug.get(item.learningSeriesSlug) : null
-            const byName = item.learningSeriesName ? seriesByName.get(item.learningSeriesName) : null
-            return !bySlug && !byName
-        })
-        .map((item) => item.learningSeriesSlug || item.learningSeriesName || item.slug)
-    const uniqueMissingSeries = [...new Set(missingSeries)]
-    if (uniqueMissingSeries.length > 0) {
-        throw new Error(
-            `Missing Learning Series for import entries: ${uniqueMissingSeries.join(', ')}. Create those Learning Series first, then retry the import.`
-        )
+    const itemsMissingDomain = payload.items
+        .filter((item) => !item.domainSlug)
+        .map((item) => item.slug)
+    if (itemsMissingDomain.length > 0) {
+        throw new Error(`Badge import entries must include domainSlug: ${itemsMissingDomain.join(', ')}`)
     }
 
     const missingDomains = uniqueDomainSlugs.filter((slug) => !domainsBySlug.has(slug))
@@ -107,15 +78,72 @@ export async function importTrainingOpsBadgeMilestones(
         throw new Error(`Missing Product Domains for slugs: ${missingDomains.join(', ')}`)
     }
 
+    const payloadScopeKeys = payload.items.map((item) => `${item.domainSlug}:${item.slug}`)
+    const duplicatePayloadScopeKeys = payloadScopeKeys.filter((key, index, values) => values.indexOf(key) !== index)
+    if (duplicatePayloadScopeKeys.length > 0) {
+        throw new Error(
+            `Badge import entries must use unique slugs within each domain: ${[...new Set(duplicatePayloadScopeKeys)].join(', ')}`
+        )
+    }
+
+    const resolvedItems = payload.items.map((item) => {
+        const domain = item.domainSlug ? domainsBySlug.get(item.domainSlug) ?? null : null
+        return {
+            item,
+            domain,
+            domainId: domain?.id ?? null,
+        }
+    })
+
+    const importedScopeKeys = new Set(
+        resolvedItems
+            .filter(({ domainId }) => Boolean(domainId))
+            .map(({ item, domainId }) => `${domainId}:${item.slug}`)
+    )
+    const scopedDomainIds = [...new Set(resolvedItems.map(({ domainId }) => domainId).filter(Boolean))] as string[]
+    const existingBadges = scopedDomainIds.length > 0
+        ? await prisma.badgeMilestone.findMany({
+              where: {
+                  domainId: { in: scopedDomainIds },
+              },
+              select: {
+                  domainId: true,
+                  slug: true,
+                  thresholdStars: true,
+              },
+          })
+        : []
+
+    const assignedThresholdsByDomain = new Map<string, Map<number, string>>()
+    for (const badge of existingBadges) {
+        if (!badge.domainId || importedScopeKeys.has(`${badge.domainId}:${badge.slug}`)) continue
+
+        const current = assignedThresholdsByDomain.get(badge.domainId) ?? new Map<number, string>()
+        current.set(badge.thresholdStars, badge.slug)
+        assignedThresholdsByDomain.set(badge.domainId, current)
+    }
+
+    for (const { item, domainId } of resolvedItems) {
+        if (!domainId) {
+            continue
+        }
+
+        const current = assignedThresholdsByDomain.get(domainId) ?? new Map<number, string>()
+        const conflictSlug = current.get(item.thresholdStars)
+        if (conflictSlug) {
+            throw new Error(
+                `Badge import threshold conflict in domain ${item.domainSlug}: ` +
+                `${item.thresholdStars} stars is already assigned to ${conflictSlug}`
+            )
+        }
+
+        current.set(item.thresholdStars, item.slug)
+        assignedThresholdsByDomain.set(domainId, current)
+    }
+
     const summaries: TrainingOpsBadgeImportItemSummary[] = []
 
-    for (const item of payload.items) {
-        const learningSeries =
-            (item.learningSeriesSlug ? seriesBySlug.get(item.learningSeriesSlug) : null) ??
-            (item.learningSeriesName ? seriesByName.get(item.learningSeriesName) : null) ??
-            null
-        const domain = item.domainSlug ? domainsBySlug.get(item.domainSlug) ?? null : null
-
+    for (const { item, domain } of resolvedItems) {
         const data = {
             name: item.name,
             slug: item.slug,
@@ -123,23 +151,34 @@ export async function importTrainingOpsBadgeMilestones(
             icon: item.level,
             thresholdStars: item.thresholdStars,
             active: item.active ?? true,
-            learningSeriesId: item.scope === 'SERIES' ? (learningSeries?.id ?? null) : null,
-            domainId: item.scope === 'DOMAIN' ? (domain?.id ?? null) : null,
+            domainId: domain?.id ?? null,
         }
 
         if (options.apply) {
-            await prisma.badgeMilestone.upsert({
-                where: { slug: item.slug },
-                update: data,
-                create: data,
+            const existing = await prisma.badgeMilestone.findFirst({
+                where: {
+                    domainId: domain?.id ?? null,
+                    slug: item.slug,
+                },
+                select: { id: true },
             })
+
+            if (existing) {
+                await prisma.badgeMilestone.update({
+                    where: { id: existing.id },
+                    data,
+                })
+            } else {
+                await prisma.badgeMilestone.create({
+                    data,
+                })
+            }
         }
 
         summaries.push({
             slug: item.slug,
             name: item.name,
             scope: item.scope,
-            learningSeriesSlug: item.learningSeriesSlug ?? null,
             domainSlug: item.domainSlug ?? null,
             thresholdStars: item.thresholdStars,
             action: options.apply ? 'upserted' : 'plan',
@@ -149,7 +188,7 @@ export async function importTrainingOpsBadgeMilestones(
     return {
         version: payload.version,
         scopeModel: payload.scopeModel,
-        activeSeries: payload.activeSeries,
+        activeDomains: payload.activeDomains,
         dryRun: !options.apply,
         totals: {
             items: payload.items.length,

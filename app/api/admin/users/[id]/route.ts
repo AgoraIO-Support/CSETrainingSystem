@@ -85,6 +85,73 @@ export const PATCH = withAdminAuth(async (req, _user, { params }: { params: Prom
                     { status: 404 }
                 )
             }
+
+            if (error.message === 'SME_ROLE_REQUIRES_DOMAIN_ASSIGNMENT') {
+                return NextResponse.json(
+                    {
+                        success: false,
+                        error: {
+                            code: 'USER_006',
+                            message: 'Promoting a user to SME requires at least one domain assignment.',
+                        },
+                    },
+                    { status: 400 }
+                )
+            }
+
+            if (error.message === 'SME_DOMAIN_REQUIRED') {
+                return NextResponse.json(
+                    {
+                        success: false,
+                        error: {
+                            code: 'USER_007',
+                            message: 'SME must be assigned at least one domain.',
+                        },
+                    },
+                    { status: 400 }
+                )
+            }
+
+            if (error.message === 'DOMAIN_ASSIGNMENT_REQUIRES_SME_ROLE') {
+                return NextResponse.json(
+                    {
+                        success: false,
+                        error: {
+                            code: 'USER_008',
+                            message: 'Domain assignments can only be managed for SME users.',
+                        },
+                    },
+                    { status: 400 }
+                )
+            }
+
+            if (error.message === 'PRODUCT_DOMAIN_NOT_FOUND') {
+                return NextResponse.json(
+                    {
+                        success: false,
+                        error: {
+                            code: 'DOMAIN_001',
+                            message: 'One or more selected domains no longer exist',
+                        },
+                    },
+                    { status: 404 }
+                )
+            }
+
+            if (error.message.startsWith('DOMAIN_ASSIGNMENT_CONFLICT:')) {
+                const domainNames = error.message.split(':')[1] || ''
+
+                return NextResponse.json(
+                    {
+                        success: false,
+                        error: {
+                            code: 'DOMAIN_002',
+                            message: `These domains already have both SME slots filled: ${domainNames}`,
+                        },
+                    },
+                    { status: 409 }
+                )
+            }
         }
 
         return NextResponse.json(

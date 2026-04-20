@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ApiClient } from '@/lib/api-client'
-import type { BadgeMilestoneSummary, LearningSeriesSummary, ProductDomainSummary } from '@/types'
+import type { BadgeMilestoneSummary, ProductDomainSummary } from '@/types'
 import { ArrowLeft, Award, FileJson, Loader2, Plus } from 'lucide-react'
 
 const EMPTY_OPTION = '__all__'
@@ -19,12 +19,10 @@ export default function TrainingOpsBadgesPage() {
     const [error, setError] = useState<string | null>(null)
     const [badges, setBadges] = useState<BadgeMilestoneSummary[]>([])
     const [domains, setDomains] = useState<ProductDomainSummary[]>([])
-    const [series, setSeries] = useState<LearningSeriesSummary[]>([])
     const [filters, setFilters] = useState({
         search: '',
         active: EMPTY_OPTION,
         domainId: EMPTY_OPTION,
-        learningSeriesId: EMPTY_OPTION,
     })
 
     useEffect(() => {
@@ -33,21 +31,18 @@ export default function TrainingOpsBadgesPage() {
                 setLoading(true)
                 setError(null)
 
-                const [badgesResponse, domainsResponse, seriesResponse] = await Promise.all([
+                const [badgesResponse, domainsResponse] = await Promise.all([
                     ApiClient.getTrainingOpsBadgeMilestones({
                         limit: 100,
                         search: filters.search || undefined,
                         active: filters.active === EMPTY_OPTION ? undefined : filters.active === 'true',
                         domainId: filters.domainId === EMPTY_OPTION ? undefined : filters.domainId,
-                        learningSeriesId: filters.learningSeriesId === EMPTY_OPTION ? undefined : filters.learningSeriesId,
                     }),
                     ApiClient.getTrainingOpsDomains({ limit: 100 }),
-                    ApiClient.getTrainingOpsSeries({ limit: 100 }),
                 ])
 
                 setBadges(badgesResponse.data)
                 setDomains(domainsResponse.data)
-                setSeries(seriesResponse.data)
             } catch (err) {
                 setError(err instanceof Error ? err.message : 'Failed to load badge milestones')
             } finally {
@@ -61,14 +56,12 @@ export default function TrainingOpsBadgesPage() {
     const stats = useMemo(() => {
         const active = badges.filter((item) => item.active).length
         const domainScoped = badges.filter((item) => item.domain).length
-        const seriesScoped = badges.filter((item) => item.learningSeries).length
         const totalAwards = badges.reduce((sum, item) => sum + item.awardCount, 0)
 
         return {
             total: badges.length,
             active,
             domainScoped,
-            seriesScoped,
             totalAwards,
         }
     }, [badges])
@@ -109,7 +102,7 @@ export default function TrainingOpsBadgesPage() {
                     </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                     <Card>
                         <CardHeader className="pb-2">
                             <CardDescription>Total Milestones</CardDescription>
@@ -139,15 +132,6 @@ export default function TrainingOpsBadgesPage() {
                     </Card>
                     <Card>
                         <CardHeader className="pb-2">
-                            <CardDescription>Series Scoped</CardDescription>
-                            <CardTitle className="text-3xl">{loading ? '...' : stats.seriesScoped}</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <p className="text-sm text-muted-foreground">Milestones tied directly to a learning series.</p>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardHeader className="pb-2">
                             <CardDescription>Total Awards</CardDescription>
                             <CardTitle className="text-3xl">{loading ? '...' : stats.totalAwards}</CardTitle>
                         </CardHeader>
@@ -162,7 +146,7 @@ export default function TrainingOpsBadgesPage() {
                         <CardTitle>Filters</CardTitle>
                         <CardDescription>Filter milestones by search text, active state, or domain scope.</CardDescription>
                     </CardHeader>
-                    <CardContent className="grid gap-4 md:grid-cols-4">
+                    <CardContent className="grid gap-4 md:grid-cols-3">
                         <div className="space-y-2">
                             <Label htmlFor="search">Search</Label>
                             <Input
@@ -201,29 +185,13 @@ export default function TrainingOpsBadgesPage() {
                                 ))}
                             </select>
                         </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="learningSeriesId">Learning Series</Label>
-                            <select
-                                id="learningSeriesId"
-                                className="h-10 w-full rounded-md border bg-background px-3"
-                                value={filters.learningSeriesId}
-                                onChange={(event) => setFilters((prev) => ({ ...prev, learningSeriesId: event.target.value }))}
-                            >
-                                <option value={EMPTY_OPTION}>All series</option>
-                                {series.map((item) => (
-                                    <option key={item.id} value={item.id}>
-                                        {item.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
                     </CardContent>
                 </Card>
 
                 <Card>
                     <CardHeader>
                         <CardTitle>Badge Catalog</CardTitle>
-                        <CardDescription>Manage global or domain-specific recognition milestones.</CardDescription>
+                        <CardDescription>Manage domain-based recognition milestones.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-3">
                         {error ? (
@@ -248,7 +216,7 @@ export default function TrainingOpsBadgesPage() {
                                         <div className="space-y-2">
                                             <div className="flex flex-wrap gap-2">
                                                 <Badge>{badge.active ? 'Active' : 'Inactive'}</Badge>
-                                                <Badge variant="outline">{badge.learningSeries?.name ?? badge.domain?.name ?? 'Global'}</Badge>
+                                                {badge.domain ? <Badge variant="outline">{badge.domain.name}</Badge> : null}
                                             </div>
                                             <div>
                                                 <p className="text-lg font-semibold">{badge.name}</p>

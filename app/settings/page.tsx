@@ -121,7 +121,7 @@ export default function SettingsPage() {
                                 <Link href="/profile">Edit Profile</Link>
                             </Button>
                             <Button asChild variant="outline" className="w-full justify-between">
-                                <Link href="/training">Open My Training</Link>
+                                <Link href="/training">Open My Learning</Link>
                             </Button>
                             <Button asChild variant="outline" className="w-full justify-between">
                                 <Link href="/rewards">Open My Rewards</Link>

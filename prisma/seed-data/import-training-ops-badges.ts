@@ -24,7 +24,6 @@ async function main() {
                 item.action.toUpperCase(),
                 item.slug,
                 `scope=${item.scope}`,
-                `series=${item.learningSeriesSlug ?? 'n/a'}`,
                 `domain=${item.domainSlug ?? 'n/a'}`,
                 `stars=${item.thresholdStars}`,
             ].join(' | ')

@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
+import { CertificatesSection } from '@/components/rewards/certificates-section'
 import { ApiClient } from '@/lib/api-client'
 import type { LearnerRewardsOverview } from '@/types'
 import { Loader2, Star, Trophy, Award, ArrowRight } from 'lucide-react'
@@ -45,9 +46,9 @@ export default function RewardsPage() {
                     </div>
                     <div className="flex gap-3">
                         <Link href="/training">
-                            <Button variant="outline">My Training</Button>
+                            <Button variant="outline">My Learning</Button>
                         </Link>
-                        <Link href="/certificates">
+                        <Link href="/rewards#certificates">
                             <Button variant="outline">Certificates</Button>
                         </Link>
                     </div>
@@ -123,7 +124,7 @@ export default function RewardsPage() {
                                                         {award.event?.title || award.exam?.title || award.reason || 'Reward issued'}
                                                     </p>
                                                     <p className="mt-1 text-sm text-muted-foreground">
-                                                        {award.learningSeries?.name ?? award.domain?.name ?? 'General Training'} · {new Date(award.awardedAt).toLocaleDateString()}
+                                                        {award.domain?.name ?? 'General Training'} · {new Date(award.awardedAt).toLocaleDateString()}
                                                     </p>
                                                 </div>
                                                 {award.exam ? (
@@ -150,7 +151,7 @@ export default function RewardsPage() {
                                         </div>
                                         <div className="rounded-lg border p-3">
                                             <p className="font-medium text-foreground">Badges</p>
-                                            <p className="mt-1">Unlocked when your stars in a specific learning series reach the configured milestone threshold.</p>
+                                            <p className="mt-1">Unlocked when your stars in a specific product domain reach the configured milestone threshold.</p>
                                         </div>
                                         <div className="rounded-lg border p-3">
                                             <p className="font-medium text-foreground">Certificates</p>
@@ -162,18 +163,18 @@ export default function RewardsPage() {
                                 <Card>
                                     <CardHeader>
                                         <CardTitle>Next Milestone</CardTitle>
-                                        <CardDescription>Your next global badge target.</CardDescription>
+                                        <CardDescription>Your nearest domain badge target.</CardDescription>
                                     </CardHeader>
                                     <CardContent>
                                         {overview.nextBadge ? (
                                             <div className="space-y-2">
                                                 <p className="text-2xl font-semibold">{overview.nextBadge.name}</p>
                                                 <p className="text-sm text-muted-foreground">
-                                                    {overview.nextBadge.thresholdStars} stars required · {overview.nextBadge.remainingStars} to go
+                                                    {overview.nextBadge.domain.name} · {overview.nextBadge.thresholdStars} stars required · {overview.nextBadge.remainingStars} to go
                                                 </p>
                                             </div>
                                         ) : (
-                                            <p className="text-sm text-muted-foreground">You have completed all active global badge milestones.</p>
+                                            <p className="text-sm text-muted-foreground">You have completed the currently configured domain badge ladders.</p>
                                         )}
                                     </CardContent>
                                 </Card>
@@ -204,37 +205,37 @@ export default function RewardsPage() {
 
                         <Card>
                             <CardHeader>
-                                <CardTitle>Series Progression</CardTitle>
-                                <CardDescription>Your current level and next badge target in each active learning series.</CardDescription>
+                                <CardTitle>Domain Progression</CardTitle>
+                                <CardDescription>Your current level and next badge target in each active domain.</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4">
-                                {overview.seriesProgressions.length === 0 ? (
-                                    <p className="text-sm text-muted-foreground">No learning-series badge progress yet.</p>
-                                ) : overview.seriesProgressions.map((series) => (
-                                    <div key={series.learningSeries.id} className="rounded-lg border p-4">
+                                {overview.domainProgressions.length === 0 ? (
+                                    <p className="text-sm text-muted-foreground">No domain badge progress yet.</p>
+                                ) : overview.domainProgressions.map((domain) => (
+                                    <div key={domain.domain.id} className="rounded-lg border p-4">
                                         <div className="flex flex-wrap items-start justify-between gap-3">
                                             <div>
-                                                <p className="font-semibold">{series.learningSeries.name}</p>
+                                                <p className="font-semibold">{domain.domain.name}</p>
                                                 <p className="mt-1 text-sm text-muted-foreground">
-                                                    {series.stars} stars · {series.unlockedBadges} badges unlocked
+                                                    {domain.stars} stars · {domain.unlockedBadges} badges unlocked
                                                 </p>
                                             </div>
                                             <div className="flex flex-wrap items-center gap-2">
-                                                {series.currentBadge ? (
-                                                    <Badge variant="secondary">{series.currentBadge.name}</Badge>
+                                                {domain.currentBadge ? (
+                                                    <Badge variant="secondary">{domain.currentBadge.name}</Badge>
                                                 ) : (
                                                     <Badge variant="outline">No badge yet</Badge>
                                                 )}
-                                                {series.nextBadge ? (
+                                                {domain.nextBadge ? (
                                                     <Badge variant="outline">
-                                                        Next: {series.nextBadge.name} ({series.nextBadge.remainingStars} to go)
+                                                        Next: {domain.nextBadge.name} ({domain.nextBadge.remainingStars} to go)
                                                     </Badge>
                                                 ) : (
-                                                    <Badge>All series badges unlocked</Badge>
+                                                    <Badge>All domain badges unlocked</Badge>
                                                 )}
                                             </div>
                                         </div>
-                                        <Progress value={series.progressPercent} className="mt-4" />
+                                        <Progress value={domain.progressPercent} className="mt-4" />
                                     </div>
                                 ))}
                             </CardContent>
@@ -258,7 +259,7 @@ export default function RewardsPage() {
                                                 </div>
                                                 <p className="mt-3 font-semibold">{award.badge.name}</p>
                                                 <p className="mt-1 text-sm text-muted-foreground">
-                                                    {award.learningSeries?.name ?? award.domain?.name ?? 'General Training'} · unlocked {new Date(award.awardedAt).toLocaleDateString()}
+                                                    {award.domain?.name ?? 'General Training'} · unlocked {new Date(award.awardedAt).toLocaleDateString()}
                                                 </p>
                                                 {award.badge.description ? (
                                                     <p className="mt-2 text-sm text-muted-foreground">{award.badge.description}</p>
@@ -270,6 +271,8 @@ export default function RewardsPage() {
                                 ))}
                             </CardContent>
                         </Card>
+
+                        <CertificatesSection />
                     </>
                 ) : null}
             </div>

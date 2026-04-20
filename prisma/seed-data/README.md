@@ -102,11 +102,9 @@ This file is designed as a canonical source file for initializing badge mileston
 
 Important:
 
-- Badge milestones are intended to be scoped by `Learning Series`.
+- Badge milestones are intended to be scoped by `Product Domain`.
 - Each record in the JSON includes:
   - `scope`
-  - `learningSeriesSlug`
-  - `learningSeriesName`
   - `domainSlug`
   - `level`
 - These fields are intended for:
@@ -116,9 +114,8 @@ Important:
 
 Recommended interpretation:
 
-- `scope` should normally be `SERIES` for the current rollout.
-- `learningSeriesSlug` is the primary mapping key for badge scope and should be resolved to `learningSeriesId`.
-- `domainSlug` can be used as a secondary mapping key or compatibility fallback.
+- `scope` should be `DOMAIN`.
+- `domainSlug` is the primary mapping key for badge scope and should be resolved to `domainId`.
 - `level` captures the standardized badge ladder:
   - `READY`
   - `PRACTITIONER`
@@ -145,8 +142,8 @@ npm run prisma:seed:training-ops:badges -- --apply
 Optional:
 
 - Use `--input=...` to point to a different JSON seed file.
-- `learningSeriesSlug` is resolved to `learningSeriesId` before upsert.
-- Records are upserted by `slug`, so the import is repeatable.
+- `domainSlug` is resolved to `domainId` before upsert.
+- Records are upserted by the `(domainSlug, slug)` scope, so the import is repeatable.
 
 ### Bootstrap file
 

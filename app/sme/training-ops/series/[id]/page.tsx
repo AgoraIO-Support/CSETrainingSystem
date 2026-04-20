@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { ArrowLeft, Award, CalendarDays, Loader2 } from 'lucide-react'
+import { ArrowLeft, Award, CalendarDays, ChevronRight, Loader2 } from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -139,14 +139,19 @@ export default function SmeTrainingOpsSeriesDetailPage() {
         return Array.from(examMap.values())
     }, [events, scopedExams, seriesId])
 
-    const badgeLadder = useMemo(
-        () => badges?.seriesLadders.find((item) => item.learningSeries.id === seriesId) ?? null,
-        [badges, seriesId]
-    )
+    const badgeLadder = useMemo(() => {
+        const domainId = series?.domain?.id
+        if (!domainId) return null
+        return badges?.domainLadders.find((item) => item.domain.id === domainId) ?? null
+    }, [badges, series?.domain?.id])
 
     const recentUnlocks = useMemo(
-        () => (badges?.recentUnlocks ?? []).filter((item) => item.learningSeries.id === seriesId).slice(0, 5),
-        [badges, seriesId]
+        () => {
+            const domainId = series?.domain?.id
+            if (!domainId) return []
+            return (badges?.recentUnlocks ?? []).filter((item) => item.domain.id === domainId).slice(0, 5)
+        },
+        [badges, series?.domain?.id]
     )
 
     if (loading) {
@@ -173,6 +178,18 @@ export default function SmeTrainingOpsSeriesDetailPage() {
     return (
         <DashboardLayout>
             <div className="space-y-6">
+                <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                    <Link href="/sme/training-ops/domains" className="transition-colors hover:text-foreground">
+                        My Domains
+                    </Link>
+                    <ChevronRight className="h-4 w-4" />
+                    <Link href="/sme/training-ops/series" className="transition-colors hover:text-foreground">
+                        My Series
+                    </Link>
+                    <ChevronRight className="h-4 w-4" />
+                    <span className="font-medium text-foreground">{series.name}</span>
+                </nav>
+
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
                         <Link href="/sme/training-ops/series">
@@ -188,6 +205,9 @@ export default function SmeTrainingOpsSeriesDetailPage() {
                         </div>
                     </div>
                     <div className="flex flex-wrap gap-3">
+                        <Link href={`/sme/training-ops/series/${series.id}/edit`}>
+                            <Button variant="outline">Edit Series</Button>
+                        </Link>
                         <Link href={`/sme/training-ops/events?seriesId=${series.id}`}>
                             <Button variant="outline">View Events</Button>
                         </Link>
@@ -214,7 +234,6 @@ export default function SmeTrainingOpsSeriesDetailPage() {
                                 <Badge>{series.type}</Badge>
                                 {series.domain ? <Badge variant="outline">{series.domain.name}</Badge> : null}
                                 {!series.isActive ? <Badge variant="outline">Inactive</Badge> : null}
-                                {series.countsTowardPerformance ? <Badge variant="outline">Performance</Badge> : null}
                             </div>
 
                             <div className="grid gap-4 md:grid-cols-2">
@@ -242,16 +261,12 @@ export default function SmeTrainingOpsSeriesDetailPage() {
                     <Card>
                         <CardHeader>
                             <CardTitle>Reward Defaults</CardTitle>
-                            <CardDescription>Badge eligibility and reward output associated with this series.</CardDescription>
+                            <CardDescription>How this series contributes stars and badge activity into its owning domain.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="rounded-lg border p-4 text-sm text-muted-foreground">
-                                Badge eligible
+                                Contributes to domain badges
                                 <p className="mt-2 text-lg font-semibold text-foreground">{series.badgeEligible ? 'Yes' : 'No'}</p>
-                            </div>
-                            <div className="rounded-lg border p-4 text-sm text-muted-foreground">
-                                Counts toward performance
-                                <p className="mt-2 text-lg font-semibold text-foreground">{series.countsTowardPerformance ? 'Yes' : 'No'}</p>
                             </div>
                             <div className="rounded-lg border p-4 text-sm text-muted-foreground">
                                 Reward output
@@ -268,7 +283,7 @@ export default function SmeTrainingOpsSeriesDetailPage() {
                     <Card><CardHeader className="pb-2"><CardDescription>Events</CardDescription><CardTitle className="text-3xl">{events.length}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Events currently in this series.</p></CardContent></Card>
                     <Card><CardHeader className="pb-2"><CardDescription>Related Courses</CardDescription><CardTitle className="text-3xl">{relatedCourses.length}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Courses linked through events in this series.</p></CardContent></Card>
                     <Card><CardHeader className="pb-2"><CardDescription>Related Exams</CardDescription><CardTitle className="text-3xl">{relatedExams.length}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Exams aligned to this series.</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2"><CardDescription>Badge Milestones</CardDescription><CardTitle className="text-3xl">{badgeLadder?.milestones.length ?? 0}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Series-specific badge ladder milestones.</p></CardContent></Card>
+                    <Card><CardHeader className="pb-2"><CardDescription>Domain Badges</CardDescription><CardTitle className="text-3xl">{badgeLadder?.milestones.length ?? 0}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Badge milestones inherited from this series&apos;s domain.</p></CardContent></Card>
                 </div>
 
                 <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
@@ -309,8 +324,10 @@ export default function SmeTrainingOpsSeriesDetailPage() {
 
                     <Card>
                         <CardHeader>
-                            <CardTitle>Badge Ladder</CardTitle>
-                            <CardDescription>Recognition milestones currently scoped to this series.</CardDescription>
+                            <CardTitle>Domain Badge Ladder</CardTitle>
+                            <CardDescription>
+                                Recognition milestones inherited from {series.domain?.name ?? 'this series domain'}.
+                            </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">
                             {badgeLadder?.milestones.length ? badgeLadder.milestones.map((badge) => (
@@ -327,7 +344,7 @@ export default function SmeTrainingOpsSeriesDetailPage() {
                                 </div>
                             )) : (
                                 <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-                                    No badge milestones linked to this series yet.
+                                    No domain badge milestones are available for this series yet.
                                 </div>
                             )}
                         </CardContent>
@@ -420,7 +437,7 @@ export default function SmeTrainingOpsSeriesDetailPage() {
                     <Card>
                         <CardHeader>
                             <CardTitle>Recent Unlocks</CardTitle>
-                            <CardDescription>Most recent badge unlocks driven by this series.</CardDescription>
+                            <CardDescription>Most recent domain badge unlocks relevant to this series.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">
                             {recentUnlocks.map((unlock) => (

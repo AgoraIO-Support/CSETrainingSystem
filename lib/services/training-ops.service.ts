@@ -95,6 +95,50 @@ export class TrainingOpsService {
         }
     }
 
+    private static async assertBadgeDomainScope(user: TrainingOpsOperator, domainId: string) {
+        this.ensureTrainingOpsOperator(user)
+
+        if (user.role === 'ADMIN') {
+            return
+        }
+
+        try {
+            await this.assertScopeAccess(user, { domainId })
+        } catch {
+            throw new Error('BADGE_DOMAIN_FORBIDDEN')
+        }
+    }
+
+    private static async assertUniqueDomainBadgeThreshold(domainId: string, thresholdStars: number, excludeId?: string) {
+        const existing = await prisma.badgeMilestone.findFirst({
+            where: {
+                domainId,
+                thresholdStars,
+                ...(excludeId ? { id: { not: excludeId } } : {}),
+            },
+            select: { id: true },
+        })
+
+        if (existing) {
+            throw new Error('BADGE_THRESHOLD_EXISTS')
+        }
+    }
+
+    private static async assertUniqueDomainBadgeSlug(domainId: string, slug: string, excludeId?: string) {
+        const existing = await prisma.badgeMilestone.findFirst({
+            where: {
+                domainId,
+                slug,
+                ...(excludeId ? { id: { not: excludeId } } : {}),
+            },
+            select: { id: true },
+        })
+
+        if (existing) {
+            throw new Error('BADGE_MILESTONE_SLUG_EXISTS')
+        }
+    }
+
     private static async getUserTrainingOpsScope(userId: string): Promise<TrainingOpsScope> {
         const [directDomains, ownedSeries, directEvents] = await Promise.all([
             prisma.productDomain.findMany({
@@ -1309,21 +1353,18 @@ export class TrainingOpsService {
         limit?: number
         search?: string
         domainId?: string
-        learningSeriesId?: string
         active?: boolean
     }) {
         const page = params.page || 1
         const limit = params.limit || 20
         const skip = (page - 1) * limit
 
-        const where: Prisma.BadgeMilestoneWhereInput = {}
+        const where: Prisma.BadgeMilestoneWhereInput = {
+            domainId: { not: null },
+        }
 
         if (params.domainId) {
             where.domainId = params.domainId
-        }
-
-        if (params.learningSeriesId) {
-            where.learningSeriesId = params.learningSeriesId
         }
 
         if (typeof params.active === 'boolean') {
@@ -1352,13 +1393,6 @@ export class TrainingOpsService {
                             slug: true,
                         },
                     },
-                    learningSeries: {
-                        select: {
-                            id: true,
-                            name: true,
-                            slug: true,
-                        },
-                    },
                     _count: {
                         select: {
                             awards: true,
@@ -1380,7 +1414,6 @@ export class TrainingOpsService {
                 thresholdStars: item.thresholdStars,
                 active: item.active,
                 domain: item.domain,
-                learningSeries: item.learningSeries,
                 awardCount: item._count.awards,
                 createdAt: item.createdAt,
                 updatedAt: item.updatedAt,
@@ -1405,13 +1438,6 @@ export class TrainingOpsService {
                         slug: true,
                     },
                 },
-                learningSeries: {
-                    select: {
-                        id: true,
-                        name: true,
-                        slug: true,
-                    },
-                },
                 _count: {
                     select: {
                         awards: true,
@@ -1420,7 +1446,7 @@ export class TrainingOpsService {
             },
         })
 
-        if (!item) {
+        if (!item || !item.domainId) {
             throw new Error('BADGE_MILESTONE_NOT_FOUND')
         }
 
@@ -1433,7 +1459,6 @@ export class TrainingOpsService {
             thresholdStars: item.thresholdStars,
             active: item.active,
             domain: item.domain,
-            learningSeries: item.learningSeries,
             awardCount: item._count.awards,
             createdAt: item.createdAt,
             updatedAt: item.updatedAt,
@@ -1447,37 +1472,18 @@ export class TrainingOpsService {
         icon?: string | null
         thresholdStars: number
         active: boolean
-        domainId?: string | null
-        learningSeriesId?: string | null
+        domainId: string
     }) {
-        const existing = await prisma.badgeMilestone.findUnique({
-            where: { slug: payload.slug },
+        const domain = await prisma.productDomain.findUnique({
+            where: { id: payload.domainId },
             select: { id: true },
         })
-
-        if (existing) {
-            throw new Error('BADGE_MILESTONE_SLUG_EXISTS')
+        if (!domain) {
+            throw new Error('PRODUCT_DOMAIN_NOT_FOUND')
         }
 
-        if (payload.domainId) {
-            const domain = await prisma.productDomain.findUnique({
-                where: { id: payload.domainId },
-                select: { id: true },
-            })
-            if (!domain) {
-                throw new Error('PRODUCT_DOMAIN_NOT_FOUND')
-            }
-        }
-
-        if (payload.learningSeriesId) {
-            const learningSeries = await prisma.learningSeries.findUnique({
-                where: { id: payload.learningSeriesId },
-                select: { id: true },
-            })
-            if (!learningSeries) {
-                throw new Error('LEARNING_SERIES_NOT_FOUND')
-            }
-        }
+        await this.assertUniqueDomainBadgeSlug(payload.domainId, payload.slug)
+        await this.assertUniqueDomainBadgeThreshold(payload.domainId, payload.thresholdStars)
 
         const badge = await prisma.badgeMilestone.create({
             data: {
@@ -1487,8 +1493,7 @@ export class TrainingOpsService {
                 icon: payload.icon ?? null,
                 thresholdStars: payload.thresholdStars,
                 active: payload.active,
-                domainId: payload.domainId ?? null,
-                learningSeriesId: payload.learningSeriesId ?? null,
+                domainId: payload.domainId,
             },
         })
 
@@ -1503,46 +1508,58 @@ export class TrainingOpsService {
         thresholdStars?: number
         active?: boolean
         domainId?: string | null
-        learningSeriesId?: string | null
     }) {
         const existing = await prisma.badgeMilestone.findUnique({
             where: { id },
-            select: { id: true, slug: true },
+            select: {
+                id: true,
+                slug: true,
+                domainId: true,
+                thresholdStars: true,
+                _count: {
+                    select: {
+                        awards: true,
+                    },
+                },
+            },
         })
 
-        if (!existing) {
+        if (!existing || !existing.domainId) {
             throw new Error('BADGE_MILESTONE_NOT_FOUND')
         }
 
-        if (payload.slug && payload.slug !== existing.slug) {
-            const conflict = await prisma.badgeMilestone.findUnique({
-                where: { slug: payload.slug },
-                select: { id: true },
-            })
+        const nextDomainId = payload.domainId === undefined ? existing.domainId : payload.domainId
+        if (!nextDomainId) {
+            throw new Error('BADGE_DOMAIN_REQUIRED')
+        }
 
-            if (conflict && conflict.id !== id) {
-                throw new Error('BADGE_MILESTONE_SLUG_EXISTS')
+        const nextSlug = payload.slug ?? existing.slug
+
+        const domain = await prisma.productDomain.findUnique({
+            where: { id: nextDomainId },
+            select: { id: true },
+        })
+        if (!domain) {
+            throw new Error('PRODUCT_DOMAIN_NOT_FOUND')
+        }
+
+        if (existing._count.awards > 0) {
+            if (payload.thresholdStars !== undefined && payload.thresholdStars !== existing.thresholdStars) {
+                throw new Error('BADGE_THRESHOLD_LOCKED')
+            }
+
+            if (payload.domainId !== undefined && payload.domainId !== existing.domainId) {
+                throw new Error('BADGE_DOMAIN_LOCKED')
             }
         }
 
-        if (payload.domainId) {
-            const domain = await prisma.productDomain.findUnique({
-                where: { id: payload.domainId },
-                select: { id: true },
-            })
-            if (!domain) {
-                throw new Error('PRODUCT_DOMAIN_NOT_FOUND')
-            }
+        const nextThresholdStars = payload.thresholdStars ?? existing.thresholdStars
+        if (nextDomainId !== existing.domainId || nextThresholdStars !== existing.thresholdStars) {
+            await this.assertUniqueDomainBadgeThreshold(nextDomainId, nextThresholdStars, id)
         }
 
-        if (payload.learningSeriesId) {
-            const learningSeries = await prisma.learningSeries.findUnique({
-                where: { id: payload.learningSeriesId },
-                select: { id: true },
-            })
-            if (!learningSeries) {
-                throw new Error('LEARNING_SERIES_NOT_FOUND')
-            }
+        if (nextDomainId !== existing.domainId || nextSlug !== existing.slug) {
+            await this.assertUniqueDomainBadgeSlug(nextDomainId, nextSlug, id)
         }
 
         await prisma.badgeMilestone.update({
@@ -1554,12 +1571,66 @@ export class TrainingOpsService {
                 icon: payload.icon,
                 thresholdStars: payload.thresholdStars,
                 active: payload.active,
-                domainId: payload.domainId,
-                learningSeriesId: payload.learningSeriesId,
+                domainId: nextDomainId,
             },
         })
 
         return this.getBadgeMilestoneById(id)
+    }
+
+    static async createScopedBadgeMilestone(
+        user: TrainingOpsOperator,
+        payload: {
+            name: string
+            slug: string
+            description?: string | null
+            icon?: string | null
+            thresholdStars: number
+            active: boolean
+            domainId: string
+        }
+    ) {
+        await this.assertBadgeDomainScope(user, payload.domainId)
+        return this.createBadgeMilestone(payload)
+    }
+
+    static async getScopedBadgeMilestoneById(user: TrainingOpsOperator, id: string) {
+        const badge = await this.getBadgeMilestoneById(id)
+        if (!badge.domain?.id) {
+            throw new Error('BADGE_MILESTONE_NOT_FOUND')
+        }
+        await this.assertBadgeDomainScope(user, badge.domain.id)
+        return badge
+    }
+
+    static async updateScopedBadgeMilestone(
+        user: TrainingOpsOperator,
+        id: string,
+        payload: {
+            name?: string
+            slug?: string
+            description?: string | null
+            icon?: string | null
+            thresholdStars?: number
+            active?: boolean
+            domainId?: string | null
+        }
+    ) {
+        const existing = await this.getBadgeMilestoneById(id)
+        if (!existing.domain?.id) {
+            throw new Error('BADGE_MILESTONE_NOT_FOUND')
+        }
+
+        await this.assertBadgeDomainScope(user, existing.domain.id)
+
+        const nextDomainId = payload.domainId === undefined ? existing.domain.id : payload.domainId
+        if (!nextDomainId) {
+            throw new Error('BADGE_DOMAIN_REQUIRED')
+        }
+
+        await this.assertBadgeDomainScope(user, nextDomainId)
+
+        return this.updateBadgeMilestone(id, payload)
     }
 
     static async getLearningEvents(params: {
@@ -2296,30 +2367,119 @@ export class TrainingOpsService {
         return series
     }
 
+    static async createScopedLearningSeries(
+        user: TrainingOpsOperator,
+        payload: {
+            name: string
+            slug: string
+            type: LearningSeriesType
+            domainId?: string | null
+            description?: string | null
+            cadence?: string | null
+            isActive: boolean
+            badgeEligible: boolean
+            countsTowardPerformance: boolean
+            defaultStarValue?: number | null
+            ownerId?: string | null
+        }
+    ) {
+        this.ensureTrainingOpsOperator(user)
+
+        if (user.role === 'SME') {
+            if (!payload.domainId) {
+                throw new Error('SME_SERIES_DOMAIN_REQUIRED')
+            }
+
+            await this.assertScopeAccess(user, { domainId: payload.domainId })
+        }
+
+        return this.createLearningSeriesRecord({
+            ...payload,
+            ownerId: user.role === 'SME' ? user.id : payload.ownerId,
+        })
+    }
+
+    static async getScopedLearningSeriesById(user: TrainingOpsOperator, id: string) {
+        this.ensureTrainingOpsOperator(user)
+
+        const series = await this.getLearningSeriesById(id)
+
+        if (user.role === 'SME') {
+            await this.assertScopeAccess(user, {
+                seriesId: series.id,
+                domainId: series.domain?.id ?? null,
+            })
+        }
+
+        return series
+    }
+
+    static async updateScopedLearningSeries(
+        user: TrainingOpsOperator,
+        id: string,
+        payload: {
+            name?: string
+            slug?: string
+            type?: LearningSeriesType
+            domainId?: string | null
+            description?: string | null
+            cadence?: string | null
+            isActive?: boolean
+            badgeEligible?: boolean
+            countsTowardPerformance?: boolean
+            defaultStarValue?: number | null
+            ownerId?: string | null
+        }
+    ) {
+        this.ensureTrainingOpsOperator(user)
+
+        const existingSeries = await this.getLearningSeriesById(id)
+
+        if (user.role === 'SME') {
+            await this.assertScopeAccess(user, {
+                seriesId: existingSeries.id,
+                domainId: existingSeries.domain?.id ?? null,
+            })
+
+            const nextDomainId = payload.domainId === undefined ? existingSeries.domain?.id ?? null : payload.domainId
+
+            if (!nextDomainId) {
+                throw new Error('SME_SERIES_DOMAIN_REQUIRED')
+            }
+
+            await this.assertScopeAccess(user, { domainId: nextDomainId })
+
+            return this.updateLearningSeriesRecord(id, {
+                ...payload,
+                ownerId: existingSeries.owner?.id ?? null,
+            })
+        }
+
+        return this.updateLearningSeriesRecord(id, payload)
+    }
+
     static async getScopedBadgeLadders(user: TrainingOpsOperator) {
         this.ensureTrainingOpsOperator(user)
 
-        const { series } = await this.getScopedSummary(user)
-        const scopedSeries = series.filter((item) => item.badgeEligible)
-        const seriesIds = scopedSeries.map((item) => item.id)
+        const { domains } = await this.getScopedSummary(user)
+        const domainIds = domains.map((item) => item.id)
 
-        if (seriesIds.length === 0) {
+        if (domainIds.length === 0) {
             return {
-                series: [],
-                templates: [],
-                seriesLadders: [],
+                domains: [],
+                domainLadders: [],
                 recentUnlocks: [],
             }
         }
 
-        const [milestones, recentUnlocks, learnerCounts, templates] = await Promise.all([
+        const [milestones, recentUnlocks, learnerCounts] = await Promise.all([
             prisma.badgeMilestone.findMany({
                 where: {
                     active: true,
-                    learningSeriesId: { in: seriesIds },
+                    domainId: { in: domainIds },
                 },
                 include: {
-                    learningSeries: {
+                    domain: {
                         select: {
                             id: true,
                             name: true,
@@ -2332,11 +2492,16 @@ export class TrainingOpsService {
                         },
                     },
                 },
-                orderBy: [{ learningSeriesId: 'asc' }, { thresholdStars: 'asc' }, { name: 'asc' }],
+                orderBy: [{ domainId: 'asc' }, { thresholdStars: 'asc' }, { name: 'asc' }],
             }),
             prisma.badgeAward.findMany({
                 where: {
-                    learningSeriesId: { in: seriesIds },
+                    domainId: { in: domainIds },
+                    badge: {
+                        is: {
+                            domainId: { in: domainIds },
+                        },
+                    },
                 },
                 include: {
                     user: {
@@ -2354,7 +2519,7 @@ export class TrainingOpsService {
                             thresholdStars: true,
                         },
                     },
-                    learningSeries: {
+                    domain: {
                         select: {
                             id: true,
                             name: true,
@@ -2377,77 +2542,54 @@ export class TrainingOpsService {
                 orderBy: { awardedAt: 'desc' },
                 take: 20,
             }),
-            prisma.$queryRaw<Array<{ learningSeriesId: string; recognizedLearners: bigint | number }>>(Prisma.sql`
-                SELECT ba."learningSeriesId" AS "learningSeriesId",
+            prisma.$queryRaw<Array<{ domainId: string; recognizedLearners: bigint | number }>>(Prisma.sql`
+                SELECT ba."domainId" AS "domainId",
                        COUNT(DISTINCT ba."userId")::bigint AS "recognizedLearners"
                 FROM "badge_awards" ba
-                WHERE ba."learningSeriesId" IN (${Prisma.join(seriesIds)})
-                GROUP BY ba."learningSeriesId"
+                JOIN "badge_milestones" bm ON bm."id" = ba."badgeId"
+                WHERE ba."domainId" IN (${Prisma.join(domainIds)})
+                GROUP BY ba."domainId"
             `),
-            prisma.badgeMilestone.findMany({
-                where: {
-                    active: true,
-                    domainId: null,
-                    learningSeriesId: null,
-                },
-                include: {
-                    _count: {
-                        select: {
-                            awards: true,
-                        },
-                    },
-                },
-                orderBy: [{ thresholdStars: 'asc' }, { name: 'asc' }],
-            }),
         ])
 
-        const learnerCountBySeries = new Map(
-            learnerCounts.map((row) => [row.learningSeriesId, Number(row.recognizedLearners)])
+        const learnerCountByDomain = new Map(
+            learnerCounts.map((row) => [row.domainId, Number(row.recognizedLearners)])
         )
 
-        const milestonesBySeries = new Map<string, typeof milestones>()
+        const milestonesByDomain = new Map<string, typeof milestones>()
         for (const milestone of milestones) {
-            if (!milestone.learningSeriesId || !milestone.learningSeries) continue
-            const existing = milestonesBySeries.get(milestone.learningSeriesId) ?? []
+            if (!milestone.domainId || !milestone.domain) continue
+            const existing = milestonesByDomain.get(milestone.domainId) ?? []
             existing.push(milestone)
-            milestonesBySeries.set(milestone.learningSeriesId, existing)
+            milestonesByDomain.set(milestone.domainId, existing)
         }
 
-        const latestUnlockBySeries = new Map<string, Date>()
+        const latestUnlockByDomain = new Map<string, Date>()
         for (const unlock of recentUnlocks) {
-            if (!unlock.learningSeriesId || latestUnlockBySeries.has(unlock.learningSeriesId)) continue
-            latestUnlockBySeries.set(unlock.learningSeriesId, unlock.awardedAt)
+            if (!unlock.domainId || latestUnlockByDomain.has(unlock.domainId)) continue
+            latestUnlockByDomain.set(unlock.domainId, unlock.awardedAt)
         }
 
         return {
-            series: scopedSeries.map((item) => ({
+            domains: domains.map((item) => ({
                 id: item.id,
                 name: item.name,
                 slug: item.slug,
             })),
-            templates: templates.map((template) => ({
-                id: template.id,
-                name: template.name,
-                slug: template.slug,
-                description: template.description,
-                icon: template.icon,
-                thresholdStars: template.thresholdStars,
-                awardCount: template._count.awards,
-            })),
-            seriesLadders: scopedSeries.map((item) => {
-                const seriesMilestones = milestonesBySeries.get(item.id) ?? []
-                const totalUnlocks = seriesMilestones.reduce((sum, milestone) => sum + milestone._count.awards, 0)
+            domainLadders: domains.map((item) => {
+                const domainMilestones = milestonesByDomain.get(item.id) ?? []
+                const totalUnlocks = domainMilestones.reduce((sum, milestone) => sum + milestone._count.awards, 0)
 
                 return {
-                    learningSeries: {
+                    domain: {
                         id: item.id,
                         name: item.name,
                         slug: item.slug,
                     },
                     totalUnlocks,
-                    recognizedLearners: learnerCountBySeries.get(item.id) ?? 0,
-                    latestUnlockedAt: latestUnlockBySeries.get(item.id) ?? null,
-                    milestones: seriesMilestones.map((milestone) => ({
+                    recognizedLearners: learnerCountByDomain.get(item.id) ?? 0,
+                    latestUnlockedAt: latestUnlockByDomain.get(item.id) ?? null,
+                    milestones: domainMilestones.map((milestone) => ({
                         id: milestone.id,
                         name: milestone.name,
                         slug: milestone.slug,
@@ -2463,129 +2605,11 @@ export class TrainingOpsService {
                 awardedAt: award.awardedAt,
                 user: award.user,
                 badge: award.badge,
-                learningSeries: award.learningSeries!,
+                domain: award.domain!,
                 event: award.event,
                 exam: award.exam,
             })),
         }
-    }
-
-    static async applyScopedBadgeTemplatesToSeries(
-        user: TrainingOpsOperator,
-        payload: {
-            learningSeriesId: string
-            templateIds: string[]
-        }
-    ) {
-        this.ensureTrainingOpsOperator(user)
-
-        const scopedSeries = await this.getScopedSeries(user)
-        const learningSeries = scopedSeries.find((item) => item.id === payload.learningSeriesId)
-
-        if (!learningSeries || !learningSeries.badgeEligible) {
-            throw new Error('TRAINING_OPS_SCOPE_FORBIDDEN')
-        }
-
-        const templateIds = Array.from(new Set(payload.templateIds.filter(Boolean)))
-        if (templateIds.length === 0) {
-            throw new Error('BADGE_TEMPLATE_REQUIRED')
-        }
-
-        const templates = await prisma.badgeMilestone.findMany({
-            where: {
-                id: { in: templateIds },
-                active: true,
-                domainId: null,
-                learningSeriesId: null,
-            },
-            select: {
-                id: true,
-                name: true,
-                slug: true,
-                description: true,
-                icon: true,
-                thresholdStars: true,
-            },
-        })
-
-        if (templates.length !== templateIds.length) {
-            throw new Error('BADGE_TEMPLATE_NOT_FOUND')
-        }
-
-        for (const template of templates) {
-            const scopedSlug = `${learningSeries.slug}--${template.slug}`
-            await prisma.badgeMilestone.upsert({
-                where: { slug: scopedSlug },
-                update: {
-                    name: template.name,
-                    description: template.description,
-                    icon: template.icon,
-                    thresholdStars: template.thresholdStars,
-                    active: true,
-                    domainId: learningSeries.domain?.id ?? null,
-                    learningSeriesId: learningSeries.id,
-                },
-                create: {
-                    name: template.name,
-                    slug: scopedSlug,
-                    description: template.description,
-                    icon: template.icon,
-                    thresholdStars: template.thresholdStars,
-                    active: true,
-                    domainId: learningSeries.domain?.id ?? null,
-                    learningSeriesId: learningSeries.id,
-                },
-            })
-        }
-
-        return this.getScopedBadgeLadders(user)
-    }
-
-    static async createScopedCustomBadgeMilestone(
-        user: TrainingOpsOperator,
-        payload: {
-            learningSeriesId: string
-            name: string
-            slug: string
-            description?: string | null
-            icon?: string | null
-            thresholdStars: number
-            active?: boolean
-        }
-    ) {
-        this.ensureTrainingOpsOperator(user)
-
-        const scopedSeries = await this.getScopedSeries(user)
-        const learningSeries = scopedSeries.find((item) => item.id === payload.learningSeriesId)
-
-        if (!learningSeries || !learningSeries.badgeEligible) {
-            throw new Error('TRAINING_OPS_SCOPE_FORBIDDEN')
-        }
-
-        const scopedSlug = `${learningSeries.slug}--${payload.slug}`
-        const existing = await prisma.badgeMilestone.findUnique({
-            where: { slug: scopedSlug },
-            select: { id: true },
-        })
-
-        if (existing) {
-            throw new Error('BADGE_MILESTONE_SLUG_EXISTS')
-        }
-
-        await prisma.badgeMilestone.create({
-            data: {
-                name: payload.name,
-                slug: scopedSlug,
-                description: payload.description ?? null,
-                icon: payload.icon ?? null,
-                thresholdStars: payload.thresholdStars,
-                active: payload.active ?? true,
-                domainId: learningSeries.domain?.id ?? null,
-                learningSeriesId: learningSeries.id,
-            },
-        })
-
-        return this.getScopedBadgeLadders(user)
     }
 
     static async getScopedEvents(

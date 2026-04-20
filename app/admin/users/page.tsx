@@ -13,8 +13,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ApiClient } from '@/lib/api-client'
-import type { AdminUser, AdminUserStats } from '@/types'
+import type { AdminUser, AdminUserStats, ProductDomainSummary } from '@/types'
 import { formatDate } from '@/lib/utils'
+import Link from 'next/link'
 import {
     Activity,
     KeyRound,
@@ -32,6 +33,13 @@ const PAGE_SIZE = 10
 
 type RoleFilter = 'all' | 'ADMIN' | 'SME' | 'USER'
 type StatusFilter = 'all' | 'ACTIVE' | 'SUSPENDED' | 'DELETED'
+type PromoteAssignmentMode = 'PRIMARY' | 'BACKUP' | 'ALREADY_ASSIGNED' | 'UNAVAILABLE'
+type DomainAssignmentOption = {
+    domain: ProductDomainSummary
+    mode: PromoteAssignmentMode
+    helperText: string
+    disabled: boolean
+}
 
 interface FilterState {
     search: string
@@ -51,6 +59,44 @@ const statusStyles: Record<Exclude<AdminUser['status'], undefined>, string> = {
     ACTIVE: 'bg-emerald-100 text-emerald-800 border-emerald-200',
     SUSPENDED: 'bg-amber-100 text-amber-800 border-amber-200',
     DELETED: 'bg-red-100 text-red-800 border-red-200',
+}
+
+const buildDomainAssignmentOptions = (
+    domains: ProductDomainSummary[],
+    targetUserId: string | null
+): DomainAssignmentOption[] => {
+    if (!targetUserId) {
+        return []
+    }
+
+    return domains.map((domain) => {
+        let mode: PromoteAssignmentMode
+        let helperText: string
+
+        if (domain.primarySme?.id === targetUserId) {
+            mode = 'ALREADY_ASSIGNED'
+            helperText = 'Already assigned as primary SME.'
+        } else if (domain.backupSme?.id === targetUserId) {
+            mode = 'ALREADY_ASSIGNED'
+            helperText = 'Already assigned as backup SME.'
+        } else if (!domain.primarySme) {
+            mode = 'PRIMARY'
+            helperText = 'Will assign as primary SME.'
+        } else if (!domain.backupSme) {
+            mode = 'BACKUP'
+            helperText = `Primary SME: ${domain.primarySme.name}. Will assign as backup SME.`
+        } else {
+            mode = 'UNAVAILABLE'
+            helperText = `Primary SME: ${domain.primarySme.name}. Backup SME: ${domain.backupSme.name}.`
+        }
+
+        return {
+            domain,
+            mode,
+            helperText,
+            disabled: mode === 'UNAVAILABLE',
+        }
+    })
 }
 
 export default function AdminUsersPage() {
@@ -99,7 +145,11 @@ export default function AdminUsersPage() {
         department: '',
         title: '',
         role: 'USER' as AdminUser['role'],
+        initialRole: 'USER' as AdminUser['role'],
     })
+    const [editDomains, setEditDomains] = useState<ProductDomainSummary[]>([])
+    const [editSelectedDomainIds, setEditSelectedDomainIds] = useState<string[]>([])
+    const [editLoadingDomains, setEditLoadingDomains] = useState(false)
     const [resetPasswordOpen, setResetPasswordOpen] = useState(false)
     const [resetPasswordUser, setResetPasswordUser] = useState<Pick<AdminUser, 'id' | 'name' | 'email'> | null>(null)
     const [resetPasswordSaving, setResetPasswordSaving] = useState(false)
@@ -108,6 +158,13 @@ export default function AdminUsersPage() {
         newPassword: '',
         confirmPassword: '',
     })
+    const [promoteSmeOpen, setPromoteSmeOpen] = useState(false)
+    const [promoteSmeTarget, setPromoteSmeTarget] = useState<Pick<AdminUser, 'id' | 'name' | 'email'> | null>(null)
+    const [promoteSmeDomains, setPromoteSmeDomains] = useState<ProductDomainSummary[]>([])
+    const [promoteSmeSelectedDomainIds, setPromoteSmeSelectedDomainIds] = useState<string[]>([])
+    const [promoteSmeLoadingDomains, setPromoteSmeLoadingDomains] = useState(false)
+    const [promoteSmeSaving, setPromoteSmeSaving] = useState(false)
+    const [promoteSmeError, setPromoteSmeError] = useState<string | null>(null)
 
     const getNextRole = (role: AdminUser['role']): AdminUser['role'] => {
         if (role === 'USER') return 'SME'
@@ -164,6 +221,71 @@ export default function AdminUsersPage() {
             cancelled = true
         }
     }, [filters, page, refreshIndex])
+
+    useEffect(() => {
+        if (!promoteSmeOpen || !promoteSmeTarget) {
+            return
+        }
+
+        let cancelled = false
+
+        const loadDomains = async () => {
+            try {
+                setPromoteSmeLoadingDomains(true)
+                setPromoteSmeError(null)
+                const response = await ApiClient.getTrainingOpsDomains({ limit: 200 })
+
+                if (cancelled) return
+
+                setPromoteSmeDomains(response.data)
+            } catch (err) {
+                if (cancelled) return
+                setPromoteSmeError(err instanceof Error ? err.message : 'Failed to load product domains')
+            } finally {
+                if (!cancelled) {
+                    setPromoteSmeLoadingDomains(false)
+                }
+            }
+        }
+
+        void loadDomains()
+
+        return () => {
+            cancelled = true
+        }
+    }, [promoteSmeOpen, promoteSmeTarget])
+
+    useEffect(() => {
+        if (!editOpen) {
+            return
+        }
+
+        let cancelled = false
+
+        const loadDomains = async () => {
+            try {
+                setEditLoadingDomains(true)
+                const response = await ApiClient.getTrainingOpsDomains({ limit: 200 })
+
+                if (cancelled) return
+
+                setEditDomains(response.data)
+            } catch (err) {
+                if (cancelled) return
+                setEditError(err instanceof Error ? err.message : 'Failed to load product domains')
+            } finally {
+                if (!cancelled) {
+                    setEditLoadingDomains(false)
+                }
+            }
+        }
+
+        void loadDomains()
+
+        return () => {
+            cancelled = true
+        }
+    }, [editOpen])
 
     const handleRoleFilterChange = (value: RoleFilter) => {
         setFilters(prev => ({ ...prev, role: value }))
@@ -258,7 +380,9 @@ export default function AdminUsersPage() {
             department: user.department || '',
             title: user.title || '',
             role: user.role,
+            initialRole: user.role,
         })
+        setEditSelectedDomainIds(user.domainAssignments.map((assignment) => assignment.domainId))
         setEditError(null)
         setEditOpen(true)
     }
@@ -286,7 +410,11 @@ export default function AdminUsersPage() {
             department: '',
             title: '',
             role: 'USER',
+            initialRole: 'USER',
         })
+        setEditDomains([])
+        setEditSelectedDomainIds([])
+        setEditLoadingDomains(false)
         setEditError(null)
     }
 
@@ -297,6 +425,15 @@ export default function AdminUsersPage() {
         })
         setResetPasswordError(null)
         setResetPasswordUser(null)
+    }
+
+    const resetPromoteSmeDialog = () => {
+        setPromoteSmeTarget(null)
+        setPromoteSmeDomains([])
+        setPromoteSmeSelectedDomainIds([])
+        setPromoteSmeError(null)
+        setPromoteSmeSaving(false)
+        setPromoteSmeLoadingDomains(false)
     }
 
     const handleEditSubmit = async (event: React.FormEvent) => {
@@ -319,6 +456,11 @@ export default function AdminUsersPage() {
             return
         }
 
+        if (editForm.role === 'SME' && editSelectedDomainIds.length === 0) {
+            setEditError('Select at least one domain for an SME user')
+            return
+        }
+
         setEditingUserId(editForm.id)
         try {
             await ApiClient.updateUser(editForm.id, {
@@ -328,6 +470,7 @@ export default function AdminUsersPage() {
                 department: department ? department : null,
                 title: title ? title : null,
                 role: editForm.role,
+                domainIds: editForm.role === 'SME' ? editSelectedDomainIds : [],
             })
             setEditOpen(false)
             resetEditForm()
@@ -372,14 +515,60 @@ export default function AdminUsersPage() {
         }
     }
 
+    const handleOpenPromoteSmeDialog = (user: AdminUser) => {
+        setPromoteSmeTarget({
+            id: user.id,
+            name: user.name,
+            email: user.email,
+        })
+        setPromoteSmeSelectedDomainIds([])
+        setPromoteSmeDomains([])
+        setPromoteSmeError(null)
+        setPromoteSmeOpen(true)
+    }
+
+    const handlePromoteSmeSubmit = async (event: React.FormEvent) => {
+        event.preventDefault()
+
+        if (!promoteSmeTarget) {
+            setPromoteSmeError('Invalid user')
+            return
+        }
+
+        if (promoteSmeSelectedDomainIds.length === 0) {
+            setPromoteSmeError('Select at least one domain before promoting this user to SME')
+            return
+        }
+
+        setPromoteSmeSaving(true)
+        setPromoteSmeError(null)
+
+        try {
+            await ApiClient.promoteUserToSme(promoteSmeTarget.id, {
+                domainIds: promoteSmeSelectedDomainIds,
+            })
+            setPromoteSmeOpen(false)
+            resetPromoteSmeDialog()
+            refreshData()
+        } catch (err) {
+            setPromoteSmeError(err instanceof Error ? err.message : 'Unable to promote user to SME')
+        } finally {
+            setPromoteSmeSaving(false)
+        }
+    }
+
     const handleRoleToggle = async (user: AdminUser) => {
         const targetRole = getNextRole(user.role)
+
+        if (targetRole === 'SME') {
+            handleOpenPromoteSmeDialog(user)
+            return
+        }
+
         const confirmMessage =
             targetRole === 'ADMIN'
                 ? `Grant admin access to ${user.name}?`
-                : targetRole === 'SME'
-                    ? `Grant SME access to ${user.name}?`
-                    : `Set ${user.name} back to learner access?`
+                : `Set ${user.name} back to learner access?`
         confirmActionRef.current = async () => {
             setActionUserId(user.id)
             try {
@@ -437,6 +626,18 @@ export default function AdminUsersPage() {
         }
     }, [users])
 
+    const promoteSmeDomainOptions = useMemo(() => {
+        return buildDomainAssignmentOptions(promoteSmeDomains, promoteSmeTarget?.id ?? null)
+    }, [promoteSmeDomains, promoteSmeTarget])
+
+    const editDomainOptions = useMemo(() => {
+        return buildDomainAssignmentOptions(editDomains, editForm.id || null)
+    }, [editDomains, editForm.id])
+
+    const orphanSmesOnPage = useMemo(() => (
+        users.filter(user => user.role === 'SME' && user.domainAssignments.length === 0)
+    ), [users])
+
     return (
         <DashboardLayout>
             <div className="space-y-6">
@@ -448,6 +649,11 @@ export default function AdminUsersPage() {
                         </p>
                     </div>
                     <div className="flex items-center gap-2">
+                        <Button asChild variant="outline">
+                            <Link href="/admin/users/sme-scope-audit">
+                                SME Scope Audit
+                            </Link>
+                        </Button>
                         <Button onClick={() => setCreateOpen(true)} disabled={loading}>
                             <UserPlus className="h-4 w-4 mr-2" />
                             Create user
@@ -643,6 +849,90 @@ export default function AdminUsersPage() {
                                         <option value="ADMIN">Admin</option>
                                     </select>
                                 </div>
+                                {editForm.role === 'SME' ? (
+                                    <div className="space-y-3 md:col-span-2">
+                                        <div className="flex items-center justify-between">
+                                            <Label>SME Domains</Label>
+                                            <span className="text-xs text-muted-foreground">
+                                                {editSelectedDomainIds.length} selected
+                                            </span>
+                                        </div>
+                                        <div className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">
+                                            SMEs must be bound to at least one domain. A user can hold multiple domains, and each selected domain will use the first available SME slot.
+                                        </div>
+                                        <div className="max-h-72 space-y-3 overflow-y-auto rounded-lg border p-3">
+                                            {editLoadingDomains ? (
+                                                <div className="flex h-24 items-center justify-center text-sm text-muted-foreground">
+                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                    Loading domains...
+                                                </div>
+                                            ) : editDomainOptions.length === 0 ? (
+                                                <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                                                    No product domains are available yet.
+                                                </div>
+                                            ) : (
+                                                editDomainOptions.map(({ domain, mode, helperText, disabled }) => {
+                                                    const checked = editSelectedDomainIds.includes(domain.id)
+
+                                                    return (
+                                                        <label
+                                                            key={domain.id}
+                                                            className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${
+                                                                disabled
+                                                                    ? 'cursor-not-allowed bg-muted/40 opacity-70'
+                                                                    : checked
+                                                                        ? 'border-primary bg-primary/5'
+                                                                        : 'hover:bg-muted/40'
+                                                            }`}
+                                                        >
+                                                            <input
+                                                                type="checkbox"
+                                                                className="mt-1 h-4 w-4 rounded border"
+                                                                disabled={disabled || Boolean(editingUserId)}
+                                                                checked={checked}
+                                                                onChange={() => {
+                                                                    setEditSelectedDomainIds((prev) =>
+                                                                        checked
+                                                                            ? prev.filter((id) => id !== domain.id)
+                                                                            : [...prev, domain.id]
+                                                                    )
+                                                                }}
+                                                            />
+                                                            <div className="min-w-0 flex-1">
+                                                                <div className="flex flex-wrap items-center gap-2">
+                                                                    <span className="font-medium text-foreground">{domain.name}</span>
+                                                                    <Badge variant="outline">{domain.category}</Badge>
+                                                                    <Badge variant="outline">{domain.track}</Badge>
+                                                                    <Badge
+                                                                        className={
+                                                                            mode === 'PRIMARY'
+                                                                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                                                                : mode === 'BACKUP'
+                                                                                    ? 'border-sky-200 bg-sky-50 text-sky-700'
+                                                                                    : mode === 'ALREADY_ASSIGNED'
+                                                                                        ? 'border-violet-200 bg-violet-50 text-violet-700'
+                                                                                        : 'border-slate-200 bg-slate-100 text-slate-600'
+                                                                        }
+                                                                        variant="outline"
+                                                                    >
+                                                                        {mode === 'PRIMARY'
+                                                                            ? 'Primary slot'
+                                                                            : mode === 'BACKUP'
+                                                                                ? 'Backup slot'
+                                                                                : mode === 'ALREADY_ASSIGNED'
+                                                                                    ? 'Already assigned'
+                                                                                    : 'Unavailable'}
+                                                                    </Badge>
+                                                                </div>
+                                                                <p className="mt-1 text-sm text-muted-foreground">{helperText}</p>
+                                                            </div>
+                                                        </label>
+                                                    )
+                                                })
+                                            )}
+                                        </div>
+                                    </div>
+                                ) : null}
                             </div>
 
                             <DialogFooter>
@@ -718,6 +1008,128 @@ export default function AdminUsersPage() {
                     </DialogContent>
                 </Dialog>
 
+                <Dialog
+                    open={promoteSmeOpen}
+                    onOpenChange={(open) => {
+                        setPromoteSmeOpen(open)
+                        if (!open) {
+                            resetPromoteSmeDialog()
+                        }
+                    }}
+                >
+                    <DialogContent className="sm:max-w-2xl">
+                        <DialogHeader>
+                            <DialogTitle>Promote SME</DialogTitle>
+                            <DialogDescription>
+                                Promote {promoteSmeTarget?.name || 'this user'} to SME and assign one or more product domains now.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <form className="space-y-4" onSubmit={handlePromoteSmeSubmit}>
+                            {promoteSmeError ? (
+                                <Alert variant="destructive">
+                                    <AlertDescription>{promoteSmeError}</AlertDescription>
+                                </Alert>
+                            ) : null}
+
+                            <div className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">
+                                Selected domains will use the first available SME slot. If `Primary SME` is empty, this user becomes primary. Otherwise, they are assigned as backup when that slot is open.
+                            </div>
+
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <Label>Assign Domains</Label>
+                                    <span className="text-xs text-muted-foreground">
+                                        {promoteSmeSelectedDomainIds.length} selected
+                                    </span>
+                                </div>
+
+                                <div className="max-h-80 space-y-3 overflow-y-auto rounded-lg border p-3">
+                                    {promoteSmeLoadingDomains ? (
+                                        <div className="flex h-24 items-center justify-center text-sm text-muted-foreground">
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            Loading domains...
+                                        </div>
+                                    ) : promoteSmeDomainOptions.length === 0 ? (
+                                        <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                                            No product domains are available yet.
+                                        </div>
+                                    ) : (
+                                        promoteSmeDomainOptions.map(({ domain, mode, helperText, disabled }) => {
+                                            const checked = promoteSmeSelectedDomainIds.includes(domain.id)
+
+                                            return (
+                                                <label
+                                                    key={domain.id}
+                                                    className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${
+                                                        disabled
+                                                            ? 'cursor-not-allowed bg-muted/40 opacity-70'
+                                                            : checked
+                                                                ? 'border-primary bg-primary/5'
+                                                                : 'hover:bg-muted/40'
+                                                    }`}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        className="mt-1 h-4 w-4 rounded border"
+                                                        disabled={disabled || promoteSmeSaving}
+                                                        checked={checked}
+                                                        onChange={() => {
+                                                            setPromoteSmeSelectedDomainIds((prev) =>
+                                                                checked
+                                                                    ? prev.filter((id) => id !== domain.id)
+                                                                    : [...prev, domain.id]
+                                                            )
+                                                        }}
+                                                    />
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <span className="font-medium text-foreground">{domain.name}</span>
+                                                            <Badge variant="outline">{domain.category}</Badge>
+                                                            <Badge variant="outline">{domain.track}</Badge>
+                                                            <Badge
+                                                                className={
+                                                                    mode === 'PRIMARY'
+                                                                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                                                        : mode === 'BACKUP'
+                                                                            ? 'border-sky-200 bg-sky-50 text-sky-700'
+                                                                            : mode === 'ALREADY_ASSIGNED'
+                                                                                ? 'border-violet-200 bg-violet-50 text-violet-700'
+                                                                                : 'border-slate-200 bg-slate-100 text-slate-600'
+                                                                }
+                                                                variant="outline"
+                                                            >
+                                                                {mode === 'PRIMARY'
+                                                                    ? 'Primary slot'
+                                                                    : mode === 'BACKUP'
+                                                                        ? 'Backup slot'
+                                                                        : mode === 'ALREADY_ASSIGNED'
+                                                                            ? 'Already assigned'
+                                                                            : 'Unavailable'}
+                                                            </Badge>
+                                                        </div>
+                                                        <p className="mt-1 text-sm text-muted-foreground">{helperText}</p>
+                                                    </div>
+                                                </label>
+                                            )
+                                        })
+                                    )}
+                                </div>
+                            </div>
+
+                            <DialogFooter>
+                                <Button type="button" variant="ghost" onClick={() => setPromoteSmeOpen(false)} disabled={promoteSmeSaving}>
+                                    Cancel
+                                </Button>
+                                <Button type="submit" disabled={promoteSmeSaving || promoteSmeLoadingDomains || promoteSmeSelectedDomainIds.length === 0}>
+                                    {promoteSmeSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                                    Promote SME
+                                </Button>
+                            </DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
+
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
                     {[
                         {
@@ -763,6 +1175,19 @@ export default function AdminUsersPage() {
                         </Card>
                     ))}
                 </div>
+
+                {orphanSmesOnPage.length > 0 ? (
+                    <Alert>
+                        <AlertDescription className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                            <span>
+                                {orphanSmesOnPage.length} SME{orphanSmesOnPage.length > 1 ? 's' : ''} on this page {orphanSmesOnPage.length > 1 ? 'have' : 'has'} no domain assignment.
+                            </span>
+                            <Button asChild size="sm" variant="outline">
+                                <Link href="/admin/users/sme-scope-audit">Open SME scope audit</Link>
+                            </Button>
+                        </AlertDescription>
+                    </Alert>
+                ) : null}
 
                 <Card>
                     <CardHeader>
@@ -895,9 +1320,24 @@ export default function AdminUsersPage() {
                                                         </div>
                                                     </td>
                                                     <td className="py-3 pr-4">
-                                                        <Badge variant={user.role === 'ADMIN' ? 'default' : user.role === 'SME' ? 'outline' : 'secondary'}>
-                                                            {user.role === 'ADMIN' ? 'Admin' : user.role === 'SME' ? 'SME' : 'Learner'}
-                                                        </Badge>
+                                                        <div className="space-y-2">
+                                                            <Badge variant={user.role === 'ADMIN' ? 'default' : user.role === 'SME' ? 'outline' : 'secondary'}>
+                                                                {user.role === 'ADMIN' ? 'Admin' : user.role === 'SME' ? 'SME' : 'Learner'}
+                                                            </Badge>
+                                                            {user.role === 'SME' ? (
+                                                                user.domainAssignments.length > 0 ? (
+                                                                    <div className="flex flex-wrap gap-1.5">
+                                                                        {user.domainAssignments.map((assignment) => (
+                                                                            <Badge key={`${assignment.domainId}-${assignment.slot}`} variant="outline" className="text-xs">
+                                                                                {assignment.domainName} · {assignment.slot === 'PRIMARY' ? 'Primary' : 'Backup'}
+                                                                            </Badge>
+                                                                        ))}
+                                                                    </div>
+                                                                ) : (
+                                                                    <p className="text-xs font-medium text-red-600">No domains assigned</p>
+                                                                )
+                                                            ) : null}
+                                                        </div>
                                                     </td>
                                                     <td className="py-3 pr-4">
                                                         <Badge className={statusStyles[user.status]} variant="outline">

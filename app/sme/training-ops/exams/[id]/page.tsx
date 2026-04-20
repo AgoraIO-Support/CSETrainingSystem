@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useSearchParams } from 'next/navigation'
-import { ArrowLeft, Loader2 } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -68,6 +68,47 @@ function SmeTrainingOpsExamDetailPageContent() {
     return (
         <DashboardLayout>
             <div className="space-y-6">
+                <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                    {seriesContextId || exam.series?.id ? (
+                        <>
+                            <Link href="/sme/training-ops/domains" className="transition-colors hover:text-foreground">
+                                My Domains
+                            </Link>
+                            <ChevronRight className="h-4 w-4" />
+                            <Link href="/sme/training-ops/series" className="transition-colors hover:text-foreground">
+                                My Series
+                            </Link>
+                            <ChevronRight className="h-4 w-4" />
+                            <Link
+                                href={`/sme/training-ops/series/${exam.series?.id ?? seriesContextId}`}
+                                className="transition-colors hover:text-foreground"
+                            >
+                                {exam.series?.name ?? 'Series'}
+                            </Link>
+                            <ChevronRight className="h-4 w-4" />
+                        </>
+                    ) : null}
+                    {exam.event?.id ? (
+                        <>
+                            <Link
+                                href={`/sme/training-ops/events/${exam.event.id}${seriesContextId ? `?seriesId=${seriesContextId}` : exam.series?.id ? `?seriesId=${exam.series.id}` : ''}`}
+                                className="transition-colors hover:text-foreground"
+                            >
+                                {exam.event.title}
+                            </Link>
+                            <ChevronRight className="h-4 w-4" />
+                        </>
+                    ) : !seriesContextId && !exam.series?.id ? (
+                        <>
+                            <Link href="/sme/training-ops/exams" className="transition-colors hover:text-foreground">
+                                Managed Exams
+                            </Link>
+                            <ChevronRight className="h-4 w-4" />
+                        </>
+                    ) : null}
+                    <span className="font-medium text-foreground">{exam.title}</span>
+                </nav>
+
                 <div className="flex items-center gap-4">
                     <Link href={backHref}>
                         <Button variant="ghost" size="icon">

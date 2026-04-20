@@ -213,9 +213,6 @@ model LearningSeries {
 
   events LearningEvent[]
   exams  Exam[]
-  badgeMilestones BadgeMilestone[]
-  starAwards      StarAward[]
-  badgeAwards     BadgeAward[]
 
   @@index([slug])
   @@index([type])
@@ -275,7 +272,7 @@ model BadgeMilestone {
   id String @id @default(uuid())
 
   name           String
-  slug           String  @unique
+  slug           String
   description    String? @db.Text
   icon           String?
   thresholdStars Int
@@ -284,17 +281,14 @@ model BadgeMilestone {
   domainId String?
   domain   ProductDomain? @relation(fields: [domainId], references: [id], onDelete: SetNull)
 
-  learningSeriesId String?
-  learningSeries   LearningSeries? @relation(fields: [learningSeriesId], references: [id], onDelete: SetNull)
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   awards BadgeAward[]
 
   @@index([domainId])
-  @@index([learningSeriesId])
   @@index([active])
+  @@unique([domainId, slug])
   @@map("badge_milestones")
 }
 
@@ -306,9 +300,6 @@ model StarAward {
 
   domainId String?
   domain   ProductDomain? @relation(fields: [domainId], references: [id], onDelete: SetNull)
-
-  learningSeriesId String?
-  learningSeries   LearningSeries? @relation(fields: [learningSeriesId], references: [id], onDelete: SetNull)
 
   eventId String?
   event   LearningEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
@@ -323,7 +314,6 @@ model StarAward {
 
   @@index([userId, awardedAt])
   @@index([domainId])
-  @@index([learningSeriesId])
   @@index([eventId])
   @@index([examId])
   @@map("star_awards")
@@ -341,9 +331,6 @@ model BadgeAward {
   domainId String?
   domain   ProductDomain? @relation(fields: [domainId], references: [id], onDelete: SetNull)
 
-  learningSeriesId String?
-  learningSeries   LearningSeries? @relation(fields: [learningSeriesId], references: [id], onDelete: SetNull)
-
   eventId String?
   event   LearningEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
 
@@ -355,7 +342,6 @@ model BadgeAward {
   @@unique([badgeId, userId])
   @@index([userId, awardedAt])
   @@index([domainId])
-  @@index([learningSeriesId])
   @@index([eventId])
   @@index([examId])
   @@map("badge_awards")

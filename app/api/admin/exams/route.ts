@@ -75,7 +75,8 @@ export const POST = withSmeOrAdminAuth(async (req: NextRequest, user) => {
         availableFrom,
         deadline,
       },
-      user.id
+      user.id,
+      { actorRole: user.role }
     );
 
     return NextResponse.json(
@@ -185,6 +186,19 @@ export const POST = withSmeOrAdminAuth(async (req: NextRequest, user) => {
             },
           },
           { status: 404 }
+        );
+      }
+
+      if (error.message === 'SME_REWARD_POLICY_RESTRICTED') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'AUTH_003',
+              message: 'SME cannot configure formal or performance-tracked exams.',
+            },
+          },
+          { status: 403 }
         );
       }
     }

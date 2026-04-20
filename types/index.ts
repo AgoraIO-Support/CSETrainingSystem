@@ -23,6 +23,12 @@ export interface AdminUser {
     lastLoginAt?: string | Date | null
     enrollmentCount: number
     completedCourses: number
+    domainAssignments: Array<{
+        domainId: string
+        domainName: string
+        domainSlug: string
+        slot: 'PRIMARY' | 'BACKUP'
+    }>
 }
 
 export interface SmeWorkspaceSummary {
@@ -49,22 +55,13 @@ export interface SmeWorkspaceSummary {
 }
 
 export interface SmeBadgeLadderOverview {
-    series: Array<{
+    domains: Array<{
         id: string
         name: string
         slug: string
     }>
-    templates: Array<{
-        id: string
-        name: string
-        slug: string
-        description?: string | null
-        icon?: string | null
-        thresholdStars: number
-        awardCount: number
-    }>
-    seriesLadders: Array<{
-        learningSeries: {
+    domainLadders: Array<{
+        domain: {
             id: string
             name: string
             slug: string
@@ -96,7 +93,7 @@ export interface SmeBadgeLadderOverview {
             slug: string
             thresholdStars: number
         }
-        learningSeries: {
+        domain: {
             id: string
             name: string
             slug: string
@@ -118,6 +115,16 @@ export interface AdminUserStats {
     adminUsers: number
     smeUsers: number
     newThisMonth: number
+}
+
+export interface AdminSmeScopeAudit {
+    summary: {
+        totalSmes: number
+        boundSmes: number
+        orphanSmes: number
+        multiDomainSmes: number
+    }
+    orphans: AdminUser[]
 }
 
 export interface SystemAnalyticsEntry {
@@ -403,11 +410,6 @@ export interface BadgeMilestoneSummary {
         name: string
         slug: string
     } | null
-    learningSeries?: {
-        id: string
-        name: string
-        slug: string
-    } | null
     awardCount: number
     createdAt: string | Date
     updatedAt: string | Date
@@ -416,8 +418,7 @@ export interface BadgeMilestoneSummary {
 export interface TrainingOpsBadgeImportItemSummary {
     slug: string
     name: string
-    scope: 'SERIES' | 'GLOBAL' | 'DOMAIN'
-    learningSeriesSlug?: string | null
+    scope: 'DOMAIN'
     domainSlug?: string | null
     thresholdStars: number
     action: 'plan' | 'upserted'
@@ -426,7 +427,7 @@ export interface TrainingOpsBadgeImportItemSummary {
 export interface TrainingOpsBadgeImportSummary {
     version: number
     scopeModel: string
-    activeSeries: string[]
+    activeDomains: string[]
     dryRun: boolean
     totals: {
         items: number
@@ -689,11 +690,6 @@ export interface LearnerRewardsOverview {
             name: string
             slug: string
         } | null
-        learningSeries?: {
-            id: string
-            name: string
-            slug: string
-        } | null
         event?: {
             id: string
             title: string
@@ -719,11 +715,6 @@ export interface LearnerRewardsOverview {
             name: string
             slug: string
         } | null
-        learningSeries?: {
-            id: string
-            name: string
-            slug: string
-        } | null
         event?: {
             id: string
             title: string
@@ -735,8 +726,8 @@ export interface LearnerRewardsOverview {
         stars: number
         badges: number
     }>
-    seriesProgressions: Array<{
-        learningSeries: {
+    domainProgressions: Array<{
+        domain: {
             id: string
             name: string
             slug: string
@@ -764,6 +755,11 @@ export interface LearnerRewardsOverview {
         slug: string
         thresholdStars: number
         remainingStars: number
+        domain: {
+            id: string
+            name: string
+            slug: string
+        }
     } | null
 }
 

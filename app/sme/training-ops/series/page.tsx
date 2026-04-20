@@ -36,7 +36,6 @@ export default function SmeTrainingOpsSeriesPage() {
         total: series.length,
         active: series.filter((item) => item.isActive).length,
         badgeEligible: series.filter((item) => item.badgeEligible).length,
-        performance: series.filter((item) => item.countsTowardPerformance).length,
     }), [series])
 
     return (
@@ -50,8 +49,11 @@ export default function SmeTrainingOpsSeriesPage() {
                         </p>
                     </div>
                     <div className="flex gap-3">
+                        <Link href="/sme/training-ops/series/new">
+                            <Button>Create Series</Button>
+                        </Link>
                         <Link href="/sme/training-ops/events/new">
-                            <Button>Create Event</Button>
+                            <Button variant="outline">Create Event</Button>
                         </Link>
                         <Link href="/sme/training-ops/events">
                             <Button variant="outline">My Events</Button>
@@ -59,11 +61,10 @@ export default function SmeTrainingOpsSeriesPage() {
                     </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                     <Card><CardHeader className="pb-2"><CardDescription>Total</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.total}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Series in your SME scope.</p></CardContent></Card>
                     <Card><CardHeader className="pb-2"><CardDescription>Active</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.active}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Currently schedulable series.</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2"><CardDescription>Badge Eligible</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.badgeEligible}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Series that can award stars and badges.</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2"><CardDescription>Performance-linked</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.performance}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Series tied to formal measurement.</p></CardContent></Card>
+                    <Card><CardHeader className="pb-2"><CardDescription>Domain Badge Enabled</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.badgeEligible}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Series that can contribute stars toward domain badges.</p></CardContent></Card>
                 </div>
 
                 <Card>
@@ -85,7 +86,6 @@ export default function SmeTrainingOpsSeriesPage() {
                                             <div className="flex flex-wrap gap-2">
                                                 <Badge>{item.type}</Badge>
                                                 {item.domain ? <Badge variant="outline">{item.domain.name}</Badge> : null}
-                                                {item.countsTowardPerformance ? <Badge variant="outline">Performance</Badge> : null}
                                             </div>
                                             <div>
                                                 <p className="text-lg font-semibold">{item.name}</p>
@@ -98,6 +98,9 @@ export default function SmeTrainingOpsSeriesPage() {
                                             <Link href={`/sme/training-ops/series/${item.id}`}>
                                                 <Button variant="outline">Open Series</Button>
                                             </Link>
+                                            <Link href={`/sme/training-ops/series/${item.id}/edit`}>
+                                                <Button variant="outline">Edit Series</Button>
+                                            </Link>
                                             <Link href={`/sme/training-ops/events?seriesId=${item.id}`}>
                                                 <Button variant="outline">View Events</Button>
                                             </Link>
@@ -105,7 +108,7 @@ export default function SmeTrainingOpsSeriesPage() {
                                     </div>
                                     <div className="mt-4 grid gap-3 md:grid-cols-4 text-sm text-muted-foreground">
                                         <div>Default stars: {item.defaultStarValue ?? '—'}</div>
-                                        <div>Badge eligible: {item.badgeEligible ? 'Yes' : 'No'}</div>
+                                        <div>Domain badges: {item.badgeEligible ? 'Enabled' : 'Disabled'}</div>
                                         <div>{item.counts.events} events</div>
                                         <div>{item.counts.exams} exams</div>
                                     </div>

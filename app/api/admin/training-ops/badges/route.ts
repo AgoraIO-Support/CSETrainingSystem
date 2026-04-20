@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withAdminAuth } from '@/lib/auth-middleware'
 import { TrainingOpsService } from '@/lib/services/training-ops.service'
 import { createBadgeMilestoneSchema } from '@/lib/validations'
+import { z } from 'zod'
 
 const parseBooleanParam = (value: string | null): boolean | undefined => {
     if (value === 'true') return true
@@ -16,7 +17,6 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
         const limit = Number(searchParams.get('limit') || '20')
         const search = searchParams.get('search') || undefined
         const domainId = searchParams.get('domainId') || undefined
-        const learningSeriesId = searchParams.get('learningSeriesId') || undefined
         const active = parseBooleanParam(searchParams.get('active'))
 
         const data = await TrainingOpsService.getBadgeMilestones({
@@ -24,7 +24,6 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
             limit,
             search,
             domainId,
-            learningSeriesId,
             active,
         })
 
@@ -61,14 +60,17 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
     } catch (error) {
         console.error('Create badge milestone error:', error)
 
+        const status = error instanceof z.ZodError ? 400 : 500
         const message =
-            error instanceof Error && error.message === 'BADGE_MILESTONE_SLUG_EXISTS'
-                ? 'A badge milestone with this slug already exists'
-                : error instanceof Error && error.message === 'PRODUCT_DOMAIN_NOT_FOUND'
-                    ? 'Selected product domain no longer exists'
-                    : error instanceof Error && error.message === 'LEARNING_SERIES_NOT_FOUND'
-                        ? 'Selected learning series no longer exists'
-                    : 'Failed to create badge milestone'
+            error instanceof z.ZodError
+                ? error.issues[0]?.message || 'Invalid badge milestone payload'
+                : error instanceof Error && error.message === 'BADGE_MILESTONE_SLUG_EXISTS'
+                    ? 'A badge milestone with this slug already exists in the selected domain'
+                    : error instanceof Error && error.message === 'BADGE_THRESHOLD_EXISTS'
+                        ? 'A badge milestone already uses this threshold in the selected domain'
+                    : error instanceof Error && error.message === 'PRODUCT_DOMAIN_NOT_FOUND'
+                        ? 'Selected product domain no longer exists'
+                        : 'Failed to create badge milestone'
 
         return NextResponse.json(
             {
@@ -78,7 +80,7 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
                     message,
                 },
             },
-            { status: 500 }
+            { status }
         )
     }
 })

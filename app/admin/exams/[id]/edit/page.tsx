@@ -16,6 +16,39 @@ import { ArrowLeft, Loader2, Save, Send, CheckCircle, XCircle } from 'lucide-rea
 import Link from 'next/link'
 import type { Exam, ExamStatus } from '@/types'
 
+type AssessmentKindOption = 'PRACTICE' | 'READINESS' | 'FORMAL'
+
+const isFormalSeriesType = (seriesType?: string | null) =>
+    seriesType === 'QUARTERLY_FINAL' || seriesType === 'YEAR_END_FINAL'
+
+const formatAssessmentKindLabel = (kind: AssessmentKindOption) =>
+    kind.charAt(0) + kind.slice(1).toLowerCase()
+
+const getDefaultAssessmentKind = (input?: {
+    countsTowardPerformance?: boolean
+    format?: string | null
+    seriesType?: string | null
+}, options?: {
+    allowFormal?: boolean
+} | null): AssessmentKindOption => {
+    if (
+        options?.allowFormal !== false &&
+        (
+            input?.countsTowardPerformance ||
+            input?.format === 'FINAL_EXAM' ||
+            isFormalSeriesType(input?.seriesType)
+        )
+    ) {
+        return 'FORMAL'
+    }
+
+    if (input?.format === 'RELEASE_BRIEFING' || input?.seriesType === 'RELEASE_READINESS') {
+        return 'READINESS'
+    }
+
+    return 'PRACTICE'
+}
+
 const statusConfig: Record<ExamStatus, { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }> = {
     DRAFT: { label: 'Draft', variant: 'secondary' },
     PENDING_REVIEW: { label: 'Pending Review', variant: 'outline' },
@@ -36,6 +69,7 @@ function EditExamPageContent({ params }: PageProps) {
     const searchParams = useSearchParams()
     const isSmeMode = searchParams.get('sme') === '1'
     const [exam, setExam] = useState<Exam | null>(null)
+    const [linkedEvent, setLinkedEvent] = useState<Awaited<ReturnType<typeof ApiClient.getTrainingOpsEvent>>['data'] | null>(null)
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -78,7 +112,7 @@ function EditExamPageContent({ params }: PageProps) {
         timezone: 'UTC',
         availableFrom: '',
         deadline: '',
-        assessmentKind: 'PRACTICE' as 'PRACTICE' | 'READINESS' | 'FORMAL',
+        assessmentKind: 'PRACTICE' as AssessmentKindOption,
         awardsStars: false,
         starValue: '0',
         countsTowardPerformance: false,
@@ -89,7 +123,19 @@ function EditExamPageContent({ params }: PageProps) {
             try {
                 const response = await ApiClient.getAdminExam(examId)
                 const data = response.data
+                let nextLinkedEvent: Awaited<ReturnType<typeof ApiClient.getTrainingOpsEvent>>['data'] | null = null
+
+                if (data.learningEventId) {
+                    try {
+                        const linkedEventResponse = await ApiClient.getTrainingOpsEvent(data.learningEventId)
+                        nextLinkedEvent = linkedEventResponse.data
+                    } catch {
+                        nextLinkedEvent = null
+                    }
+                }
+
                 setExam(data)
+                setLinkedEvent(nextLinkedEvent)
                 setForm({
                     title: data.title,
                     description: data.description || '',
@@ -105,7 +151,13 @@ function EditExamPageContent({ params }: PageProps) {
                     timezone: data.timezone,
                     availableFrom: utcToLocalDateTimeInputValue(data.availableFrom, data.timezone),
                     deadline: utcToLocalDateTimeInputValue(data.deadline, data.timezone),
-                    assessmentKind: data.assessmentKind ?? 'PRACTICE',
+                    assessmentKind:
+                        data.assessmentKind ??
+                        getDefaultAssessmentKind({
+                            countsTowardPerformance: nextLinkedEvent?.countsTowardPerformance ?? data.countsTowardPerformance,
+                            format: nextLinkedEvent?.format,
+                            seriesType: nextLinkedEvent?.series?.type,
+                        }, { allowFormal: !isSmeMode }),
                     awardsStars: data.awardsStars ?? false,
                     starValue: data.starValue?.toString() ?? '0',
                     countsTowardPerformance: data.countsTowardPerformance ?? false,
@@ -117,7 +169,37 @@ function EditExamPageContent({ params }: PageProps) {
             }
         }
         loadExam()
-    }, [examId])
+    }, [examId, isSmeMode])
+
+    const smeManagedRewardPolicy = isSmeMode && (
+        exam?.assessmentKind === 'FORMAL' ||
+        Boolean(exam?.countsTowardPerformance)
+    )
+
+    useEffect(() => {
+        if (!isSmeMode || form.assessmentKind !== 'FORMAL' || exam?.assessmentKind === 'FORMAL') {
+            return
+        }
+
+        setForm((prev) => ({
+            ...prev,
+            assessmentKind: getDefaultAssessmentKind({
+                format: linkedEvent?.format,
+                seriesType: linkedEvent?.series?.type,
+            }, { allowFormal: false }),
+        }))
+    }, [exam?.assessmentKind, form.assessmentKind, isSmeMode, linkedEvent?.format, linkedEvent?.series?.type])
+
+    useEffect(() => {
+        if (!isSmeMode || !form.countsTowardPerformance || exam?.countsTowardPerformance) {
+            return
+        }
+
+        setForm((prev) => ({
+            ...prev,
+            countsTowardPerformance: false,
+        }))
+    }, [exam?.countsTowardPerformance, form.countsTowardPerformance, isSmeMode])
 
     useEffect(() => {
         if (isSmeMode) {
@@ -199,10 +281,10 @@ function EditExamPageContent({ params }: PageProps) {
                 timezone: form.timezone,
                 availableFrom: form.availableFrom || null,
                 deadline: form.deadline || null,
-                assessmentKind: form.assessmentKind,
+                assessmentKind: isSmeMode && smeManagedRewardPolicy ? undefined : form.assessmentKind,
                 awardsStars: form.awardsStars,
                 starValue: form.awardsStars ? (parseInt(form.starValue) || 0) : 0,
-                countsTowardPerformance: form.countsTowardPerformance,
+                countsTowardPerformance: isSmeMode ? undefined : form.countsTowardPerformance,
             }
 
             const response = await ApiClient.updateExam(examId, payload)
@@ -595,61 +677,87 @@ function EditExamPageContent({ params }: PageProps) {
                             <CardDescription>Configure how this assessment contributes to rewards and certification.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                            <div className="grid gap-4 xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
                                 <div className="space-y-2">
                                     <Label htmlFor="assessmentKind">Assessment Kind</Label>
-                                    <select
-                                        id="assessmentKind"
-                                        className="w-full h-10 px-3 border rounded-md bg-background"
-                                        value={form.assessmentKind}
-                                        onChange={(e) => updateForm('assessmentKind', e.target.value as 'PRACTICE' | 'READINESS' | 'FORMAL')}
-                                        disabled={!canEditExam}
-                                    >
-                                        <option value="PRACTICE">Practice</option>
-                                        <option value="READINESS">Readiness</option>
-                                        <option value="FORMAL">Formal</option>
-                                    </select>
+                                    {smeManagedRewardPolicy ? (
+                                        <Input
+                                            id="assessmentKind"
+                                            value={formatAssessmentKindLabel(
+                                                exam?.assessmentKind === 'FORMAL' ? 'FORMAL' : form.assessmentKind
+                                            )}
+                                            disabled
+                                        />
+                                    ) : (
+                                        <select
+                                            id="assessmentKind"
+                                            className="w-full h-10 px-3 border rounded-md bg-background"
+                                            value={form.assessmentKind}
+                                            onChange={(e) => updateForm('assessmentKind', e.target.value as AssessmentKindOption)}
+                                            disabled={!canEditExam}
+                                        >
+                                            <option value="PRACTICE">Practice</option>
+                                            <option value="READINESS">Readiness</option>
+                                            {!isSmeMode ? (
+                                                <option value="FORMAL">Formal</option>
+                                            ) : null}
+                                        </select>
+                                    )}
                                 </div>
-                                <div className="flex items-center justify-between rounded-lg border bg-background/70 px-4 py-3 xl:col-span-1">
-                                    <div className="space-y-0.5">
-                                        <Label>Awards Stars</Label>
-                                        <p className="text-sm text-muted-foreground">Issue stars when the learner passes</p>
+                                <div className={`grid gap-4 ${isSmeMode ? 'md:grid-cols-1' : 'md:grid-cols-2'}`}>
+                                    <div className="rounded-lg border bg-background/70 p-4 space-y-4">
+                                        <div className="flex items-center justify-between gap-4">
+                                            <div className="space-y-0.5">
+                                                <Label>Awards Stars</Label>
+                                                <p className="text-sm text-muted-foreground">Issue stars when the learner passes</p>
+                                            </div>
+                                            <Switch
+                                                checked={form.awardsStars}
+                                                onCheckedChange={(checked: boolean) => updateForm('awardsStars', checked)}
+                                                disabled={!canEditExam}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="starValue">Stars on Pass</Label>
+                                            <Input
+                                                id="starValue"
+                                                type="number"
+                                                min={0}
+                                                max={20}
+                                                value={form.starValue}
+                                                onChange={(e) => updateForm('starValue', e.target.value)}
+                                                disabled={!canEditExam || !form.awardsStars}
+                                            />
+                                        </div>
                                     </div>
-                                    <Switch
-                                        checked={form.awardsStars}
-                                        onCheckedChange={(checked: boolean) => updateForm('awardsStars', checked)}
-                                        disabled={!canEditExam}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="starValue">Stars on Pass</Label>
-                                    <Input
-                                        id="starValue"
-                                        type="number"
-                                        min={0}
-                                        max={20}
-                                        value={form.starValue}
-                                        onChange={(e) => updateForm('starValue', e.target.value)}
-                                        disabled={!canEditExam || !form.awardsStars}
-                                    />
-                                </div>
-                                <div className="flex items-center justify-between rounded-lg border bg-background/70 px-4 py-3 xl:col-span-1">
-                                    <div className="space-y-0.5">
-                                        <Label>Counts Toward Performance</Label>
-                                        <p className="text-sm text-muted-foreground">Use for tracked or formal assessments</p>
-                                    </div>
-                                    <Switch
-                                        checked={form.countsTowardPerformance}
-                                        onCheckedChange={(checked: boolean) => updateForm('countsTowardPerformance', checked)}
-                                        disabled={!canEditExam}
-                                    />
+                                    {!isSmeMode ? (
+                                        <div className="rounded-lg border bg-background/70 p-4 flex items-center justify-between gap-4">
+                                            <div className="space-y-0.5">
+                                                <Label>Counts Toward Performance</Label>
+                                                <p className="text-sm text-muted-foreground">Use for tracked or formal assessments</p>
+                                            </div>
+                                            <Switch
+                                                checked={form.countsTowardPerformance}
+                                                onCheckedChange={(checked: boolean) => updateForm('countsTowardPerformance', checked)}
+                                                disabled={!canEditExam}
+                                            />
+                                        </div>
+                                    ) : null}
+                                    {smeManagedRewardPolicy ? (
+                                        <div className="rounded-lg border bg-background/70 p-4 md:col-span-1">
+                                            <p className="text-sm font-medium">Performance Tracking</p>
+                                            <p className="mt-1 text-sm text-muted-foreground">
+                                                {exam?.countsTowardPerformance ? 'Enabled and managed by admin.' : 'Managed by admin for this exam.'}
+                                            </p>
+                                        </div>
+                                    ) : null}
                                 </div>
                             </div>
                             <div className="rounded-lg border bg-background/70 p-4">
                                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Certificate</p>
                                 <p className="mt-2 text-lg font-semibold">{certificateForm.isEnabled ? 'Enabled' : 'Not enabled'}</p>
                                 <p className="mt-1 text-sm text-muted-foreground">
-                                    Certificates should normally be reserved for formal assessments. Practice and readiness assessments are better suited to stars and badges.
+                                    Certificates are managed separately and are typically reserved for admin-managed formal assessments. Practice and readiness exams are better suited to stars and domain badges.
                                 </p>
                             </div>
                         </CardContent>

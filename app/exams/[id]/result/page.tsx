@@ -55,7 +55,7 @@ interface ResultData {
             name: string
             slug: string
             description: string | null
-            learningSeries?: {
+            domain?: {
                 id: string
                 name: string
                 slug: string
@@ -304,7 +304,7 @@ function ExamResultPageContent({ params }: PageProps) {
                                     </div>
                                 ) : (
                                     <p className="mt-1 text-sm text-muted-foreground">
-                                        Keep progressing in this series to unlock the next milestone.
+                                        Keep progressing in this domain to unlock the next milestone.
                                     </p>
                                 )}
                             </div>

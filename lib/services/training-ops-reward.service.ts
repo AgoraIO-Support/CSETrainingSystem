@@ -83,7 +83,6 @@ export class TrainingOpsRewardService {
             data: {
                 userId: attempt.userId,
                 domainId: attempt.exam.productDomainId ?? null,
-                learningSeriesId: attempt.exam.learningSeriesId ?? null,
                 eventId: attempt.exam.learningEventId ?? null,
                 examId: attempt.examId,
                 sourceType,
@@ -92,25 +91,15 @@ export class TrainingOpsRewardService {
             },
         })
 
-        const eligibleBadges = await prisma.badgeMilestone.findMany({
-            where: {
-                active: true,
-                OR: [
-                    {
-                        domainId: null,
-                        learningSeriesId: null,
-                    },
-                    {
-                        learningSeriesId: attempt.exam.learningSeriesId ?? undefined,
-                    },
-                    {
-                        learningSeriesId: null,
-                        domainId: attempt.exam.productDomainId ?? undefined,
-                    },
-                ],
-            },
-            orderBy: [{ thresholdStars: 'asc' }, { createdAt: 'asc' }],
-        })
+        const eligibleBadges = attempt.exam.productDomainId
+            ? await prisma.badgeMilestone.findMany({
+                  where: {
+                      active: true,
+                      domainId: attempt.exam.productDomainId,
+                  },
+                  orderBy: [{ thresholdStars: 'asc' }, { createdAt: 'asc' }],
+              })
+            : []
 
         let newBadges = 0
 
@@ -129,15 +118,11 @@ export class TrainingOpsRewardService {
                 continue
             }
 
-            const starScopeWhere =
-                badge.learningSeriesId
-                    ? { userId: attempt.userId, learningSeriesId: badge.learningSeriesId }
-                    : badge.domainId
-                    ? { userId: attempt.userId, domainId: badge.domainId }
-                    : { userId: attempt.userId }
-
             const aggregate = await prisma.starAward.aggregate({
-                where: starScopeWhere,
+                where: {
+                    userId: attempt.userId,
+                    domainId: badge.domainId ?? undefined,
+                },
                 _sum: { stars: true },
             })
 
@@ -151,7 +136,6 @@ export class TrainingOpsRewardService {
                     badgeId: badge.id,
                     userId: attempt.userId,
                     domainId: badge.domainId ?? attempt.exam.productDomainId ?? null,
-                    learningSeriesId: badge.learningSeriesId ?? attempt.exam.learningSeriesId ?? null,
                     eventId: attempt.exam.learningEventId ?? null,
                     examId: attempt.examId,
                 },

@@ -7,7 +7,6 @@ import { cn } from '@/lib/utils'
 import {
     Home,
     BookOpen,
-    TrendingUp,
     Trophy,
     User,
     Settings,
@@ -16,7 +15,6 @@ import {
     BarChart3,
     Bot,
     GraduationCap,
-    Award,
     CalendarClock,
     FileText,
     ChevronRight,
@@ -37,11 +35,9 @@ interface SmeDirectoryItem extends NavItem {
 const navItems: NavItem[] = [
     { title: 'Dashboard', href: '/', icon: Home },
     { title: 'Courses', href: '/courses', icon: BookOpen },
-    { title: 'My Progress', href: '/progress', icon: TrendingUp },
-    { title: 'My Training', href: '/training', icon: CalendarClock },
+    { title: 'My Learning', href: '/training', icon: CalendarClock },
     { title: 'My Exams', href: '/exams', icon: GraduationCap },
     { title: 'My Rewards', href: '/rewards', icon: Trophy },
-    { title: 'My Certificates', href: '/certificates', icon: Award },
     { title: 'Profile', href: '/profile', icon: User },
 ]
 
@@ -91,10 +87,6 @@ const smeDirectoryNavItems: SmeDirectoryItem[] = [
             },
         ],
     },
-]
-
-const smeRecognitionNavItems: NavItem[] = [
-    { title: 'My Badges', href: '/sme/training-ops/badges', icon: Trophy },
 ]
 
 const smeToolNavItems: NavItem[] = [
@@ -284,25 +276,11 @@ export function Sidebar({ user, className }: SidebarProps) {
                                 <div className="mt-3 space-y-1.5">
                                     {smeHomeNavItems.map((item) => renderNavLink(item))}
                                 </div>
-                            </div>
 
-                            <div className="mt-6">
-                                <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                                    Directory
-                                </p>
-                                <div className="mt-3 rounded-2xl border border-slate-200/70 bg-white/40 p-2">
+                                <div className="mt-4 rounded-2xl border border-slate-200/70 bg-white/40 p-2">
                                     <div className="space-y-1.5">
                                         {smeDirectoryNavItems.map((item) => renderSmeDirectoryItem(item))}
                                     </div>
-                                </div>
-                            </div>
-
-                            <div className="mt-6">
-                                <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                                    Recognition
-                                </p>
-                                <div className="mt-3 space-y-1.5">
-                                    {smeRecognitionNavItems.map((item) => renderNavLink(item))}
                                 </div>
                             </div>
 

@@ -5,6 +5,7 @@ import type {
     LessonProgress,
     AdminUser,
     AdminUserStats,
+    AdminSmeScopeAudit,
     AdminAnalyticsSummary,
     TrainingOpsBridge,
     SmeWorkspaceSummary,
@@ -478,6 +479,7 @@ export class ApiClient {
             wecomUserId?: string
             department?: string | null
             title?: string | null
+            domainIds?: string[]
         }
     ) {
         return this.request(`/admin/users/${userId}`, {
@@ -501,6 +503,32 @@ export class ApiClient {
             method: 'POST',
             body: JSON.stringify(payload),
         })
+    }
+
+    static async promoteUserToSme(userId: string, payload: {
+        domainIds: string[]
+    }): Promise<{
+        success: boolean
+        data: {
+            user: AdminUser
+            assignments: Array<{
+                domainId: string
+                domainName: string
+                slot: 'PRIMARY' | 'BACKUP' | null
+            }>
+        }
+    }> {
+        return this.request(`/admin/users/${userId}/promote-sme`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async getSmeScopeAudit(): Promise<{
+        success: boolean
+        data: AdminSmeScopeAudit
+    }> {
+        return this.request('/admin/users/sme-scope-audit')
     }
 
     static async getAnalytics(params: Record<string, string | number | undefined> = {}): Promise<{
@@ -669,7 +697,7 @@ export class ApiClient {
         cadence?: string | null
         isActive: boolean
         badgeEligible: boolean
-        countsTowardPerformance: boolean
+        countsTowardPerformance?: boolean
         defaultStarValue?: number | null
         ownerId?: string | null
     }): Promise<{
@@ -751,8 +779,7 @@ export class ApiClient {
         icon?: string | null
         thresholdStars: number
         active: boolean
-        domainId?: string | null
-        learningSeriesId?: string | null
+        domainId: string
     }): Promise<{
         success: boolean
         data: BadgeMilestoneSummary
@@ -771,7 +798,6 @@ export class ApiClient {
         thresholdStars?: number
         active?: boolean
         domainId?: string | null
-        learningSeriesId?: string | null
     }): Promise<{
         success: boolean
         data: BadgeMilestoneSummary
@@ -931,6 +957,57 @@ export class ApiClient {
         return this.request('/sme/training-ops/series')
     }
 
+    static async createSmeTrainingOpsSeries(payload: {
+        name: string
+        slug: string
+        type: LearningSeriesSummary['type']
+        domainId?: string | null
+        ownerId?: string | null
+        description?: string | null
+        cadence?: string | null
+        isActive: boolean
+        badgeEligible: boolean
+        countsTowardPerformance?: boolean
+        defaultStarValue?: number | null
+    }): Promise<{
+        success: boolean
+        data: LearningSeriesSummary
+    }> {
+        return this.request('/sme/training-ops/series', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async getSmeTrainingOpsSeriesById(id: string): Promise<{
+        success: boolean
+        data: LearningSeriesSummary
+    }> {
+        return this.request(`/sme/training-ops/series/${id}`)
+    }
+
+    static async updateSmeTrainingOpsSeries(id: string, payload: {
+        name?: string
+        slug?: string
+        type?: LearningSeriesSummary['type']
+        domainId?: string | null
+        description?: string | null
+        cadence?: string | null
+        isActive?: boolean
+        badgeEligible?: boolean
+        countsTowardPerformance?: boolean
+        defaultStarValue?: number | null
+        ownerId?: string | null
+    }): Promise<{
+        success: boolean
+        data: LearningSeriesSummary
+    }> {
+        return this.request(`/sme/training-ops/series/${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
+        })
+    }
+
     static async getSmeTrainingOpsBadges(): Promise<{
         success: boolean
         data: SmeBadgeLadderOverview
@@ -938,40 +1015,46 @@ export class ApiClient {
         return this.request('/sme/training-ops/badges')
     }
 
-    static async applySmeTrainingOpsBadgeTemplates(payload: {
-        learningSeriesId: string
-        templateIds: string[]
-    }): Promise<{
+    static async getSmeTrainingOpsBadgeMilestone(id: string): Promise<{
         success: boolean
-        data: SmeBadgeLadderOverview
+        data: BadgeMilestoneSummary
     }> {
-        return this.request('/sme/training-ops/badges', {
-            method: 'POST',
-            body: JSON.stringify({
-                action: 'APPLY_TEMPLATES',
-                ...payload,
-            }),
-        })
+        return this.request(`/sme/training-ops/badges/${id}`)
     }
 
-    static async createSmeTrainingOpsCustomBadge(payload: {
-        learningSeriesId: string
+    static async createSmeTrainingOpsBadgeMilestone(payload: {
         name: string
         slug: string
         description?: string | null
         icon?: string | null
         thresholdStars: number
-        active?: boolean
+        active: boolean
+        domainId: string
     }): Promise<{
         success: boolean
-        data: SmeBadgeLadderOverview
+        data: BadgeMilestoneSummary
     }> {
         return this.request('/sme/training-ops/badges', {
             method: 'POST',
-            body: JSON.stringify({
-                action: 'CREATE_CUSTOM',
-                ...payload,
-            }),
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async updateSmeTrainingOpsBadgeMilestone(id: string, payload: {
+        name?: string
+        slug?: string
+        description?: string | null
+        icon?: string | null
+        thresholdStars?: number
+        active?: boolean
+        domainId?: string | null
+    }): Promise<{
+        success: boolean
+        data: BadgeMilestoneSummary
+    }> {
+        return this.request(`/sme/training-ops/badges/${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
         })
     }
 
@@ -1314,6 +1397,10 @@ export class ApiClient {
         timezone: string
         availableFrom: string | null
         deadline: string | null
+        assessmentKind: 'PRACTICE' | 'READINESS' | 'FORMAL'
+        awardsStars: boolean
+        starValue: number | null
+        countsTowardPerformance: boolean
     }>): Promise<{ success: boolean; data: Exam }> {
         return this.request(`/admin/exams/${examId}`, {
             method: 'PATCH',
@@ -1986,7 +2073,7 @@ export class ApiClient {
                     name: string
                     slug: string
                     description: string | null
-                    learningSeries?: {
+                    domain?: {
                         id: string
                         name: string
                         slug: string

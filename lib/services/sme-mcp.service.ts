@@ -796,7 +796,7 @@ export class SmeMcpService {
         return {
             success: true,
             tool: 'list_my_series_badges',
-            summary: `Returned badge ladders for ${data.series.length} scoped series.`,
+            summary: `Returned domain badge progressions for ${data.domains.length} scoped domains.`,
             data,
             nextActions: ['list_my_workspace', 'create_case_study_bundle'],
         }

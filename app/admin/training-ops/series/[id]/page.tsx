@@ -24,12 +24,14 @@ export default function TrainingOpsSeriesDetailPage() {
         const loadData = async () => {
             try {
                 setLoading(true)
-                const [seriesRes, eventsRes, examsRes, badgesRes] = await Promise.all([
+                const [seriesRes, eventsRes, examsRes] = await Promise.all([
                     ApiClient.getTrainingOpsSeriesById(params.id),
                     ApiClient.getTrainingOpsEvents({ limit: 100, seriesId: params.id }),
                     ApiClient.getAdminExams({ limit: 200 }),
-                    ApiClient.getTrainingOpsBadgeMilestones({ limit: 100, learningSeriesId: params.id }),
                 ])
+                const badgesRes = seriesRes.data.domain?.id
+                    ? await ApiClient.getTrainingOpsBadgeMilestones({ limit: 100, domainId: seriesRes.data.domain.id })
+                    : { data: [] }
 
                 setSeries(seriesRes.data)
                 setEvents(eventsRes.data)
@@ -113,7 +115,6 @@ export default function TrainingOpsSeriesDetailPage() {
                                 <Badge>{series.type}</Badge>
                                 {series.domain ? <Badge variant="outline">{series.domain.name}</Badge> : null}
                                 {!series.isActive ? <Badge variant="outline">Inactive</Badge> : null}
-                                {series.countsTowardPerformance ? <Badge variant="outline">Performance</Badge> : null}
                             </div>
                             <div className="grid gap-4 md:grid-cols-2">
                                 <div className="rounded-lg border p-4">
@@ -137,16 +138,12 @@ export default function TrainingOpsSeriesDetailPage() {
                     <Card>
                         <CardHeader>
                             <CardTitle>Reward Defaults</CardTitle>
-                            <CardDescription>Badge eligibility and reward output currently associated to this series.</CardDescription>
+                            <CardDescription>How this series contributes stars and badge activity into its owning domain.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="rounded-lg border p-4 text-sm text-muted-foreground">
-                                Badge eligible
+                                Contributes to domain badges
                                 <p className="mt-2 text-lg font-semibold text-foreground">{series.badgeEligible ? 'Yes' : 'No'}</p>
-                            </div>
-                            <div className="rounded-lg border p-4 text-sm text-muted-foreground">
-                                Counts toward performance
-                                <p className="mt-2 text-lg font-semibold text-foreground">{series.countsTowardPerformance ? 'Yes' : 'No'}</p>
                             </div>
                             <div className="rounded-lg border p-4 text-sm text-muted-foreground">
                                 Reward output
@@ -162,7 +159,7 @@ export default function TrainingOpsSeriesDetailPage() {
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                     <Card><CardHeader className="pb-2"><CardDescription>Events</CardDescription><CardTitle className="text-3xl">{events.length}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Events currently in this series.</p></CardContent></Card>
                     <Card><CardHeader className="pb-2"><CardDescription>Linked Exams</CardDescription><CardTitle className="text-3xl">{exams.length}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Exams inheriting this series mapping.</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2"><CardDescription>Available Badges</CardDescription><CardTitle className="text-3xl">{badges.length}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Badges explicitly scoped to this learning series.</p></CardContent></Card>
+                    <Card><CardHeader className="pb-2"><CardDescription>Domain Badges</CardDescription><CardTitle className="text-3xl">{badges.length}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Badges inherited from this series&apos;s domain.</p></CardContent></Card>
                     <Card><CardHeader className="pb-2"><CardDescription>Last Reward Output</CardDescription><CardTitle className="text-3xl">{series.rewards?.recognizedLearners ?? 0}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Learners recognized through this series.</p></CardContent></Card>
                 </div>
 
@@ -194,8 +191,8 @@ export default function TrainingOpsSeriesDetailPage() {
 
                     <Card>
                         <CardHeader>
-                            <CardTitle>Relevant Badges and Exams</CardTitle>
-                            <CardDescription>Recognition rules and exam assets currently aligned to this series.</CardDescription>
+                            <CardTitle>Relevant Domain Badges and Exams</CardTitle>
+                            <CardDescription>Recognition rules inherited from this series&apos;s domain alongside aligned exam assets.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">
                             {badges.slice(0, 3).map((badge) => (
@@ -203,7 +200,7 @@ export default function TrainingOpsSeriesDetailPage() {
                                     <div className="flex items-start justify-between gap-4">
                                         <div>
                                             <p className="font-medium">{badge.name}</p>
-                                            <p className="mt-1 text-sm text-muted-foreground">Unlocks at {badge.thresholdStars} stars · {badge.learningSeries?.name ?? badge.domain?.name ?? 'Global'}</p>
+                                            <p className="mt-1 text-sm text-muted-foreground">Unlocks at {badge.thresholdStars} stars · {badge.domain?.name ?? 'Unassigned domain'}</p>
                                         </div>
                                         <Award className="h-5 w-5 text-[#006688]" />
                                     </div>
@@ -223,7 +220,7 @@ export default function TrainingOpsSeriesDetailPage() {
                                 </div>
                             ))}
                             {badges.length === 0 && exams.length === 0 ? (
-                                <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">No badges or exams linked to this series yet.</div>
+                                <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">No domain badges or exams linked to this series yet.</div>
                             ) : null}
                         </CardContent>
                     </Card>

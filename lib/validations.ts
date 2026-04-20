@@ -39,6 +39,7 @@ export const adminUpdateUserSchema = z.object({
     wecomUserId: z.string().trim().min(1, 'WeCom User ID is required').max(128, 'WeCom User ID is too long').optional(),
     department: z.string().trim().max(120, 'Department is too long').optional().nullable(),
     title: z.string().trim().max(120, 'Title is too long').optional().nullable(),
+    domainIds: z.array(z.string().uuid()).optional(),
 }).refine(
     data =>
         data.role !== undefined ||
@@ -47,7 +48,8 @@ export const adminUpdateUserSchema = z.object({
         data.email !== undefined ||
         data.wecomUserId !== undefined ||
         data.department !== undefined ||
-        data.title !== undefined,
+        data.title !== undefined ||
+        data.domainIds !== undefined,
     {
         message: 'At least one field must be provided',
         path: ['role'],
@@ -190,23 +192,14 @@ const badgeMilestoneSchemaShape = {
     icon: z.string().trim().max(32, 'Icon is too long').optional().nullable(),
     thresholdStars: z.number().int().min(1).max(1000),
     active: z.boolean().default(true),
-    domainId: z.string().uuid().optional().nullable(),
-    learningSeriesId: z.string().uuid().optional().nullable(),
+    domainId: z.string().uuid('Select a valid product domain'),
 }
 
 const badgeMilestoneSchemaBase = z.object(badgeMilestoneSchemaShape)
 
-const refineBadgeMilestoneScope = <T extends z.ZodTypeAny>(schema: T) => schema.refine(
-    (data) => !(data.domainId && data.learningSeriesId),
-    {
-        message: 'Choose either a domain scope or a learning series scope, not both',
-        path: ['learningSeriesId'],
-    }
-)
+export const createBadgeMilestoneSchema = badgeMilestoneSchemaBase
 
-export const createBadgeMilestoneSchema = refineBadgeMilestoneScope(badgeMilestoneSchemaBase)
-
-export const updateBadgeMilestoneSchema = refineBadgeMilestoneScope(badgeMilestoneSchemaBase.partial()).refine(
+export const updateBadgeMilestoneSchema = badgeMilestoneSchemaBase.partial().refine(
     (data) => Object.keys(data).length > 0,
     {
         message: 'At least one field must be provided',

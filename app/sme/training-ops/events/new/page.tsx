@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, Loader2, Save } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Loader2, Save } from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -86,6 +86,10 @@ function NewSmeLearningEventPageContent() {
         if (!form.domainId) return series
         return series.filter((item) => item.domain?.id === form.domainId)
     }, [form.domainId, series])
+    const breadcrumbSeries = useMemo(
+        () => series.find((item) => item.id === (initialSeriesContextId ?? form.seriesId)) ?? null,
+        [form.seriesId, initialSeriesContextId, series]
+    )
 
     const updateForm = <K extends keyof typeof form>(key: K, value: typeof form[K]) => {
         setForm((prev) => ({ ...prev, [key]: value }))
@@ -160,6 +164,33 @@ function NewSmeLearningEventPageContent() {
     return (
         <DashboardLayout>
             <div className="space-y-6">
+                <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                    {breadcrumbSeries ? (
+                        <>
+                            <Link href="/sme/training-ops/domains" className="transition-colors hover:text-foreground">
+                                My Domains
+                            </Link>
+                            <ChevronRight className="h-4 w-4" />
+                            <Link href="/sme/training-ops/series" className="transition-colors hover:text-foreground">
+                                My Series
+                            </Link>
+                            <ChevronRight className="h-4 w-4" />
+                            <Link href={`/sme/training-ops/series/${breadcrumbSeries.id}`} className="transition-colors hover:text-foreground">
+                                {breadcrumbSeries.name}
+                            </Link>
+                            <ChevronRight className="h-4 w-4" />
+                        </>
+                    ) : (
+                        <>
+                            <Link href="/sme/training-ops/events" className="transition-colors hover:text-foreground">
+                                My Events
+                            </Link>
+                            <ChevronRight className="h-4 w-4" />
+                        </>
+                    )}
+                    <span className="font-medium text-foreground">Create Event</span>
+                </nav>
+
                 <div className="flex items-center gap-4">
                     <Link href={backHref}>
                         <Button variant="ghost" size="icon">

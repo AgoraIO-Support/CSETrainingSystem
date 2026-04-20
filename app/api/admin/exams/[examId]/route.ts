@@ -121,7 +121,9 @@ export const PATCH = withSmeOrAdminAuth(
         availableFrom,
       };
 
-      const exam = await ExamService.updateExam(examId, updateData);
+      const exam = await ExamService.updateExam(examId, updateData, {
+        actorRole: user.role,
+      });
 
       return NextResponse.json({
         success: true,
@@ -152,6 +154,18 @@ export const PATCH = withSmeOrAdminAuth(
               error: {
                 code: 'AUTH_003',
                 message: 'Insufficient permissions',
+              },
+            },
+            { status: 403 }
+          );
+        }
+        if (error.message === 'SME_REWARD_POLICY_RESTRICTED') {
+          return NextResponse.json(
+            {
+              success: false,
+              error: {
+                code: 'AUTH_003',
+                message: 'SME cannot configure formal or performance-tracked exams.',
               },
             },
             { status: 403 }

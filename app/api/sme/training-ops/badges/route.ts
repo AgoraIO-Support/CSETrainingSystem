@@ -1,30 +1,8 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { withSmeOrAdminAuth } from '@/lib/auth-middleware'
 import { TrainingOpsService } from '@/lib/services/training-ops.service'
+import { createBadgeMilestoneSchema } from '@/lib/validations'
 import { z } from 'zod'
-
-const applyTemplatesSchema = z.object({
-    action: z.literal('APPLY_TEMPLATES'),
-    learningSeriesId: z.string().uuid(),
-    templateIds: z.array(z.string().uuid()).min(1),
-})
-
-const createCustomBadgeSchema = z.object({
-    action: z.literal('CREATE_CUSTOM'),
-    learningSeriesId: z.string().uuid(),
-    name: z.string().trim().min(1).max(120),
-    slug: z
-        .string()
-        .trim()
-        .min(1)
-        .regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
-    description: z.string().trim().optional().nullable(),
-    icon: z.string().trim().max(32).optional().nullable(),
-    thresholdStars: z.number().int().min(1).max(1000),
-    active: z.boolean().optional(),
-})
-
-const smeBadgeActionSchema = z.discriminatedUnion('action', [applyTemplatesSchema, createCustomBadgeSchema])
 
 export const GET = withSmeOrAdminAuth(async (_req, user) => {
     try {
@@ -35,56 +13,50 @@ export const GET = withSmeOrAdminAuth(async (_req, user) => {
             data,
         })
     } catch (error) {
-        console.error('Get SME badge ladders error:', error)
+        console.error('Get SME domain badge overview error:', error)
 
         return NextResponse.json({
             success: false,
             error: {
                 code: 'SYSTEM_001',
-                message: 'Failed to load SME badge ladders',
+                message: 'Failed to load domain badge overview',
             },
         }, { status: error instanceof Error && error.message === 'TRAINING_OPS_FORBIDDEN' ? 403 : 500 })
     }
 })
 
-export const POST = withSmeOrAdminAuth(async (req, user) => {
+export const POST = withSmeOrAdminAuth(async (req: NextRequest, user) => {
     try {
         const body = await req.json()
-        const payload = smeBadgeActionSchema.parse(body)
-
-        const data =
-            payload.action === 'APPLY_TEMPLATES'
-                ? await TrainingOpsService.applyScopedBadgeTemplatesToSeries(user, payload)
-                : await TrainingOpsService.createScopedCustomBadgeMilestone(user, payload)
+        const payload = createBadgeMilestoneSchema.parse(body)
+        const badge = await TrainingOpsService.createScopedBadgeMilestone(user, payload)
 
         return NextResponse.json({
             success: true,
-            data,
-        })
+            data: badge,
+        }, { status: 201 })
     } catch (error) {
-        console.error('Update SME badge ladders error:', error)
+        console.error('Create SME badge milestone error:', error)
 
-        let status = 500
-        let message = 'Failed to update SME badge ladders'
+        const status =
+            error instanceof z.ZodError
+                ? 400
+                : error instanceof Error && error.message === 'BADGE_DOMAIN_FORBIDDEN'
+                    ? 403
+                    : 500
 
-        if (error instanceof z.ZodError) {
-            status = 400
-            message = error.issues[0]?.message || message
-        } else if (error instanceof Error) {
-            if (error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
-                status = 403
-                message = 'You can update badge ladders only for your own badge-enabled series.'
-            } else if (error.message === 'BADGE_TEMPLATE_REQUIRED') {
-                status = 400
-                message = 'Select at least one badge template.'
-            } else if (error.message === 'BADGE_TEMPLATE_NOT_FOUND') {
-                status = 404
-                message = 'One or more selected badge templates no longer exist.'
-            } else if (error.message === 'BADGE_MILESTONE_SLUG_EXISTS') {
-                status = 409
-                message = 'A badge with the same slug already exists for this series.'
-            }
-        }
+        const message =
+            error instanceof z.ZodError
+                ? error.issues[0]?.message || 'Invalid badge milestone payload'
+                : error instanceof Error && error.message === 'BADGE_MILESTONE_SLUG_EXISTS'
+                    ? 'A badge milestone with this slug already exists in the selected domain'
+                    : error instanceof Error && error.message === 'BADGE_THRESHOLD_EXISTS'
+                        ? 'A badge milestone already uses this threshold in the selected domain'
+                    : error instanceof Error && error.message === 'PRODUCT_DOMAIN_NOT_FOUND'
+                            ? 'Selected product domain no longer exists'
+                            : error instanceof Error && error.message === 'BADGE_DOMAIN_FORBIDDEN'
+                                ? 'You can only manage badges for domains in your SME scope'
+                                : 'Failed to create SME badge milestone'
 
         return NextResponse.json({
             success: false,

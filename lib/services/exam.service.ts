@@ -13,6 +13,7 @@ import {
   AssessmentKind,
   LearningEventFormat,
   LearningSeriesType,
+  UserRole,
 } from '@prisma/client';
 import { FileService } from '@/lib/services/file.service';
 import { ASSET_S3_BUCKET_NAME, S3_BUCKET_NAME } from '@/lib/aws-s3';
@@ -62,6 +63,10 @@ export interface UpdateExamInput {
   showResultsImmediately?: boolean;
   allowReview?: boolean;
   maxAttempts?: number;
+  assessmentKind?: AssessmentKind;
+  awardsStars?: boolean;
+  starValue?: number | null;
+  countsTowardPerformance?: boolean;
 }
 
 export interface CreateQuestionInput {
@@ -154,6 +159,40 @@ export interface ExamWithDetails {
 }
 
 export class ExamService {
+  private static isFormalSeriesType(seriesType?: LearningSeriesType | null): boolean {
+    return seriesType === 'QUARTERLY_FINAL' || seriesType === 'YEAR_END_FINAL'
+  }
+
+  private static assertSmeRewardPolicyAllowed(input: {
+    existingAssessmentKind?: AssessmentKind
+    existingCountsTowardPerformance?: boolean
+    nextAssessmentKind: AssessmentKind
+    nextCountsTowardPerformance: boolean
+  }): void {
+    const existingAssessmentKind = input.existingAssessmentKind ?? AssessmentKind.PRACTICE
+    const existingCountsTowardPerformance = input.existingCountsTowardPerformance ?? false
+    const hasAdminManagedRecognition =
+      existingAssessmentKind === AssessmentKind.FORMAL ||
+      existingCountsTowardPerformance
+
+    if (hasAdminManagedRecognition) {
+      if (
+        input.nextAssessmentKind !== existingAssessmentKind ||
+        input.nextCountsTowardPerformance !== existingCountsTowardPerformance
+      ) {
+        throw new Error('SME_REWARD_POLICY_RESTRICTED')
+      }
+      return
+    }
+
+    if (
+      input.nextAssessmentKind === AssessmentKind.FORMAL ||
+      input.nextCountsTowardPerformance
+    ) {
+      throw new Error('SME_REWARD_POLICY_RESTRICTED')
+    }
+  }
+
   private static resolveAssessmentKindFromEvent(event: {
     countsTowardPerformance: boolean
     format: LearningEventFormat
@@ -374,7 +413,8 @@ export class ExamService {
    */
   static async createExam(
     data: CreateExamInput,
-    createdById: string
+    createdById: string,
+    options?: { actorRole?: UserRole }
   ): Promise<ExamWithDetails> {
     // Validate course exists if course-based
     if (data.examType === ExamType.COURSE_BASED) {
@@ -441,7 +481,7 @@ export class ExamService {
     if (resolvedLearningSeriesId) {
       const series = await prisma.learningSeries.findUnique({
         where: { id: resolvedLearningSeriesId },
-        select: { id: true, domainId: true },
+        select: { id: true, domainId: true, type: true },
       })
 
       if (!series) {
@@ -462,6 +502,13 @@ export class ExamService {
       if (!domain) {
         throw new Error('PRODUCT_DOMAIN_NOT_FOUND')
       }
+    }
+
+    if (options?.actorRole === 'SME') {
+      this.assertSmeRewardPolicyAllowed({
+        nextAssessmentKind: resolvedAssessmentKind,
+        nextCountsTowardPerformance: resolvedCountsTowardPerformance,
+      })
     }
 
     const exam = await prisma.exam.create({
@@ -541,11 +588,20 @@ export class ExamService {
    */
   static async updateExam(
     id: string,
-    data: UpdateExamInput
+    data: UpdateExamInput,
+    options?: { actorRole?: UserRole }
   ): Promise<ExamWithDetails> {
     // Check exam exists and get current status
     const existing = await prisma.exam.findUnique({
       where: { id },
+      select: {
+        id: true,
+        status: true,
+        learningEventId: true,
+        learningSeriesId: true,
+        assessmentKind: true,
+        countsTowardPerformance: true,
+      },
     });
 
     if (!existing) {
@@ -553,6 +609,18 @@ export class ExamService {
     }
     if (existing.status !== ExamStatus.DRAFT) {
       throw new Error('EXAM_NOT_DRAFT');
+    }
+
+    const nextAssessmentKind = data.assessmentKind ?? existing.assessmentKind
+    const nextCountsTowardPerformance = data.countsTowardPerformance ?? existing.countsTowardPerformance
+
+    if (options?.actorRole === 'SME') {
+      this.assertSmeRewardPolicyAllowed({
+        existingAssessmentKind: existing.assessmentKind,
+        existingCountsTowardPerformance: existing.countsTowardPerformance,
+        nextAssessmentKind,
+        nextCountsTowardPerformance,
+      })
     }
 
     const hasAnyChange = Object.values(data).some((v) => v !== undefined);
@@ -574,6 +642,10 @@ export class ExamService {
         ...(data.showResultsImmediately !== undefined && { showResultsImmediately: data.showResultsImmediately }),
         ...(data.allowReview !== undefined && { allowReview: data.allowReview }),
         ...(data.maxAttempts !== undefined && { maxAttempts: data.maxAttempts }),
+        ...(data.assessmentKind !== undefined && { assessmentKind: data.assessmentKind }),
+        ...(data.awardsStars !== undefined && { awardsStars: data.awardsStars }),
+        ...(data.starValue !== undefined && { starValue: data.starValue }),
+        ...(data.countsTowardPerformance !== undefined && { countsTowardPerformance: data.countsTowardPerformance }),
         ...(hasAnyChange && { version: { increment: 1 } }),
       },
       include: {

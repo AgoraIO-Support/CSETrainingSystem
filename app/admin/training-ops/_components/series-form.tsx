@@ -29,7 +29,6 @@ export type LearningSeriesFormValue = {
     cadence: string
     isActive: boolean
     badgeEligible: boolean
-    countsTowardPerformance: boolean
     defaultStarValue: string
 }
 
@@ -44,7 +43,6 @@ export function createEmptyLearningSeriesForm(): LearningSeriesFormValue {
         cadence: '',
         isActive: true,
         badgeEligible: true,
-        countsTowardPerformance: false,
         defaultStarValue: '1',
     }
 }
@@ -60,7 +58,6 @@ export function learningSeriesToFormValue(series: LearningSeriesSummary): Learni
         cadence: series.cadence ?? '',
         isActive: series.isActive,
         badgeEligible: series.badgeEligible,
-        countsTowardPerformance: series.countsTowardPerformance,
         defaultStarValue: series.defaultStarValue?.toString() ?? '',
     }
 }
@@ -76,7 +73,6 @@ export function normalizeLearningSeriesPayload(form: LearningSeriesFormValue) {
         cadence: form.cadence.trim() || null,
         isActive: form.isActive,
         badgeEligible: form.badgeEligible,
-        countsTowardPerformance: form.countsTowardPerformance,
         defaultStarValue: form.defaultStarValue ? Number(form.defaultStarValue) : null,
     }
 }
@@ -91,6 +87,8 @@ export function LearningSeriesForm({
     loading,
     error,
     submitLabel,
+    allowEmptyDomain = true,
+    disableOwnerSelection = false,
     onChange,
     onSubmit,
 }: {
@@ -103,6 +101,8 @@ export function LearningSeriesForm({
     loading: boolean
     error: string | null
     submitLabel: string
+    allowEmptyDomain?: boolean
+    disableOwnerSelection?: boolean
     onChange: <K extends keyof LearningSeriesFormValue>(key: K, nextValue: LearningSeriesFormValue[K]) => void
     onSubmit: (event: React.FormEvent<HTMLFormElement>) => void
 }) {
@@ -187,7 +187,7 @@ export function LearningSeriesForm({
                                 value={value.domainId || EMPTY_OPTION}
                                 onChange={(event) => onChange('domainId', event.target.value === EMPTY_OPTION ? '' : event.target.value)}
                             >
-                                <option value={EMPTY_OPTION}>No domain mapped</option>
+                                {allowEmptyDomain ? <option value={EMPTY_OPTION}>No domain mapped</option> : null}
                                 {domains.map((domain) => (
                                     <option key={domain.id} value={domain.id}>
                                         {domain.name}
@@ -202,8 +202,9 @@ export function LearningSeriesForm({
                                 className="h-10 w-full rounded-md border bg-background px-3"
                                 value={value.ownerId || EMPTY_OPTION}
                                 onChange={(event) => onChange('ownerId', event.target.value === EMPTY_OPTION ? '' : event.target.value)}
+                                disabled={disableOwnerSelection}
                             >
-                                <option value={EMPTY_OPTION}>No owner assigned</option>
+                                {!disableOwnerSelection ? <option value={EMPTY_OPTION}>No owner assigned</option> : null}
                                 {users.map((user) => (
                                     <option key={user.id} value={user.id}>
                                         {user.name} · {user.email}
@@ -248,7 +249,7 @@ export function LearningSeriesForm({
                         />
                     </div>
 
-                    <div className="grid gap-4 md:grid-cols-3">
+                    <div className="grid gap-4 md:grid-cols-2">
                         <div className="flex items-center justify-between rounded-lg border p-4">
                             <div>
                                 <p className="font-medium">Active</p>
@@ -258,17 +259,10 @@ export function LearningSeriesForm({
                         </div>
                         <div className="flex items-center justify-between rounded-lg border p-4">
                             <div>
-                                <p className="font-medium">Badge Eligible</p>
-                                <p className="text-sm text-muted-foreground">Events in this series can unlock badges.</p>
+                                <p className="font-medium">Contributes to Domain Badges</p>
+                                <p className="text-sm text-muted-foreground">Stars earned in this series can count toward domain badge unlocks.</p>
                             </div>
                             <Switch checked={value.badgeEligible} onCheckedChange={(checked) => onChange('badgeEligible', checked)} />
-                        </div>
-                        <div className="flex items-center justify-between rounded-lg border p-4">
-                            <div>
-                                <p className="font-medium">Counts Toward Performance</p>
-                                <p className="text-sm text-muted-foreground">Use for formal assessment tracking.</p>
-                            </div>
-                            <Switch checked={value.countsTowardPerformance} onCheckedChange={(checked) => onChange('countsTowardPerformance', checked)} />
                         </div>
                     </div>
                 </CardContent>

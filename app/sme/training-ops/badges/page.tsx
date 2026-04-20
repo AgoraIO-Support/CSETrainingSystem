@@ -6,49 +6,29 @@ import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import { ApiClient } from '@/lib/api-client'
-import type { SmeBadgeLadderOverview } from '@/types'
-import { Loader2 } from 'lucide-react'
-
-const EMPTY_OPTION = '__none__'
-
-const slugify = (value: string) =>
-    value
-        .toLowerCase()
-        .trim()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '')
+import type { ProductDomainSummary, SmeBadgeLadderOverview } from '@/types'
+import { Loader2, PencilLine, Plus } from 'lucide-react'
 
 export default function SmeTrainingOpsBadgesPage() {
     const [loading, setLoading] = useState(true)
-    const [submittingTemplates, setSubmittingTemplates] = useState(false)
-    const [submittingCustom, setSubmittingCustom] = useState(false)
     const [error, setError] = useState<string | null>(null)
-    const [success, setSuccess] = useState<string | null>(null)
     const [overview, setOverview] = useState<SmeBadgeLadderOverview | null>(null)
-    const [selectedSeriesId, setSelectedSeriesId] = useState(EMPTY_OPTION)
-    const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([])
-    const [customForm, setCustomForm] = useState({
-        learningSeriesId: EMPTY_OPTION,
-        name: '',
-        slug: '',
-        description: '',
-        icon: '',
-        thresholdStars: '4',
-    })
+    const [domains, setDomains] = useState<ProductDomainSummary[]>([])
 
     useEffect(() => {
         const load = async () => {
             try {
                 setLoading(true)
-                const response = await ApiClient.getSmeTrainingOpsBadges()
-                setOverview(response.data)
+                const [badgesResponse, domainsResponse] = await Promise.all([
+                    ApiClient.getSmeTrainingOpsBadges(),
+                    ApiClient.getSmeTrainingOpsDomains(),
+                ])
+                setOverview(badgesResponse.data)
+                setDomains(domainsResponse.data)
                 setError(null)
             } catch (err) {
-                setError(err instanceof Error ? err.message : 'Failed to load SME badge ladders')
+                setError(err instanceof Error ? err.message : 'Failed to load domain badge overview')
             } finally {
                 setLoading(false)
             }
@@ -58,95 +38,44 @@ export default function SmeTrainingOpsBadgesPage() {
     }, [])
 
     const stats = useMemo(() => {
-        const ladders = overview?.seriesLadders ?? []
+        const ladders = overview?.domainLadders ?? []
         return {
-            series: ladders.length,
+            domains: ladders.length,
             milestones: ladders.reduce((sum, ladder) => sum + ladder.milestones.length, 0),
             unlocks: ladders.reduce((sum, ladder) => sum + ladder.totalUnlocks, 0),
             learners: ladders.reduce((sum, ladder) => sum + ladder.recognizedLearners, 0),
         }
     }, [overview])
 
-    const templates = overview?.templates ?? []
-    const scopedSeries = overview?.series ?? []
-    const ladders = overview?.seriesLadders ?? []
+    const ladders = overview?.domainLadders ?? []
     const recentUnlocks = overview?.recentUnlocks ?? []
-
-    const handleTemplateToggle = (templateId: string, checked: boolean) => {
-        setSelectedTemplateIds((prev) => {
-            if (checked) return Array.from(new Set([...prev, templateId]))
-            return prev.filter((id) => id !== templateId)
-        })
-    }
-
-    const handleApplyTemplates = async () => {
-        if (selectedSeriesId === EMPTY_OPTION || selectedTemplateIds.length === 0) return
-
-        try {
-            setSubmittingTemplates(true)
-            setError(null)
-            setSuccess(null)
-            const response = await ApiClient.applySmeTrainingOpsBadgeTemplates({
-                learningSeriesId: selectedSeriesId,
-                templateIds: selectedTemplateIds,
-            })
-            setOverview(response.data)
-            setSelectedTemplateIds([])
-            setSuccess('Badge templates applied to the selected learning series.')
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to apply badge templates')
-        } finally {
-            setSubmittingTemplates(false)
-        }
-    }
-
-    const handleCreateCustomBadge = async (event: React.FormEvent<HTMLFormElement>) => {
-        event.preventDefault()
-        if (customForm.learningSeriesId === EMPTY_OPTION) return
-
-        try {
-            setSubmittingCustom(true)
-            setError(null)
-            setSuccess(null)
-            const response = await ApiClient.createSmeTrainingOpsCustomBadge({
-                learningSeriesId: customForm.learningSeriesId,
-                name: customForm.name.trim(),
-                slug: customForm.slug.trim(),
-                description: customForm.description.trim() || null,
-                icon: customForm.icon.trim() || null,
-                thresholdStars: Number(customForm.thresholdStars),
-                active: true,
-            })
-            setOverview(response.data)
-            setCustomForm({
-                learningSeriesId: EMPTY_OPTION,
-                name: '',
-                slug: '',
-                description: '',
-                icon: '',
-                thresholdStars: '4',
-            })
-            setSuccess('Custom badge created for the selected learning series.')
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to create custom badge')
-        } finally {
-            setSubmittingCustom(false)
-        }
-    }
+    const scopedDomainIds = useMemo(() => new Set(domains.map((domain) => domain.id)), [domains])
+    const defaultCreateHref = domains[0] ? `/sme/training-ops/badges/new?domainId=${domains[0].id}` : '/sme/training-ops/badges/new'
 
     return (
         <DashboardLayout>
             <div className="space-y-6">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <div>
-                        <h1 className="text-3xl font-bold">My Badge Ladders</h1>
+                        <Badge className="mb-3 w-fit rounded-full border border-[#b8ecff] bg-[#effbff] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#006688]">
+                            SME Workspace
+                        </Badge>
+                        <h1 className="text-3xl font-bold">My Domain Badges</h1>
                         <p className="mt-1 text-muted-foreground">
-                            Start from the Admin-defined badge catalog, apply it to your series, and create a custom badge if the catalog is not enough.
+                            Configure badge thresholds for domains in your SME scope, including domains you reach through owned series.
                         </p>
                     </div>
                     <div className="flex gap-3">
-                        <Link href="/sme/training-ops/series">
-                            <Button variant="outline">My Series</Button>
+                        {domains.length > 0 ? (
+                            <Link href={defaultCreateHref}>
+                                <Button>
+                                    <Plus className="mr-2 h-4 w-4" />
+                                    Create Badge
+                                </Button>
+                            </Link>
+                        ) : null}
+                        <Link href="/sme/training-ops/domains">
+                            <Button variant="outline">My Domains</Button>
                         </Link>
                         <Link href="/sme/training-ops/events">
                             <Button variant="outline">My Events</Button>
@@ -155,40 +84,57 @@ export default function SmeTrainingOpsBadgesPage() {
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    <Card><CardHeader className="pb-2"><CardDescription>Series Ladders</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.series}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Badge-enabled series in your SME scope.</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2"><CardDescription>Milestones</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.milestones}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Configured badge thresholds across your series.</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2"><CardDescription>Total Unlocks</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.unlocks}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Total badge awards issued from your series.</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2"><CardDescription>Recognized Learners</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.learners}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Distinct learners who unlocked at least one series badge.</p></CardContent></Card>
+                    <Card><CardHeader className="pb-2"><CardDescription>Domains</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.domains}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Domains with visible badge progressions.</p></CardContent></Card>
+                    <Card><CardHeader className="pb-2"><CardDescription>Milestones</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.milestones}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Configured badge thresholds across your domains.</p></CardContent></Card>
+                    <Card><CardHeader className="pb-2"><CardDescription>Total Unlocks</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.unlocks}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Badge awards issued from your domains.</p></CardContent></Card>
+                    <Card><CardHeader className="pb-2"><CardDescription>Recognized Learners</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.learners}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Distinct learners recognized by domain badges.</p></CardContent></Card>
                 </div>
 
                 <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
                     <Card>
                         <CardHeader>
-                            <CardTitle>Series Badge Ladders</CardTitle>
+                            <CardTitle>Domain Badge Ladders</CardTitle>
                             <CardDescription>
-                                Each series follows the same four-level model. Use this view to see whether the thresholds are being reached.
+                                Badges now unlock from cumulative stars inside each product domain.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
+                            <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                                <Badge className="bg-emerald-600 hover:bg-emerald-600">Manageable</Badge>
+                                <span>All domains shown here are inside your SME scope, so you can create and edit their badge ladders.</span>
+                            </div>
                             {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
                             {loading ? (
-                                <div className="flex h-32 items-center justify-center text-muted-foreground"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Loading badge ladders...</div>
+                                <div className="flex h-32 items-center justify-center text-muted-foreground"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Loading domain badge progressions...</div>
                             ) : ladders.length === 0 ? (
                                 <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-                                    No badge-enabled learning series are currently in your SME scope.
+                                    No domain badge progressions are currently available in your SME scope.
                                 </div>
                             ) : (
                                 ladders.map((ladder) => (
-                                    <div key={ladder.learningSeries.id} className="rounded-lg border p-4">
+                                    <div key={ladder.domain.id} className="rounded-lg border p-4">
                                         <div className="flex flex-wrap items-start justify-between gap-4">
                                             <div>
-                                                <p className="text-lg font-semibold">{ladder.learningSeries.name}</p>
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <p className="text-lg font-semibold">{ladder.domain.name}</p>
+                                                    <Badge className="bg-emerald-600 hover:bg-emerald-600">Manageable</Badge>
+                                                </div>
                                                 <p className="mt-1 text-sm text-muted-foreground">
                                                     {ladder.totalUnlocks} unlocks · {ladder.recognizedLearners} recognized learners
                                                     {ladder.latestUnlockedAt ? ` · latest ${new Date(ladder.latestUnlockedAt).toLocaleDateString()}` : ''}
                                                 </p>
                                             </div>
-                                            <Badge variant="outline">{ladder.milestones.length} milestones</Badge>
+                                            <div className="flex items-center gap-2">
+                                                <Badge variant="outline">{ladder.milestones.length} milestones</Badge>
+                                                {scopedDomainIds.has(ladder.domain.id) ? (
+                                                    <Link href={`/sme/training-ops/badges/new?domainId=${ladder.domain.id}`}>
+                                                        <Button variant="outline" size="sm">
+                                                            <Plus className="mr-2 h-4 w-4" />
+                                                            Add Badge
+                                                        </Button>
+                                                    </Link>
+                                                ) : null}
+                                            </div>
                                         </div>
                                         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                                             {ladder.milestones.map((milestone) => (
@@ -202,6 +148,16 @@ export default function SmeTrainingOpsBadgesPage() {
                                                     {milestone.description ? (
                                                         <p className="mt-3 text-sm leading-6 text-slate-600">{milestone.description}</p>
                                                     ) : null}
+                                                    {scopedDomainIds.has(ladder.domain.id) ? (
+                                                        <div className="mt-4">
+                                                            <Link href={`/sme/training-ops/badges/${milestone.id}/edit`}>
+                                                                <Button variant="outline" size="sm">
+                                                                    <PencilLine className="mr-2 h-4 w-4" />
+                                                                    Edit
+                                                                </Button>
+                                                            </Link>
+                                                        </div>
+                                                    ) : null}
                                                 </div>
                                             ))}
                                         </div>
@@ -214,198 +170,50 @@ export default function SmeTrainingOpsBadgesPage() {
                     <div className="space-y-6">
                         <Card>
                             <CardHeader>
-                                <CardTitle>Admin Badge Catalog</CardTitle>
+                                <CardTitle>How Domain Badges Work</CardTitle>
                                 <CardDescription>
-                                    Select one of your series, then apply the admin-defined badge templates into that ladder.
+                                    Domain badges reflect cumulative practice within a product area instead of a single training path.
                                 </CardDescription>
                             </CardHeader>
-                            <CardContent className="space-y-4">
-                                {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
-                                {success ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{success}</div> : null}
-                                <div className="space-y-2">
-                                    <Label htmlFor="templateSeries">Target Series</Label>
-                                    <select
-                                        id="templateSeries"
-                                        className="h-10 w-full rounded-md border bg-background px-3"
-                                        value={selectedSeriesId}
-                                        onChange={(event) => setSelectedSeriesId(event.target.value)}
-                                    >
-                                        <option value={EMPTY_OPTION}>Select a learning series</option>
-                                        {scopedSeries.map((item) => (
-                                            <option key={item.id} value={item.id}>
-                                                {item.name}
-                                            </option>
-                                        ))}
-                                    </select>
+                            <CardContent className="space-y-3 text-sm text-muted-foreground">
+                                <div className="rounded-lg border p-4">
+                                    Stars earned from any mapped event or exam contribute to the learner&apos;s domain total.
                                 </div>
-                                {templates.length === 0 ? (
-                                    <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                                        No admin-defined global badge templates are available yet.
-                                    </div>
-                                ) : (
-                                    <div className="space-y-3">
-                                        {templates.map((template) => (
-                                            <label key={template.id} className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
-                                                <input
-                                                    type="checkbox"
-                                                    className="mt-1 h-4 w-4"
-                                                    checked={selectedTemplateIds.includes(template.id)}
-                                                    onChange={(event) => handleTemplateToggle(template.id, event.target.checked)}
-                                                />
-                                                <div className="min-w-0">
-                                                    <div className="flex flex-wrap items-center gap-2">
-                                                        <p className="font-medium text-slate-950">{template.name}</p>
-                                                        <Badge variant="outline">{template.thresholdStars} stars</Badge>
-                                                    </div>
-                                                    <p className="mt-1 text-xs text-slate-500">{template.slug}</p>
-                                                    {template.description ? (
-                                                        <p className="mt-2 text-sm leading-6 text-slate-600">{template.description}</p>
-                                                    ) : null}
-                                                </div>
-                                            </label>
-                                        ))}
-                                    </div>
-                                )}
-                                <Button
-                                    onClick={handleApplyTemplates}
-                                    disabled={submittingTemplates || selectedSeriesId === EMPTY_OPTION || selectedTemplateIds.length === 0}
-                                >
-                                    {submittingTemplates ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                    Apply Selected Templates
-                                </Button>
-                            </CardContent>
-                        </Card>
-
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Create Custom Badge</CardTitle>
-                                <CardDescription>
-                                    If the admin catalog does not fit your scenario, define a series-specific badge for your own ladder.
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <form onSubmit={handleCreateCustomBadge} className="space-y-4">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="customSeries">Learning Series</Label>
-                                        <select
-                                            id="customSeries"
-                                            className="h-10 w-full rounded-md border bg-background px-3"
-                                            value={customForm.learningSeriesId}
-                                            onChange={(event) => setCustomForm((prev) => ({ ...prev, learningSeriesId: event.target.value }))}
-                                        >
-                                            <option value={EMPTY_OPTION}>Select a learning series</option>
-                                            {scopedSeries.map((item) => (
-                                                <option key={item.id} value={item.id}>
-                                                    {item.name}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div className="grid gap-4 md:grid-cols-2">
-                                        <div className="space-y-2">
-                                            <Label htmlFor="customName">Name</Label>
-                                            <Input
-                                                id="customName"
-                                                value={customForm.name}
-                                                onChange={(event) => {
-                                                    const nextName = event.target.value
-                                                    setCustomForm((prev) => ({
-                                                        ...prev,
-                                                        name: nextName,
-                                                        slug: !prev.slug || prev.slug === slugify(prev.name) ? slugify(nextName) : prev.slug,
-                                                    }))
-                                                }}
-                                                required
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="customSlug">Slug</Label>
-                                            <Input
-                                                id="customSlug"
-                                                value={customForm.slug}
-                                                onChange={(event) => setCustomForm((prev) => ({ ...prev, slug: slugify(event.target.value) }))}
-                                                required
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="grid gap-4 md:grid-cols-[1fr_180px]">
-                                        <div className="space-y-2">
-                                            <Label htmlFor="customDescription">Description</Label>
-                                            <Textarea
-                                                id="customDescription"
-                                                value={customForm.description}
-                                                onChange={(event) => setCustomForm((prev) => ({ ...prev, description: event.target.value }))}
-                                                rows={3}
-                                            />
-                                        </div>
-                                        <div className="space-y-4">
-                                            <div className="space-y-2">
-                                                <Label htmlFor="customThreshold">Threshold Stars</Label>
-                                                <Input
-                                                    id="customThreshold"
-                                                    type="number"
-                                                    min="1"
-                                                    max="1000"
-                                                    value={customForm.thresholdStars}
-                                                    onChange={(event) => setCustomForm((prev) => ({ ...prev, thresholdStars: event.target.value }))}
-                                                    required
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="customIcon">Icon</Label>
-                                                <Input
-                                                    id="customIcon"
-                                                    value={customForm.icon}
-                                                    onChange={(event) => setCustomForm((prev) => ({ ...prev, icon: event.target.value }))}
-                                                    placeholder="e.g. ⭐"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <Button
-                                        type="submit"
-                                        disabled={submittingCustom || customForm.learningSeriesId === EMPTY_OPTION || !customForm.name.trim() || !customForm.slug.trim()}
-                                    >
-                                        {submittingCustom ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                        Create Custom Badge
-                                    </Button>
-                                </form>
+                                <div className="rounded-lg border p-4">
+                                    When a learner crosses a configured domain threshold, the matching badge unlocks automatically.
+                                </div>
+                                <div className="rounded-lg border p-4">
+                                    Domains visible in your SME workspace can be configured here, including domains you reach through owned series.
+                                </div>
                             </CardContent>
                         </Card>
 
                         <Card>
                             <CardHeader>
                                 <CardTitle>Recent Unlocks</CardTitle>
-                                <CardDescription>
-                                    Latest badge awards across the series you currently manage.
-                                </CardDescription>
+                                <CardDescription>Most recent domain badge awards in your scope.</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-3">
                                 {loading ? (
-                                    <div className="flex h-32 items-center justify-center text-muted-foreground"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Loading unlock activity...</div>
+                                    <div className="flex h-24 items-center justify-center text-muted-foreground">
+                                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                                        Loading unlocks...
+                                    </div>
                                 ) : recentUnlocks.length === 0 ? (
                                     <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-                                        No badge unlocks yet for your current SME scope.
+                                        No badge unlocks have been recorded yet.
                                     </div>
-                                ) : (
-                                    recentUnlocks.map((unlock) => (
-                                        <div key={unlock.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                                            <div className="flex items-start justify-between gap-4">
-                                                <div>
-                                                    <p className="font-medium text-slate-950">{unlock.badge.name}</p>
-                                                    <p className="mt-1 text-sm text-slate-500">{unlock.learningSeries.name}</p>
-                                                </div>
-                                                <Badge variant="outline">{unlock.badge.thresholdStars} stars</Badge>
-                                            </div>
-                                            <div className="mt-3 text-sm text-slate-600">
-                                                <p>{unlock.user.name} · {unlock.user.email}</p>
-                                                <p className="mt-1">
-                                                    {unlock.event?.title ?? unlock.exam?.title ?? 'Direct award'} · {new Date(unlock.awardedAt).toLocaleString()}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    ))
-                                )}
+                                ) : recentUnlocks.map((unlock) => (
+                                    <div key={unlock.id} className="rounded-lg border p-4">
+                                        <p className="font-medium">{unlock.badge.name}</p>
+                                        <p className="mt-1 text-sm text-muted-foreground">
+                                            {unlock.domain.name} · {unlock.user.name} · {new Date(unlock.awardedAt).toLocaleString()}
+                                        </p>
+                                        <p className="mt-2 text-sm text-muted-foreground">
+                                            {unlock.event ? `Event: ${unlock.event.title}` : unlock.exam ? `Exam: ${unlock.exam.title}` : 'Domain reward'}
+                                        </p>
+                                    </div>
+                                ))}
                             </CardContent>
                         </Card>
                     </div>

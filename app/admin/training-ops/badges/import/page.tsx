@@ -126,8 +126,8 @@ export default function ImportTrainingOpsBadgesPage() {
                                     <p className="mt-2 text-2xl font-semibold">{summary.totals.items}</p>
                                 </div>
                                 <div className="rounded-lg border p-4">
-                                    <p className="text-sm text-muted-foreground">Active Series</p>
-                                    <p className="mt-2 text-lg font-semibold">{summary.activeSeries.join(', ') || 'None'}</p>
+                                    <p className="text-sm text-muted-foreground">Active Domains</p>
+                                    <p className="mt-2 text-lg font-semibold">{summary.activeDomains.join(', ') || 'None'}</p>
                                 </div>
                             </div>
 
@@ -146,7 +146,7 @@ export default function ImportTrainingOpsBadgesPage() {
                                             </span>
                                         </div>
                                         <p className="mt-2 text-sm text-muted-foreground">
-                                            Series: {item.learningSeriesSlug || 'n/a'} · Domain: {item.domainSlug || 'n/a'}
+                                            Domain: {item.domainSlug || 'n/a'}
                                         </p>
                                     </div>
                                 ))}

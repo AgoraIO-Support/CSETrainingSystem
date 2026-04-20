@@ -3,12 +3,11 @@ import { ExamAttemptStatus, ExamStatus } from '@prisma/client'
 
 export class LearnerWorkspaceService {
     static async getRewardsOverview(userId: string) {
-        const [allStarAwards, recentStarAwards, badgeAwards, certificatesEarned, globalMilestones, seriesMilestones] = await Promise.all([
+        const [allStarAwards, recentStarAwards, badgeAwards, certificatesEarned, domainMilestones] = await Promise.all([
             prisma.starAward.findMany({
                 where: { userId },
                 include: {
                     domain: { select: { id: true, name: true, slug: true } },
-                    learningSeries: { select: { id: true, name: true, slug: true } },
                     event: { select: { id: true, title: true } },
                     exam: { select: { id: true, title: true } },
                 },
@@ -18,7 +17,6 @@ export class LearnerWorkspaceService {
                 where: { userId },
                 include: {
                     domain: { select: { id: true, name: true, slug: true } },
-                    learningSeries: { select: { id: true, name: true, slug: true } },
                     event: { select: { id: true, title: true } },
                     exam: { select: { id: true, title: true } },
                 },
@@ -26,7 +24,14 @@ export class LearnerWorkspaceService {
                 take: 12,
             }),
             prisma.badgeAward.findMany({
-                where: { userId },
+                where: {
+                    userId,
+                    badge: {
+                        is: {
+                            domainId: { not: null },
+                        },
+                    },
+                },
                 include: {
                     badge: {
                         select: {
@@ -36,7 +41,7 @@ export class LearnerWorkspaceService {
                             description: true,
                             icon: true,
                             thresholdStars: true,
-                            learningSeries: {
+                            domain: {
                                 select: {
                                     id: true,
                                     name: true,
@@ -46,7 +51,6 @@ export class LearnerWorkspaceService {
                         },
                     },
                     domain: { select: { id: true, name: true, slug: true } },
-                    learningSeries: { select: { id: true, name: true, slug: true } },
                     event: { select: { id: true, title: true } },
                 },
                 orderBy: { awardedAt: 'desc' },
@@ -57,24 +61,10 @@ export class LearnerWorkspaceService {
             prisma.badgeMilestone.findMany({
                 where: {
                     active: true,
-                    domainId: null,
-                    learningSeriesId: null,
-                },
-                select: {
-                    id: true,
-                    name: true,
-                    slug: true,
-                    thresholdStars: true,
-                },
-                orderBy: { thresholdStars: 'asc' },
-            }),
-            prisma.badgeMilestone.findMany({
-                where: {
-                    active: true,
-                    learningSeriesId: { not: null },
+                    domainId: { not: null },
                 },
                 include: {
-                    learningSeries: {
+                    domain: {
                         select: {
                             id: true,
                             name: true,
@@ -83,7 +73,7 @@ export class LearnerWorkspaceService {
                     },
                 },
                 orderBy: [
-                    { learningSeriesId: 'asc' },
+                    { domainId: 'asc' },
                     { thresholdStars: 'asc' },
                 ],
             }),
@@ -121,52 +111,51 @@ export class LearnerWorkspaceService {
             domainMap.set(key, current)
         }
 
-        const topDomains = Array.from(domainMap.values()).sort((a, b) => {
-            if (b.stars !== a.stars) return b.stars - a.stars
-            return b.badges - a.badges
-        })
+        const topDomains = Array.from(domainMap.values())
+            .filter((item): item is { domainId: string; domainName: string; stars: number; badges: number } => Boolean(item.domainId))
+            .sort((a, b) => {
+                if (b.stars !== a.stars) return b.stars - a.stars
+                return b.badges - a.badges
+            })
 
-        const earnedBadgeIds = new Set(badgeAwards.map((award) => award.badge.id))
-        const nextBadge = globalMilestones.find((badge) => !earnedBadgeIds.has(badge.id) && badge.thresholdStars > totalStars)
-
-        const seriesStarTotals = new Map<string, number>()
+        const domainStarTotals = new Map<string, number>()
         for (const award of allStarAwards) {
-            if (!award.learningSeriesId) continue
-            seriesStarTotals.set(award.learningSeriesId, (seriesStarTotals.get(award.learningSeriesId) ?? 0) + award.stars)
+            if (!award.domainId) continue
+            domainStarTotals.set(award.domainId, (domainStarTotals.get(award.domainId) ?? 0) + award.stars)
         }
 
-        const earnedBadgeIdsBySeries = new Map<string, Set<string>>()
+        const earnedBadgeIdsByDomain = new Map<string, Set<string>>()
         for (const award of badgeAwards) {
-            const seriesId = award.learningSeriesId ?? award.badge.learningSeries?.id
-            if (!seriesId) continue
-            const ids = earnedBadgeIdsBySeries.get(seriesId) ?? new Set<string>()
+            const domainId = award.domainId ?? award.badge.domain?.id
+            if (!domainId) continue
+            const ids = earnedBadgeIdsByDomain.get(domainId) ?? new Set<string>()
             ids.add(award.badge.id)
-            earnedBadgeIdsBySeries.set(seriesId, ids)
+            earnedBadgeIdsByDomain.set(domainId, ids)
         }
 
-        const milestonesBySeries = new Map<string, typeof seriesMilestones>()
-        for (const milestone of seriesMilestones) {
-            if (!milestone.learningSeriesId || !milestone.learningSeries) continue
-            const current = milestonesBySeries.get(milestone.learningSeriesId) ?? []
+        const milestonesByDomain = new Map<string, typeof domainMilestones>()
+        for (const milestone of domainMilestones) {
+            if (!milestone.domainId || !milestone.domain) continue
+            const current = milestonesByDomain.get(milestone.domainId) ?? []
             current.push(milestone)
-            milestonesBySeries.set(milestone.learningSeriesId, current)
+            milestonesByDomain.set(milestone.domainId, current)
         }
 
-        const seriesProgressions = Array.from(milestonesBySeries.entries()).map(([seriesId, milestones]) => {
-            const stars = seriesStarTotals.get(seriesId) ?? 0
-            const earnedForSeries = earnedBadgeIdsBySeries.get(seriesId) ?? new Set<string>()
+        const domainProgressions = Array.from(milestonesByDomain.entries()).map(([domainId, milestones]) => {
+            const stars = domainStarTotals.get(domainId) ?? 0
+            const earnedForDomain = earnedBadgeIdsByDomain.get(domainId) ?? new Set<string>()
             const currentBadge = [...milestones]
-                .filter((milestone) => earnedForSeries.has(milestone.id) && milestone.thresholdStars <= stars)
+                .filter((milestone) => earnedForDomain.has(milestone.id) && milestone.thresholdStars <= stars)
                 .sort((a, b) => b.thresholdStars - a.thresholdStars)[0] ?? null
-            const nextSeriesBadge = [...milestones]
-                .find((milestone) => !earnedForSeries.has(milestone.id) && milestone.thresholdStars > stars) ?? null
+            const nextDomainBadge = [...milestones]
+                .find((milestone) => !earnedForDomain.has(milestone.id) && milestone.thresholdStars > stars) ?? null
             const maxThreshold = milestones[milestones.length - 1]?.thresholdStars ?? 0
-            const progressBasis = (nextSeriesBadge?.thresholdStars ?? maxThreshold) || 1
+            const progressBasis = (nextDomainBadge?.thresholdStars ?? maxThreshold) || 1
 
             return {
-                learningSeries: milestones[0].learningSeries!,
+                domain: milestones[0].domain!,
                 stars,
-                unlockedBadges: earnedForSeries.size,
+                unlockedBadges: earnedForDomain.size,
                 currentBadge: currentBadge
                     ? {
                         id: currentBadge.id,
@@ -175,21 +164,29 @@ export class LearnerWorkspaceService {
                         thresholdStars: currentBadge.thresholdStars,
                     }
                     : null,
-                nextBadge: nextSeriesBadge
+                nextBadge: nextDomainBadge
                     ? {
-                        id: nextSeriesBadge.id,
-                        name: nextSeriesBadge.name,
-                        slug: nextSeriesBadge.slug,
-                        thresholdStars: nextSeriesBadge.thresholdStars,
-                        remainingStars: Math.max(nextSeriesBadge.thresholdStars - stars, 0),
+                        id: nextDomainBadge.id,
+                        name: nextDomainBadge.name,
+                        slug: nextDomainBadge.slug,
+                        thresholdStars: nextDomainBadge.thresholdStars,
+                        remainingStars: Math.max(nextDomainBadge.thresholdStars - stars, 0),
                     }
                     : null,
                 progressPercent: Math.max(0, Math.min(100, Math.round((stars / progressBasis) * 100))),
             }
         }).sort((a, b) => {
             if (b.stars !== a.stars) return b.stars - a.stars
-            return a.learningSeries.name.localeCompare(b.learningSeries.name)
+            return a.domain.name.localeCompare(b.domain.name)
         })
+
+        const nextBadge = [...domainProgressions]
+            .filter((item) => item.nextBadge)
+            .sort((a, b) => {
+                const remainingDelta = (a.nextBadge?.remainingStars ?? Infinity) - (b.nextBadge?.remainingStars ?? Infinity)
+                if (remainingDelta !== 0) return remainingDelta
+                return a.domain.name.localeCompare(b.domain.name)
+            })[0] ?? null
 
         return {
             summary: {
@@ -206,7 +203,6 @@ export class LearnerWorkspaceService {
                 reason: award.reason,
                 awardedAt: award.awardedAt,
                 domain: award.domain,
-                learningSeries: award.learningSeries,
                 event: award.event,
                 exam: award.exam,
             })),
@@ -215,18 +211,18 @@ export class LearnerWorkspaceService {
                 awardedAt: award.awardedAt,
                 badge: award.badge,
                 domain: award.domain,
-                learningSeries: award.learningSeries,
                 event: award.event,
             })),
             topDomains,
-            seriesProgressions,
+            domainProgressions,
             nextBadge: nextBadge
                 ? {
-                    id: nextBadge.id,
-                    name: nextBadge.name,
-                    slug: nextBadge.slug,
-                    thresholdStars: nextBadge.thresholdStars,
-                    remainingStars: Math.max(nextBadge.thresholdStars - totalStars, 0),
+                    id: nextBadge.nextBadge!.id,
+                    name: nextBadge.nextBadge!.name,
+                    slug: nextBadge.nextBadge!.slug,
+                    thresholdStars: nextBadge.nextBadge!.thresholdStars,
+                    remainingStars: nextBadge.nextBadge!.remainingStars,
+                    domain: nextBadge.domain,
                 }
                 : null,
         }

@@ -15,6 +15,36 @@ import { ArrowLeft, Loader2, Save } from 'lucide-react'
 import Link from 'next/link'
 import type { Course, ExamType } from '@/types'
 
+type AssessmentKindOption = 'PRACTICE' | 'READINESS' | 'FORMAL'
+
+const isFormalSeriesType = (seriesType?: string | null) =>
+    seriesType === 'QUARTERLY_FINAL' || seriesType === 'YEAR_END_FINAL'
+
+const getDefaultAssessmentKind = (input?: {
+    countsTowardPerformance?: boolean
+    format?: string | null
+    seriesType?: string | null
+}, options?: {
+    allowFormal?: boolean
+} | null): AssessmentKindOption => {
+    if (
+        options?.allowFormal !== false &&
+        (
+            input?.countsTowardPerformance ||
+            input?.format === 'FINAL_EXAM' ||
+            isFormalSeriesType(input?.seriesType)
+        )
+    ) {
+        return 'FORMAL'
+    }
+
+    if (input?.format === 'RELEASE_BRIEFING' || input?.seriesType === 'RELEASE_READINESS') {
+        return 'READINESS'
+    }
+
+    return 'PRACTICE'
+}
+
 function CreateExamPageContent() {
     const timeZoneOptions = getExamTimeZoneOptions()
     const router = useRouter()
@@ -48,7 +78,7 @@ function CreateExamPageContent() {
         timezone: 'UTC',
         availableFrom: '',
         deadline: '',
-        assessmentKind: 'PRACTICE' as 'PRACTICE' | 'READINESS' | 'FORMAL',
+        assessmentKind: 'PRACTICE' as AssessmentKindOption,
         awardsStars: false,
         starValue: '0',
         countsTowardPerformance: false,
@@ -96,15 +126,14 @@ function CreateExamPageContent() {
                 setForm((prev) => ({
                     ...prev,
                     title: prev.title || response.data.title,
-                    assessmentKind:
-                        response.data.countsTowardPerformance || response.data.format === 'FINAL_EXAM'
-                            ? 'FORMAL'
-                            : response.data.format === 'RELEASE_BRIEFING'
-                                ? 'READINESS'
-                                : 'PRACTICE',
+                    assessmentKind: getDefaultAssessmentKind({
+                        countsTowardPerformance: response.data.countsTowardPerformance,
+                        format: response.data.format,
+                        seriesType: response.data.series?.type,
+                    }, { allowFormal: !isSmeMode }),
                     awardsStars: (response.data.starValue ?? 0) > 0,
                     starValue: response.data.starValue?.toString() ?? '0',
-                    countsTowardPerformance: response.data.countsTowardPerformance,
+                    countsTowardPerformance: isSmeMode ? false : response.data.countsTowardPerformance,
                 }))
             } catch (err) {
                 console.error('Failed to load linked learning event:', err)
@@ -115,7 +144,32 @@ function CreateExamPageContent() {
         }
 
         void loadLinkedEvent()
-    }, [learningEventId])
+    }, [isSmeMode, learningEventId])
+
+    useEffect(() => {
+        if (!isSmeMode || form.assessmentKind !== 'FORMAL') {
+            return
+        }
+
+        setForm((prev) => ({
+            ...prev,
+            assessmentKind: getDefaultAssessmentKind({
+                format: linkedEvent?.format,
+                seriesType: linkedEvent?.series?.type,
+            }, { allowFormal: false }),
+        }))
+    }, [form.assessmentKind, isSmeMode, linkedEvent?.format, linkedEvent?.series?.type])
+
+    useEffect(() => {
+        if (!isSmeMode || !form.countsTowardPerformance) {
+            return
+        }
+
+        setForm((prev) => ({
+            ...prev,
+            countsTowardPerformance: false,
+        }))
+    }, [form.countsTowardPerformance, isSmeMode])
 
     useEffect(() => {
         if (!badgeFile) return
@@ -155,7 +209,7 @@ function CreateExamPageContent() {
                 learningEventId: linkedEvent?.id ?? null,
                 awardsStars: form.awardsStars,
                 starValue: form.awardsStars ? (parseInt(form.starValue) || 0) : 0,
-                countsTowardPerformance: form.countsTowardPerformance,
+                countsTowardPerformance: isSmeMode ? undefined : form.countsTowardPerformance,
             }
 
             const response = await ApiClient.createExam(payload)
@@ -402,58 +456,66 @@ function CreateExamPageContent() {
                                     Reward defaults were prefilled from the linked learning event. You can still override them for this exam.
                                 </div>
                             ) : null}
-                            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                            <div className="grid gap-4 xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
                                 <div className="space-y-2">
                                     <Label htmlFor="assessmentKind">Assessment Kind</Label>
                                     <select
                                         id="assessmentKind"
                                         className="w-full h-10 px-3 border rounded-md bg-background"
                                         value={form.assessmentKind}
-                                        onChange={(e) => updateForm('assessmentKind', e.target.value as 'PRACTICE' | 'READINESS' | 'FORMAL')}
+                                        onChange={(e) => updateForm('assessmentKind', e.target.value as AssessmentKindOption)}
                                     >
                                         <option value="PRACTICE">Practice</option>
                                         <option value="READINESS">Readiness</option>
-                                        <option value="FORMAL">Formal</option>
+                                        {!isSmeMode ? (
+                                            <option value="FORMAL">Formal</option>
+                                        ) : null}
                                     </select>
                                 </div>
-                                <div className="flex items-center justify-between rounded-lg border bg-background/70 px-4 py-3 xl:col-span-1">
-                                    <div className="space-y-0.5">
-                                        <Label>Awards Stars</Label>
-                                        <p className="text-sm text-muted-foreground">Issue stars when the learner passes</p>
+                                <div className={`grid gap-4 ${isSmeMode ? 'md:grid-cols-1' : 'md:grid-cols-2'}`}>
+                                    <div className="rounded-lg border bg-background/70 p-4 space-y-4">
+                                        <div className="flex items-center justify-between gap-4">
+                                            <div className="space-y-0.5">
+                                                <Label>Awards Stars</Label>
+                                                <p className="text-sm text-muted-foreground">Issue stars when the learner passes</p>
+                                            </div>
+                                            <Switch
+                                                checked={form.awardsStars}
+                                                onCheckedChange={(checked: boolean) => updateForm('awardsStars', checked)}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="starValue">Stars on Pass</Label>
+                                            <Input
+                                                id="starValue"
+                                                type="number"
+                                                min={0}
+                                                max={20}
+                                                value={form.starValue}
+                                                onChange={(e) => updateForm('starValue', e.target.value)}
+                                                disabled={!form.awardsStars}
+                                            />
+                                        </div>
                                     </div>
-                                    <Switch
-                                        checked={form.awardsStars}
-                                        onCheckedChange={(checked: boolean) => updateForm('awardsStars', checked)}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="starValue">Stars on Pass</Label>
-                                    <Input
-                                        id="starValue"
-                                        type="number"
-                                        min={0}
-                                        max={20}
-                                        value={form.starValue}
-                                        onChange={(e) => updateForm('starValue', e.target.value)}
-                                        disabled={!form.awardsStars}
-                                    />
-                                </div>
-                                <div className="flex items-center justify-between rounded-lg border bg-background/70 px-4 py-3 xl:col-span-1">
-                                    <div className="space-y-0.5">
-                                        <Label>Counts Toward Performance</Label>
-                                        <p className="text-sm text-muted-foreground">Use for formal or tracked assessments</p>
-                                    </div>
-                                    <Switch
-                                        checked={form.countsTowardPerformance}
-                                        onCheckedChange={(checked: boolean) => updateForm('countsTowardPerformance', checked)}
-                                    />
+                                    {!isSmeMode ? (
+                                        <div className="rounded-lg border bg-background/70 p-4 flex items-center justify-between gap-4">
+                                            <div className="space-y-0.5">
+                                                <Label>Counts Toward Performance</Label>
+                                                <p className="text-sm text-muted-foreground">Use for tracked or formal assessments</p>
+                                            </div>
+                                            <Switch
+                                                checked={form.countsTowardPerformance}
+                                                onCheckedChange={(checked: boolean) => updateForm('countsTowardPerformance', checked)}
+                                            />
+                                        </div>
+                                    ) : null}
                                 </div>
                             </div>
                             <div className="rounded-lg border bg-background/70 p-4">
                                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Certificate</p>
                                 <p className="mt-2 text-lg font-semibold">{form.certificateEnabled ? 'Enabled' : 'Not enabled'}</p>
                                 <p className="mt-1 text-sm text-muted-foreground">
-                                    Certificates should normally be reserved for formal assessments. Practice and readiness assessments are better suited to stars and badges.
+                                    Certificates are managed separately and are typically reserved for admin-managed formal assessments. Practice and readiness exams are better suited to stars and domain badges.
                                 </p>
                             </div>
                         </CardContent>

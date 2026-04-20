@@ -63,7 +63,7 @@ type ResultPayload = {
       name: string;
       slug: string;
       description: string | null;
-      learningSeries: {
+      domain: {
         id: string;
         name: string;
         slug: string;
@@ -216,6 +216,11 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
         where: {
           userId: user.id,
           examId: attempt.examId,
+          badge: {
+            is: {
+              domainId: { not: null },
+            },
+          },
         },
         include: {
           badge: {
@@ -224,7 +229,7 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
               name: true,
               slug: true,
               description: true,
-              learningSeries: {
+              domain: {
                 select: {
                   id: true,
                   name: true,
@@ -292,7 +297,7 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
           name: award.badge.name,
           slug: award.badge.slug,
           description: award.badge.description ?? null,
-          learningSeries: award.badge.learningSeries,
+          domain: award.badge.domain,
         })),
         certificate: {
           eligible: attempt.exam.assessmentKind === 'FORMAL' && Boolean(certificateTemplate?.isEnabled),

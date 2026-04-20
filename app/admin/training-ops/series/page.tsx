@@ -37,8 +37,7 @@ export default function TrainingOpsSeriesPage() {
     const stats = useMemo(() => {
         const active = series.filter((item) => item.isActive).length
         const badgeEligible = series.filter((item) => item.badgeEligible).length
-        const performance = series.filter((item) => item.countsTowardPerformance).length
-        return { total: series.length, active, badgeEligible, performance }
+        return { total: series.length, active, badgeEligible }
     }, [series])
 
     return (
@@ -78,11 +77,10 @@ export default function TrainingOpsSeriesPage() {
                     </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                     <Card><CardHeader className="pb-2"><CardDescription>Total</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.total}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Configured learning series.</p></CardContent></Card>
                     <Card><CardHeader className="pb-2"><CardDescription>Active</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.active}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Available for current scheduling.</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2"><CardDescription>Badge Eligible</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.badgeEligible}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Can contribute to badges and stars.</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2"><CardDescription>Performance-linked</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.performance}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Contributes to formal assessment tracking.</p></CardContent></Card>
+                    <Card><CardHeader className="pb-2"><CardDescription>Domain Badge Enabled</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.badgeEligible}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Can contribute stars toward domain badge ladders.</p></CardContent></Card>
                 </div>
 
                 <Card>
@@ -98,7 +96,7 @@ export default function TrainingOpsSeriesPage() {
                 <Card>
                     <CardHeader>
                         <CardTitle>Series Catalog</CardTitle>
-                        <CardDescription>Open a learning series to adjust defaults like cadence, owner, star value, and performance impact.</CardDescription>
+                        <CardDescription>Open a learning series to adjust defaults like cadence, owner, star value, and domain badge contribution.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-3">
                         {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
@@ -115,7 +113,6 @@ export default function TrainingOpsSeriesPage() {
                                                 <Badge>{item.type}</Badge>
                                                 {item.domain ? <Badge variant="outline">{item.domain.name}</Badge> : null}
                                                 {!item.isActive ? <Badge variant="outline">Inactive</Badge> : null}
-                                                {item.countsTowardPerformance ? <Badge variant="outline">Performance</Badge> : null}
                                             </div>
                                             <div>
                                                 <p className="text-lg font-semibold">{item.name}</p>
@@ -141,7 +138,7 @@ export default function TrainingOpsSeriesPage() {
                                     </div>
                                     <div className="mt-4 grid gap-3 md:grid-cols-4 text-sm text-muted-foreground">
                                         <div>Default stars: {item.defaultStarValue ?? '—'}</div>
-                                        <div>Badge eligible: {item.badgeEligible ? 'Yes' : 'No'}</div>
+                                        <div>Domain badges: {item.badgeEligible ? 'Enabled' : 'Disabled'}</div>
                                         <div>{item.counts.events} events</div>
                                         <div>{item.counts.exams} exams</div>
                                     </div>

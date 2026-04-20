@@ -230,7 +230,7 @@ export default function HomePage() {
                             </div>
                             <Link href="/training" className="block">
                                 <Button variant="outline" className="w-full justify-between">
-                                    Open training queue
+                                    Open learning hub
                                     <ArrowRight className="h-4 w-4" />
                                 </Button>
                             </Link>
@@ -375,7 +375,7 @@ export default function HomePage() {
                         <div>
                             <CardTitle className="text-xl">Rewards progression</CardTitle>
                             <CardDescription>
-                                Stars advance badge ladders inside training series, while certificates remain a formal outcome.
+                                Stars advance domain badge ladders, while certificates remain a formal outcome.
                             </CardDescription>
                         </div>
                         <div className="flex gap-2">
@@ -391,7 +391,7 @@ export default function HomePage() {
                         <div className="rounded-2xl border border-slate-200/70 bg-slate-50 p-4">
                             <div className="flex items-center gap-2">
                                 <Star className="h-4 w-4 text-[#006688]" />
-                                <p className="text-sm font-semibold text-slate-900">Next global badge</p>
+                                <p className="text-sm font-semibold text-slate-900">Next domain badge</p>
                             </div>
                             {rewardsOverview?.nextBadge ? (
                                 <>
@@ -399,40 +399,40 @@ export default function HomePage() {
                                         {rewardsOverview.nextBadge.name}
                                     </p>
                                     <p className="mt-1 text-sm text-muted-foreground">
-                                        {rewardsOverview.nextBadge.remainingStars} more star{rewardsOverview.nextBadge.remainingStars === 1 ? '' : 's'} needed.
+                                        {rewardsOverview.nextBadge.domain.name} · {rewardsOverview.nextBadge.remainingStars} more star{rewardsOverview.nextBadge.remainingStars === 1 ? '' : 's'} needed.
                                     </p>
                                 </>
                             ) : (
                                 <p className="mt-3 text-sm text-muted-foreground">
-                                    No further global milestone is currently configured.
+                                    No further domain milestone is currently configured.
                                 </p>
                             )}
                         </div>
                         <div className="rounded-2xl border border-slate-200/70 bg-slate-50 p-4">
-                            <p className="text-sm font-semibold text-slate-900">Strongest series</p>
-                            {rewardsOverview?.seriesProgressions?.[0] ? (
+                            <p className="text-sm font-semibold text-slate-900">Strongest domain</p>
+                            {rewardsOverview?.domainProgressions?.[0] ? (
                                 <>
                                     <p className="mt-3 text-lg font-semibold tracking-[-0.03em]">
-                                        {rewardsOverview.seriesProgressions[0].learningSeries.name}
+                                        {rewardsOverview.domainProgressions[0].domain.name}
                                     </p>
                                     <p className="mt-1 text-sm text-muted-foreground">
-                                        {rewardsOverview.seriesProgressions[0].currentBadge
-                                            ? `Current level: ${rewardsOverview.seriesProgressions[0].currentBadge.name}`
-                                            : 'No series badge unlocked yet'}
+                                        {rewardsOverview.domainProgressions[0].currentBadge
+                                            ? `Current level: ${rewardsOverview.domainProgressions[0].currentBadge.name}`
+                                            : 'No domain badge unlocked yet'}
                                     </p>
-                                    {rewardsOverview.seriesProgressions[0].nextBadge ? (
+                                    {rewardsOverview.domainProgressions[0].nextBadge ? (
                                         <p className="mt-1 text-sm text-muted-foreground">
-                                            Next: {rewardsOverview.seriesProgressions[0].nextBadge.name} · {rewardsOverview.seriesProgressions[0].nextBadge.remainingStars} stars to go
+                                            Next: {rewardsOverview.domainProgressions[0].nextBadge.name} · {rewardsOverview.domainProgressions[0].nextBadge.remainingStars} stars to go
                                         </p>
                                     ) : (
                                         <p className="mt-1 text-sm text-muted-foreground">
-                                            Top badge reached in this series.
+                                            Top badge reached in this domain.
                                         </p>
                                     )}
                                 </>
                             ) : (
                                 <p className="mt-3 text-sm text-muted-foreground">
-                                    Earn stars from assigned training to begin series badge progression.
+                                    Earn stars from assigned training to begin domain badge progression.
                                 </p>
                             )}
                         </div>

@@ -7,20 +7,25 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ApiClient } from '@/lib/api-client'
-import type { ProductDomainEffectivenessSummary, SmeWorkspaceSummary } from '@/types'
+import type { ProductDomainEffectivenessSummary, SmeBadgeLadderOverview, SmeWorkspaceSummary } from '@/types'
 import { AlertTriangle, Award, CalendarClock, GraduationCap, Loader2, TrendingUp, Users } from 'lucide-react'
 
 export default function SmeDashboardPage() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [overview, setOverview] = useState<SmeWorkspaceSummary | null>(null)
+    const [badgeOverview, setBadgeOverview] = useState<SmeBadgeLadderOverview | null>(null)
 
     useEffect(() => {
         const loadData = async () => {
             try {
                 setLoading(true)
-                const response = await ApiClient.getSmeTrainingOpsOverview()
-                setOverview(response.data)
+                const [overviewResponse, badgeResponse] = await Promise.all([
+                    ApiClient.getSmeTrainingOpsOverview(),
+                    ApiClient.getSmeTrainingOpsBadges(),
+                ])
+                setOverview(overviewResponse.data)
+                setBadgeOverview(badgeResponse.data)
                 setError(null)
             } catch (err) {
                 setError(err instanceof Error ? err.message : 'Failed to load SME workspace')
@@ -50,9 +55,21 @@ export default function SmeDashboardPage() {
     }, [overview])
 
     const spotlightDomains = (overview?.effectiveness ?? []).slice(0, 4)
+    const badgeLadders = badgeOverview?.domainLadders ?? []
+    const badgeUnlocks = badgeOverview?.recentUnlocks ?? []
     const recentEvents = (overview?.events ?? []).slice(0, 6)
     const weakTopics = overview?.weakTopics ?? []
     const learnerGaps = overview?.learnerGaps ?? []
+    const badgeSummary = useMemo(() => {
+        const ladders = badgeOverview?.domainLadders ?? []
+
+        return {
+            domains: ladders.length,
+            milestones: ladders.reduce((sum, ladder) => sum + ladder.milestones.length, 0),
+            unlocks: ladders.reduce((sum, ladder) => sum + ladder.totalUnlocks, 0),
+            learners: ladders.reduce((sum, ladder) => sum + ladder.recognizedLearners, 0),
+        }
+    }, [badgeOverview])
 
     return (
         <DashboardLayout>
@@ -75,7 +92,7 @@ export default function SmeDashboardPage() {
                             <div className="flex flex-wrap gap-3">
                                 <Link href="/sme/training-ops/domains"><Button variant="outline">My Domains</Button></Link>
                                 <Link href="/sme/training-ops/series"><Button variant="outline">My Series</Button></Link>
-                                <Link href="/sme/training-ops/badges"><Button variant="outline">My Badges</Button></Link>
+                                <Link href="#domain-badges"><Button variant="outline">Domain Badge Overview</Button></Link>
                                 <Link href="/sme/training-ops/events"><Button>My Events</Button></Link>
                                 <Link href="/sme/training-ops/effectiveness"><Button variant="outline">Effectiveness</Button></Link>
                             </div>
@@ -178,13 +195,131 @@ export default function SmeDashboardPage() {
                                 Common SME actions for weekly execution.
                             </CardDescription>
                         </CardHeader>
-                            <CardContent className="grid gap-3">
+                        <CardContent className="grid gap-3">
                             <Link href="/sme/training-ops/domains"><Button variant="outline" className="w-full justify-start"><Users className="mr-2 h-4 w-4" />Open My Domains</Button></Link>
                             <Link href="/sme/training-ops/series"><Button variant="outline" className="w-full justify-start"><GraduationCap className="mr-2 h-4 w-4" />Open My Series</Button></Link>
-                            <Link href="/sme/training-ops/badges"><Button variant="outline" className="w-full justify-start"><Award className="mr-2 h-4 w-4" />Open My Badges</Button></Link>
+                            <Link href="/sme/training-ops/badges/new"><Button variant="outline" className="w-full justify-start"><Award className="mr-2 h-4 w-4" />Create Domain Badge</Button></Link>
+                            <Link href="#domain-badges"><Button variant="outline" className="w-full justify-start"><Award className="mr-2 h-4 w-4" />Review Badge Overview</Button></Link>
                             <Link href="/sme/training-ops/events/new"><Button className="w-full justify-start"><CalendarClock className="mr-2 h-4 w-4" />Create Learning Event</Button></Link>
                             <Link href="/sme/training-ops/events"><Button variant="outline" className="w-full justify-start"><GraduationCap className="mr-2 h-4 w-4" />Review My Events</Button></Link>
                             <Link href="/sme/training-ops/effectiveness"><Button variant="outline" className="w-full justify-start"><TrendingUp className="mr-2 h-4 w-4" />Open Effectiveness View</Button></Link>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                <div id="domain-badges" className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+                    <Card className="border border-slate-200 bg-white shadow-sm">
+                        <CardHeader>
+                            <div className="flex flex-wrap items-start justify-between gap-4">
+                                <div>
+                                    <CardTitle className="text-2xl text-slate-950">Domain Badge Overview</CardTitle>
+                                    <CardDescription className="text-slate-500">
+                                        Badge ladders now live inside the SME dashboard alongside your domain health signals.
+                                    </CardDescription>
+                                </div>
+                                <div className="flex gap-3">
+                                    <Link href="/sme/training-ops/badges/new">
+                                        <Button variant="outline">Create Domain Badge</Button>
+                                    </Link>
+                                    <Link href="/sme/training-ops/badges">
+                                        <Button variant="outline">Open Full Badge Page</Button>
+                                    </Link>
+                                </div>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                    <p className="text-sm text-slate-500">Domains</p>
+                                    <p className="mt-2 text-3xl font-semibold text-slate-950">{loading ? '...' : badgeSummary.domains}</p>
+                                </div>
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                    <p className="text-sm text-slate-500">Milestones</p>
+                                    <p className="mt-2 text-3xl font-semibold text-slate-950">{loading ? '...' : badgeSummary.milestones}</p>
+                                </div>
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                    <p className="text-sm text-slate-500">Unlocks</p>
+                                    <p className="mt-2 text-3xl font-semibold text-slate-950">{loading ? '...' : badgeSummary.unlocks}</p>
+                                </div>
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                    <p className="text-sm text-slate-500">Recognized Learners</p>
+                                    <p className="mt-2 text-3xl font-semibold text-slate-950">{loading ? '...' : badgeSummary.learners}</p>
+                                </div>
+                            </div>
+                            {loading ? (
+                                <div className="flex h-28 items-center justify-center text-muted-foreground">
+                                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                                    Loading badge overview...
+                                </div>
+                            ) : badgeLadders.length === 0 ? (
+                                <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
+                                    No domain badge ladders are available in your SME scope yet.
+                                </div>
+                            ) : (
+                                badgeLadders.slice(0, 3).map((ladder) => (
+                                    <div key={ladder.domain.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                        <div className="flex flex-wrap items-center justify-between gap-3">
+                                            <div>
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <p className="font-semibold text-slate-950">{ladder.domain.name}</p>
+                                                    <Badge className="bg-emerald-600 hover:bg-emerald-600">Manageable</Badge>
+                                                </div>
+                                                <p className="mt-1 text-sm text-slate-500">
+                                                    {ladder.totalUnlocks} unlocks · {ladder.recognizedLearners} recognized learners
+                                                </p>
+                                            </div>
+                                            <Link href={`/sme/training-ops/badges/new?domainId=${ladder.domain.id}`}>
+                                                <Button size="sm" variant="outline">Add Badge</Button>
+                                            </Link>
+                                        </div>
+                                        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                            {ladder.milestones.slice(0, 3).map((milestone) => (
+                                                <div key={milestone.id} className="rounded-xl border border-slate-200 bg-white p-4">
+                                                    <p className="font-medium text-slate-950">{milestone.name}</p>
+                                                    <p className="mt-1 text-xs uppercase tracking-[0.16em] text-slate-500">
+                                                        {milestone.thresholdStars} stars
+                                                    </p>
+                                                    <p className="mt-3 text-2xl font-semibold text-slate-950">{milestone.awardCount}</p>
+                                                    <p className="text-sm text-slate-500">unlocks</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    <Card className="border border-slate-200 bg-white shadow-sm">
+                        <CardHeader>
+                            <CardTitle className="text-xl text-slate-950">Recent Badge Unlocks</CardTitle>
+                            <CardDescription className="text-slate-500">
+                                Latest badge recognition activity across your scoped domains.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            {loading ? (
+                                <div className="flex h-28 items-center justify-center text-muted-foreground">
+                                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                                    Loading badge unlocks...
+                                </div>
+                            ) : badgeUnlocks.length === 0 ? (
+                                <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
+                                    No badge unlocks have been recorded yet.
+                                </div>
+                            ) : (
+                                badgeUnlocks.slice(0, 5).map((unlock) => (
+                                    <div key={unlock.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                        <p className="font-medium text-slate-950">{unlock.badge.name}</p>
+                                        <p className="mt-1 text-sm text-slate-500">
+                                            {unlock.domain.name} · {unlock.user.name}
+                                        </p>
+                                        <p className="mt-2 text-sm text-slate-600">
+                                            {unlock.event ? `Event: ${unlock.event.title}` : unlock.exam ? `Exam: ${unlock.exam.title}` : 'Domain reward'}
+                                        </p>
+                                    </div>
+                                ))
+                            )}
                         </CardContent>
                     </Card>
                 </div>
