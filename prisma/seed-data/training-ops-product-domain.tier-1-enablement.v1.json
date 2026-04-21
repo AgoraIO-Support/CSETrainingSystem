@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "scopeModel": "PRODUCT_DOMAIN",
+  "items": [
+    {
+      "name": "Tier 1 Enablement",
+      "slug": "tier-1-enablement",
+      "category": "RTE",
+      "track": "MASTERY",
+      "kpiMode": "DELTA",
+      "description": "Capability-building domain for Tier 1 engineers focused on daily coaching, case study sharing, troubleshooting explanation, and practical frontline support readiness.",
+      "cadence": "Weekly",
+      "active": true,
+      "baselinePassRate": 60,
+      "targetPassRate": 80,
+      "challengeThreshold": 55
+    }
+  ]
+}

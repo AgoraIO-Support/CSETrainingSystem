@@ -365,7 +365,6 @@ export interface LearningSeriesSummary {
     description?: string | null
     cadence?: string | null
     isActive: boolean
-    badgeEligible: boolean
     countsTowardPerformance: boolean
     defaultStarValue?: number | null
     domain?: {
@@ -644,6 +643,8 @@ export interface TrainingOpsCourseSummary {
     publishedAt?: string | Date | null
     enrolledCount: number
     learningEventId?: string | null
+    productDomainId?: string | null
+    learningSeriesId?: string | null
 }
 
 export interface SmeManagedCourseDetail extends TrainingOpsCourseSummary {
@@ -1111,7 +1112,6 @@ export interface Achievement {
 
 // Exam System Types
 export type ExamStatus = 'DRAFT' | 'PENDING_REVIEW' | 'APPROVED' | 'PUBLISHED' | 'CLOSED' | 'ARCHIVED'
-export type ExamType = 'COURSE_BASED' | 'STANDALONE'
 export type ExamQuestionType = 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'FILL_IN_BLANK' | 'ESSAY' | 'EXERCISE'
 export type ExamAttemptStatus = 'IN_PROGRESS' | 'SUBMITTED' | 'GRADED' | 'EXPIRED'
 export type GradingStatus = 'PENDING' | 'AUTO_GRADED' | 'AI_SUGGESTED' | 'MANUALLY_GRADED'
@@ -1147,7 +1147,6 @@ export interface Exam {
     title: string
     description?: string | null
     instructions?: string | null
-    examType: ExamType
     status: ExamStatus
     courseId?: string | null
     course?: { id: string; title: string } | null

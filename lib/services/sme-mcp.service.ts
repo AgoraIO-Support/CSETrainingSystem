@@ -26,10 +26,15 @@ type ToolResult<T> = {
     summary: string
     data: T
     nextActions: string[]
+    recommendedNextInputs?: Record<string, unknown>
     warnings?: string[]
 }
 
 const AI_ASSISTANT_COURSE_USE_CASE = AIPromptUseCase.AI_ASSISTANT_KNOWLEDGE_CONTEXT_SYSTEM
+const KNOWLEDGE_CONTEXT_OVERRIDE_USE_CASE = AIPromptUseCase.VTT_TO_XML_ENRICHMENT
+
+const errorWithDetails = (message: string, details: unknown) =>
+    Object.assign(new Error(message), { details })
 
 export class SmeMcpService {
     static async listMyWorkspace(
@@ -75,7 +80,7 @@ export class SmeMcpService {
             .slice(0, 10)
 
         const draftCourses = courses
-            .filter((course) => course.status === 'DRAFT' && (!domainId || course.category === domains[0]?.name))
+            .filter((course) => course.status === 'DRAFT' && (!domainId || course.productDomainId === domainId))
             .slice(0, 10)
 
         const draftExams = exams
@@ -194,6 +199,15 @@ export class SmeMcpService {
                 exam,
             },
             nextActions: ['set_course_ai_template', 'get_event_execution_status'],
+            recommendedNextInputs: {
+                set_course_ai_template: {
+                    courseId: course.id,
+                    useDefault: true,
+                },
+                get_event_execution_status: {
+                    eventId: event.id,
+                },
+            },
         }
     }
 
@@ -359,6 +373,15 @@ export class SmeMcpService {
                 course,
             },
             nextActions: ['set_course_ai_template', 'get_event_execution_status'],
+            recommendedNextInputs: {
+                set_course_ai_template: {
+                    courseId: course.id,
+                    useDefault: true,
+                },
+                get_event_execution_status: {
+                    eventId: event.id,
+                },
+            },
         }
     }
 
@@ -386,6 +409,16 @@ export class SmeMcpService {
                 exam,
             },
             nextActions: ['publish_exam_with_invitations', 'get_event_execution_status'],
+            recommendedNextInputs: {
+                publish_exam_with_invitations: {
+                    examId: exam.id,
+                    userIds: [],
+                    sendNotification: false,
+                },
+                get_event_execution_status: {
+                    eventId: event.id,
+                },
+            },
         }
     }
 
@@ -445,6 +478,18 @@ export class SmeMcpService {
             lessonTitle: string
             courseId: string
             courseTitle: string
+            videoAssets: Array<{
+                id: string
+                title: string
+                mimeType: string | null
+            }>
+            transcriptTracks: Array<{
+                id: string
+                status: string
+                language: string
+                isPrimaryForAI: boolean
+                isDefaultSubtitle: boolean
+            }>
             transcript: {
                 id: string
                 status: string
@@ -466,6 +511,19 @@ export class SmeMcpService {
                     stage: string
                     errorMessage: string | null
                 } | null
+            }
+            recommendedNextInputs: {
+                prepare_transcript_upload: {
+                    lessonId: string
+                    contentType: 'text/vtt'
+                    videoAssetId?: string
+                }
+                process_transcript_knowledge: {
+                    lessonId: string
+                    processTranscript: boolean
+                    processKnowledge: boolean
+                    transcriptId?: string
+                }
             }
         }>
     }>> {
@@ -558,6 +616,23 @@ export class SmeMcpService {
                             },
                         },
                     },
+                    assets: {
+                        where: {
+                            courseAsset: {
+                                type: 'VIDEO',
+                            },
+                        },
+                        select: {
+                            courseAsset: {
+                                select: {
+                                    id: true,
+                                    title: true,
+                                    mimeType: true,
+                                    contentType: true,
+                                },
+                            },
+                        },
+                    },
                     knowledgeContext: {
                         select: {
                             status: true,
@@ -634,12 +709,27 @@ export class SmeMcpService {
             const transcript = getPrimaryAiTranscriptTrack(lesson.transcripts)
             const transcriptJob = transcript?.processingJobs[0] ?? null
             const knowledgeJob = lesson.knowledgeContextJobs[0] ?? null
+            const transcriptTracks = lesson.transcripts.map((track) => ({
+                id: track.id,
+                status: track.status,
+                language: track.language,
+                isPrimaryForAI: track.isPrimaryForAI,
+                isDefaultSubtitle: track.isDefaultSubtitle,
+            }))
+            const videoAssets = lesson.assets.map((binding) => ({
+                id: binding.courseAsset.id,
+                title: binding.courseAsset.title,
+                mimeType: binding.courseAsset.mimeType ?? binding.courseAsset.contentType ?? null,
+            }))
+            const singleVideoAsset = videoAssets.length === 1 ? videoAssets[0] : null
 
             return {
                 lessonId: lesson.id,
                 lessonTitle: lesson.title,
                 courseId: lesson.chapter.course.id,
                 courseTitle: lesson.chapter.course.title,
+                videoAssets,
+                transcriptTracks,
                 transcript: transcript
                     ? {
                         id: transcript.id,
@@ -665,8 +755,32 @@ export class SmeMcpService {
                             state: knowledgeJob.state,
                             stage: knowledgeJob.stage,
                             errorMessage: knowledgeJob.errorMessage,
+                            }
+                            : null,
+                },
+                recommendedNextInputs: {
+                    prepare_transcript_upload: singleVideoAsset
+                        ? {
+                            lessonId: lesson.id,
+                            videoAssetId: singleVideoAsset.id,
+                            contentType: 'text/vtt' as const,
                         }
-                        : null,
+                        : {
+                            lessonId: lesson.id,
+                            contentType: 'text/vtt' as const,
+                        },
+                    process_transcript_knowledge: transcript
+                        ? {
+                            lessonId: lesson.id,
+                            transcriptId: transcript.id,
+                            processTranscript: true,
+                            processKnowledge: true,
+                        }
+                        : {
+                            lessonId: lesson.id,
+                            processTranscript: true,
+                            processKnowledge: true,
+                        },
                 },
             }
         })
@@ -926,6 +1040,7 @@ export class SmeMcpService {
                 title: true,
                 status: true,
                 publishedAt: true,
+                learningEventId: true,
                 _count: {
                     select: {
                         invitations: true,
@@ -951,7 +1066,14 @@ export class SmeMcpService {
                 notificationsSent: notificationResults.sent,
                 notificationsFailed: notificationResults.failed,
             },
-            nextActions: ['list_my_workspace'],
+            nextActions: ['get_event_execution_status', 'list_my_workspace'],
+            recommendedNextInputs: updatedExam?.learningEventId
+                ? {
+                    get_event_execution_status: {
+                        eventId: updatedExam.learningEventId,
+                    },
+                }
+                : undefined,
         }
     }
 
@@ -986,6 +1108,7 @@ export class SmeMcpService {
                 id: true,
                 title: true,
                 status: true,
+                learningEventId: true,
             },
         })
 
@@ -1067,7 +1190,16 @@ export class SmeMcpService {
                 notificationsSent: notificationResults.sent,
                 notificationsFailed: notificationResults.failed,
             },
-            nextActions: ['list_my_workspace'],
+            nextActions: ['get_event_execution_status', 'list_my_workspace'],
+            recommendedNextInputs: course.learningEventId
+                ? {
+                    get_event_execution_status: {
+                        eventId: course.learningEventId,
+                    },
+                }
+                : {
+                    list_my_workspace: {},
+                },
         }
     }
 
@@ -1075,7 +1207,7 @@ export class SmeMcpService {
         user: MappableUser,
         input: {
             lessonId: string
-            videoAssetId: string
+            videoAssetId?: string
             filename: string
             contentType?: 'text/vtt'
             languageCode?: string
@@ -1089,7 +1221,6 @@ export class SmeMcpService {
         await TrainingOpsService.assertScopedLessonAccess(user, input.lessonId)
 
         const filename = input.filename
-        const videoAssetId = input.videoAssetId
         const lesson = await prisma.lesson.findUnique({
             where: { id: input.lessonId },
             include: {
@@ -1101,12 +1232,59 @@ export class SmeMcpService {
             throw new Error('LESSON_NOT_FOUND')
         }
 
-        const videoAsset = await prisma.courseAsset.findUnique({
-            where: { id: videoAssetId },
+        const lessonVideoAssetBindings = await prisma.lessonAsset.findMany({
+            where: {
+                lessonId: input.lessonId,
+                courseAsset: {
+                    type: 'VIDEO',
+                },
+            },
+            select: {
+                courseAsset: {
+                    select: {
+                        id: true,
+                        title: true,
+                        mimeType: true,
+                        contentType: true,
+                    },
+                },
+            },
         })
+        const videoAssets = lessonVideoAssetBindings.map((binding) => binding.courseAsset)
 
-        if (!videoAsset || videoAsset.type !== 'VIDEO') {
+        if (videoAssets.length === 0) {
             throw new Error('VIDEO_ASSET_NOT_FOUND')
+        }
+
+        let resolvedVideoAssetId = input.videoAssetId
+
+        if (!resolvedVideoAssetId && videoAssets.length === 1) {
+            resolvedVideoAssetId = videoAssets[0].id
+        }
+
+        if (!resolvedVideoAssetId) {
+            throw errorWithDetails('VIDEO_ASSET_SELECTION_REQUIRED', {
+                lessonId: input.lessonId,
+                candidateVideoAssets: videoAssets.map((asset) => ({
+                    id: asset.id,
+                    title: asset.title,
+                    mimeType: asset.mimeType ?? asset.contentType ?? null,
+                })),
+            })
+        }
+
+        const videoAsset = videoAssets.find((asset) => asset.id === resolvedVideoAssetId)
+
+        if (!videoAsset) {
+            throw errorWithDetails('VIDEO_ASSET_NOT_IN_LESSON', {
+                lessonId: input.lessonId,
+                videoAssetId: resolvedVideoAssetId,
+                candidateVideoAssets: videoAssets.map((asset) => ({
+                    id: asset.id,
+                    title: asset.title,
+                    mimeType: asset.mimeType ?? asset.contentType ?? null,
+                })),
+            })
         }
 
         const transcriptId = uuidv4()
@@ -1128,12 +1306,12 @@ export class SmeMcpService {
         const replaceExistingLanguage = input.replaceExistingLanguage ?? true
         const remainingActiveTracks = replaceExistingLanguage
             ? activeTracks.filter(
-                (track) => !(track.videoAssetId === input.videoAssetId && track.language === language)
+                (track) => !(track.videoAssetId === resolvedVideoAssetId && track.language === language)
             )
             : activeTracks
 
         const hasDefaultForVideo = remainingActiveTracks.some(
-            (track) => track.videoAssetId === input.videoAssetId && track.isDefaultSubtitle
+            (track) => track.videoAssetId === resolvedVideoAssetId && track.isDefaultSubtitle
         )
         const hasPrimaryForLesson = remainingActiveTracks.some((track) => track.isPrimaryForAI)
         const shouldSetDefault = input.setAsDefaultSubtitle ?? !hasDefaultForVideo
@@ -1150,7 +1328,7 @@ export class SmeMcpService {
                 await tx.transcriptAsset.updateMany({
                     where: {
                         lessonId: input.lessonId,
-                        videoAssetId: input.videoAssetId,
+                        videoAssetId: resolvedVideoAssetId,
                         language,
                         isActive: true,
                         archivedAt: null,
@@ -1167,7 +1345,7 @@ export class SmeMcpService {
             if (shouldSetDefault) {
                 await tx.transcriptAsset.updateMany({
                     where: {
-                        videoAssetId: input.videoAssetId,
+                        videoAssetId: resolvedVideoAssetId,
                         isActive: true,
                         archivedAt: null,
                         isDefaultSubtitle: true,
@@ -1196,7 +1374,7 @@ export class SmeMcpService {
                 data: {
                     id: transcriptId,
                     lessonId: input.lessonId,
-                    videoAssetId,
+                    videoAssetId: resolvedVideoAssetId,
                     filename,
                     s3Key: uploadData.key,
                     url: null,
@@ -1221,7 +1399,7 @@ export class SmeMcpService {
                 transcriptAsset: {
                     id: transcriptId,
                     lessonId: input.lessonId,
-                    videoAssetId: input.videoAssetId,
+                    videoAssetId: resolvedVideoAssetId,
                     status: 'PENDING',
                     filename: input.filename,
                     language,
@@ -1232,8 +1410,20 @@ export class SmeMcpService {
                 uploadUrl: uploadData.uploadUrl,
                 s3Key: uploadData.key,
                 expiresIn: uploadData.expiresIn,
+                requiredHeaders: {
+                    'Content-Type': 'text/vtt',
+                    'x-amz-server-side-encryption': 'AES256',
+                },
             },
             nextActions: ['process_transcript_knowledge', 'get_event_execution_status'],
+            recommendedNextInputs: {
+                process_transcript_knowledge: {
+                    lessonId: input.lessonId,
+                    transcriptId,
+                    processTranscript: true,
+                    processKnowledge: true,
+                },
+            },
         }
     }
 
@@ -1246,7 +1436,6 @@ export class SmeMcpService {
             processKnowledge?: boolean
             force?: boolean
             knowledgePromptTemplateId?: string | null
-            anchorsPromptTemplateId?: string | null
         },
         toolName: 'process_transcript_knowledge' | 'upload_transcript_and_process'
     ): Promise<ToolResult<Record<string, unknown>>> {
@@ -1281,10 +1470,34 @@ export class SmeMcpService {
         }
 
         const force = Boolean(input.force)
+        if (input.knowledgePromptTemplateId) {
+            const template = await prisma.aIPromptTemplate.findUnique({
+                where: { id: input.knowledgePromptTemplateId },
+                select: {
+                    id: true,
+                    isActive: true,
+                    useCase: true,
+                },
+            })
+
+            if (!template || !template.isActive) {
+                throw new Error('PROMPT_TEMPLATE_NOT_FOUND')
+            }
+
+            if (template.useCase !== KNOWLEDGE_CONTEXT_OVERRIDE_USE_CASE) {
+                throw new Error('PROMPT_TEMPLATE_USE_CASE_MISMATCH')
+            }
+        }
+
         const result: Record<string, unknown> = {
             phase: 'process',
             lessonId: input.lessonId,
             transcriptId: transcript.id,
+            effectiveActions: {
+                processTranscript: Boolean(input.processTranscript),
+                processKnowledge: Boolean(input.processKnowledge),
+                force,
+            },
         }
 
         if (input.processTranscript) {
@@ -1346,7 +1559,6 @@ export class SmeMcpService {
                 metrics: {
                     transcriptS3Key: transcript.s3Key,
                     promptTemplateId: input.knowledgePromptTemplateId ?? null,
-                    anchorsPromptTemplateId: input.anchorsPromptTemplateId ?? null,
                 },
             })
 
@@ -1361,7 +1573,6 @@ export class SmeMcpService {
                     transcriptS3Key: transcript.s3Key,
                     force,
                     promptTemplateId: input.knowledgePromptTemplateId ?? null,
-                    anchorsPromptTemplateId: input.anchorsPromptTemplateId ?? null,
                 },
             })
 
@@ -1384,7 +1595,7 @@ export class SmeMcpService {
         user: MappableUser,
         input: {
             lessonId: string
-            videoAssetId: string
+            videoAssetId?: string
             filename: string
             contentType?: 'text/vtt'
             languageCode?: string
@@ -1406,7 +1617,6 @@ export class SmeMcpService {
             processKnowledge?: boolean
             force?: boolean
             knowledgePromptTemplateId?: string | null
-            anchorsPromptTemplateId?: string | null
         }
     ): Promise<ToolResult<Record<string, unknown>>> {
         const processTranscript = input.processTranscript ?? (input.processKnowledge === undefined)

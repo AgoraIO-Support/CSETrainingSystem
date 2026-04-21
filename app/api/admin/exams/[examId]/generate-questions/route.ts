@@ -4,9 +4,10 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { withAdminAuth } from '@/lib/auth-middleware';
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware';
 import { ExamService } from '@/lib/services/exam.service';
 import { ExamGenerationService } from '@/lib/services/exam-generation.service';
+import { TrainingOpsService } from '@/lib/services/training-ops.service';
 import { generateQuestionsSchema } from '@/lib/validations';
 import { z } from 'zod';
 
@@ -15,10 +16,13 @@ type RouteContext = {
 };
 
 // POST /api/admin/exams/[examId]/generate-questions - Generate questions using AI
-export const POST = withAdminAuth(
+export const POST = withSmeOrAdminAuth(
   async (req: NextRequest, user, context: RouteContext) => {
     try {
       const { examId } = await context.params;
+      if (user.role === 'SME') {
+        await TrainingOpsService.assertScopedExamAccess(user, examId);
+      }
       const body = await req.json();
       const config = generateQuestionsSchema.parse(body);
 
@@ -82,6 +86,19 @@ export const POST = withAdminAuth(
       }
 
       if (error instanceof Error) {
+        if (error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+          return NextResponse.json(
+            {
+              success: false,
+              error: {
+                code: 'AUTH_003',
+                message: 'Insufficient permissions',
+              },
+            },
+            { status: 403 }
+          );
+        }
+
         if (error.message.startsWith('LESSONS_NOT_FOUND:')) {
           return NextResponse.json(
             {

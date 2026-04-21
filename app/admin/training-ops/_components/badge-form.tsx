@@ -12,6 +12,17 @@ import { Switch } from '@/components/ui/switch'
 import type { BadgeMilestoneSummary, ProductDomainSummary } from '@/types'
 
 const EMPTY_OPTION = '__none__'
+const BADGE_ICON_OPTIONS = [
+    { value: 'READY', label: 'Ready' },
+    { value: 'PRACTITIONER', label: 'Practitioner' },
+    { value: 'TROUBLESHOOTER', label: 'Troubleshooter' },
+    { value: 'DOMAIN_SPECIALIST', label: 'Domain Specialist' },
+] as const
+
+const normalizeBadgeIcon = (value?: string | null): string =>
+    BADGE_ICON_OPTIONS.some((option) => option.value === value)
+        ? (value ?? BADGE_ICON_OPTIONS[0].value)
+        : BADGE_ICON_OPTIONS[0].value
 
 const slugify = (value: string) =>
     value
@@ -35,7 +46,7 @@ export function createEmptyBadgeMilestoneForm(): BadgeMilestoneFormValue {
         name: '',
         slug: '',
         description: '',
-        icon: '',
+        icon: BADGE_ICON_OPTIONS[0].value,
         thresholdStars: '4',
         active: true,
         domainId: '',
@@ -47,7 +58,7 @@ export function badgeMilestoneToFormValue(badge: BadgeMilestoneSummary): BadgeMi
         name: badge.name,
         slug: badge.slug,
         description: badge.description ?? '',
-        icon: badge.icon ?? '',
+        icon: normalizeBadgeIcon(badge.icon),
         thresholdStars: badge.thresholdStars.toString(),
         active: badge.active,
         domainId: badge.domain?.id ?? '',
@@ -148,7 +159,7 @@ export function BadgeMilestoneForm({
                         </div>
                     </div>
 
-                    <div className="grid gap-4 md:grid-cols-4">
+                    <div className="grid gap-4 md:grid-cols-3">
                         <div className="space-y-2">
                             <Label htmlFor="domainId">Domain *</Label>
                             <Select
@@ -194,12 +205,21 @@ export function BadgeMilestoneForm({
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="icon">Icon</Label>
-                            <Input
-                                id="icon"
-                                value={value.icon}
-                                onChange={(event) => onChange('icon', event.target.value)}
-                                placeholder="e.g. ⭐"
-                            />
+                            <Select value={normalizeBadgeIcon(value.icon)} onValueChange={(nextValue) => onChange('icon', nextValue)}>
+                                <SelectTrigger id="icon">
+                                    <SelectValue placeholder="Select a badge icon" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {BADGE_ICON_OPTIONS.map((option) => (
+                                        <SelectItem key={option.value} value={option.value}>
+                                            {option.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <p className="text-sm text-muted-foreground">
+                                Standardized badge ladder icon. Only the 4 canonical milestone types are supported.
+                            </p>
                         </div>
                     </div>
 

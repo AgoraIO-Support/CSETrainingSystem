@@ -221,6 +221,9 @@ export function ProductDomainForm({
                                 value={value.baselinePassRate}
                                 onChange={(event) => onChange('baselinePassRate', event.target.value)}
                             />
+                            <p className="text-xs text-muted-foreground">
+                                Historical reference point for this domain. Used to show uplift versus past performance, not to set status.
+                            </p>
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="targetPassRate">Target Pass Rate</Label>
@@ -233,6 +236,9 @@ export function ProductDomainForm({
                                 value={value.targetPassRate}
                                 onChange={(event) => onChange('targetPassRate', event.target.value)}
                             />
+                            <p className="text-xs text-muted-foreground">
+                                Health target for current pass rate. Domains at or above this line are shown as on track.
+                            </p>
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="challengeThreshold">Challenge Threshold</Label>
@@ -245,6 +251,9 @@ export function ProductDomainForm({
                                 value={value.challengeThreshold}
                                 onChange={(event) => onChange('challengeThreshold', event.target.value)}
                             />
+                            <p className="text-xs text-muted-foreground">
+                                Risk floor for intervention. Domains below this line are marked at risk, so keep it lower than target.
+                            </p>
                         </div>
                     </div>
 

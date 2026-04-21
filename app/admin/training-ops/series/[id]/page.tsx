@@ -125,7 +125,6 @@ export default function TrainingOpsSeriesDetailPage() {
                                 <div className="rounded-lg border p-4">
                                     <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Cadence</p>
                                     <p className="mt-2 font-medium">{series.cadence ?? 'Not set'}</p>
-                                    <p className="text-sm text-muted-foreground">Default stars: {series.defaultStarValue ?? 0}</p>
                                 </div>
                             </div>
                             <div className="rounded-lg border p-4">
@@ -137,14 +136,10 @@ export default function TrainingOpsSeriesDetailPage() {
 
                     <Card>
                         <CardHeader>
-                            <CardTitle>Reward Defaults</CardTitle>
-                            <CardDescription>How this series contributes stars and badge activity into its owning domain.</CardDescription>
+                            <CardTitle>Reward Output</CardTitle>
+                            <CardDescription>Recognition activity associated with this series inside its owning domain.</CardDescription>
                         </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="rounded-lg border p-4 text-sm text-muted-foreground">
-                                Contributes to domain badges
-                                <p className="mt-2 text-lg font-semibold text-foreground">{series.badgeEligible ? 'Yes' : 'No'}</p>
-                            </div>
+                        <CardContent>
                             <div className="rounded-lg border p-4 text-sm text-muted-foreground">
                                 Reward output
                                 <p className="mt-2 text-lg font-semibold text-foreground">

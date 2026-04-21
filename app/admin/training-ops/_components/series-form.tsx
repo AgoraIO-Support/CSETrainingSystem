@@ -28,8 +28,6 @@ export type LearningSeriesFormValue = {
     description: string
     cadence: string
     isActive: boolean
-    badgeEligible: boolean
-    defaultStarValue: string
 }
 
 export function createEmptyLearningSeriesForm(): LearningSeriesFormValue {
@@ -42,8 +40,6 @@ export function createEmptyLearningSeriesForm(): LearningSeriesFormValue {
         description: '',
         cadence: '',
         isActive: true,
-        badgeEligible: true,
-        defaultStarValue: '1',
     }
 }
 
@@ -57,8 +53,6 @@ export function learningSeriesToFormValue(series: LearningSeriesSummary): Learni
         description: series.description ?? '',
         cadence: series.cadence ?? '',
         isActive: series.isActive,
-        badgeEligible: series.badgeEligible,
-        defaultStarValue: series.defaultStarValue?.toString() ?? '',
     }
 }
 
@@ -72,8 +66,6 @@ export function normalizeLearningSeriesPayload(form: LearningSeriesFormValue) {
         description: form.description.trim() || null,
         cadence: form.cadence.trim() || null,
         isActive: form.isActive,
-        badgeEligible: form.badgeEligible,
-        defaultStarValue: form.defaultStarValue ? Number(form.defaultStarValue) : null,
     }
 }
 
@@ -214,7 +206,7 @@ export function LearningSeriesForm({
                         </div>
                     </div>
 
-                    <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
                         <div className="space-y-2">
                             <Label htmlFor="cadence">Cadence</Label>
                             <Input
@@ -222,18 +214,6 @@ export function LearningSeriesForm({
                                 value={value.cadence}
                                 onChange={(event) => onChange('cadence', event.target.value)}
                                 placeholder="Weekly"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="defaultStarValue">Default Star Value</Label>
-                            <Input
-                                id="defaultStarValue"
-                                type="number"
-                                min="0"
-                                max="20"
-                                step="1"
-                                value={value.defaultStarValue}
-                                onChange={(event) => onChange('defaultStarValue', event.target.value)}
                             />
                         </div>
                     </div>
@@ -249,20 +229,13 @@ export function LearningSeriesForm({
                         />
                     </div>
 
-                    <div className="grid gap-4 md:grid-cols-2">
+                    <div className="grid gap-4 md:grid-cols-1">
                         <div className="flex items-center justify-between rounded-lg border p-4">
                             <div>
                                 <p className="font-medium">Active</p>
                                 <p className="text-sm text-muted-foreground">Use in current scheduling.</p>
                             </div>
                             <Switch checked={value.isActive} onCheckedChange={(checked) => onChange('isActive', checked)} />
-                        </div>
-                        <div className="flex items-center justify-between rounded-lg border p-4">
-                            <div>
-                                <p className="font-medium">Contributes to Domain Badges</p>
-                                <p className="text-sm text-muted-foreground">Stars earned in this series can count toward domain badge unlocks.</p>
-                            </div>
-                            <Switch checked={value.badgeEligible} onCheckedChange={(checked) => onChange('badgeEligible', checked)} />
                         </div>
                     </div>
                 </CardContent>

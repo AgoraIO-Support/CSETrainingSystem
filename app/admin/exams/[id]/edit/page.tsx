@@ -14,15 +14,12 @@ import { ApiClient } from '@/lib/api-client'
 import { getExamTimeZoneOptions, utcToLocalDateTimeInputValue } from '@/lib/exam-timezone'
 import { ArrowLeft, Loader2, Save, Send, CheckCircle, XCircle } from 'lucide-react'
 import Link from 'next/link'
-import type { Exam, ExamStatus } from '@/types'
+import type { Exam, ExamStatus, TrainingOpsCourseSummary } from '@/types'
 
 type AssessmentKindOption = 'PRACTICE' | 'READINESS' | 'FORMAL'
 
 const isFormalSeriesType = (seriesType?: string | null) =>
     seriesType === 'QUARTERLY_FINAL' || seriesType === 'YEAR_END_FINAL'
-
-const formatAssessmentKindLabel = (kind: AssessmentKindOption) =>
-    kind.charAt(0) + kind.slice(1).toLowerCase()
 
 const getDefaultAssessmentKind = (input?: {
     countsTowardPerformance?: boolean
@@ -69,7 +66,7 @@ function EditExamPageContent({ params }: PageProps) {
     const searchParams = useSearchParams()
     const isSmeMode = searchParams.get('sme') === '1'
     const [exam, setExam] = useState<Exam | null>(null)
-    const [linkedEvent, setLinkedEvent] = useState<Awaited<ReturnType<typeof ApiClient.getTrainingOpsEvent>>['data'] | null>(null)
+    const [courses, setCourses] = useState<Array<{ id: string; title: string }>>([])
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -101,6 +98,7 @@ function EditExamPageContent({ params }: PageProps) {
         title: '',
         description: '',
         instructions: '',
+        courseId: '',
         timeLimit: '',
         totalScore: '',
         passingScore: '',
@@ -121,9 +119,21 @@ function EditExamPageContent({ params }: PageProps) {
     useEffect(() => {
         const loadExam = async () => {
             try {
-                const response = await ApiClient.getAdminExam(examId)
+                const [response, coursesResponse] = await Promise.all([
+                    ApiClient.getAdminExam(examId),
+                    isSmeMode
+                        ? ApiClient.getSmeTrainingOpsCourses()
+                        : ApiClient.getAdminCourses({ limit: 100, status: 'ALL' }),
+                ])
                 const data = response.data
                 let nextLinkedEvent: Awaited<ReturnType<typeof ApiClient.getTrainingOpsEvent>>['data'] | null = null
+
+                setCourses(
+                    (isSmeMode ? coursesResponse.data as TrainingOpsCourseSummary[] : coursesResponse.data).map((course) => ({
+                        id: course.id,
+                        title: course.title,
+                    }))
+                )
 
                 if (data.learningEventId) {
                     try {
@@ -135,11 +145,11 @@ function EditExamPageContent({ params }: PageProps) {
                 }
 
                 setExam(data)
-                setLinkedEvent(nextLinkedEvent)
                 setForm({
                     title: data.title,
                     description: data.description || '',
                     instructions: data.instructions || '',
+                    courseId: data.courseId ?? '',
                     timeLimit: data.timeLimit?.toString() || '',
                     totalScore: data.totalScore.toString(),
                     passingScore: data.passingScore.toString(),
@@ -175,20 +185,6 @@ function EditExamPageContent({ params }: PageProps) {
         exam?.assessmentKind === 'FORMAL' ||
         Boolean(exam?.countsTowardPerformance)
     )
-
-    useEffect(() => {
-        if (!isSmeMode || form.assessmentKind !== 'FORMAL' || exam?.assessmentKind === 'FORMAL') {
-            return
-        }
-
-        setForm((prev) => ({
-            ...prev,
-            assessmentKind: getDefaultAssessmentKind({
-                format: linkedEvent?.format,
-                seriesType: linkedEvent?.series?.type,
-            }, { allowFormal: false }),
-        }))
-    }, [exam?.assessmentKind, form.assessmentKind, isSmeMode, linkedEvent?.format, linkedEvent?.series?.type])
 
     useEffect(() => {
         if (!isSmeMode || !form.countsTowardPerformance || exam?.countsTowardPerformance) {
@@ -270,6 +266,7 @@ function EditExamPageContent({ params }: PageProps) {
                 title: form.title,
                 description: form.description || null,
                 instructions: form.instructions || null,
+                courseId: form.courseId || null,
                 timeLimit: form.timeLimit ? parseInt(form.timeLimit) : null,
                 totalScore: parseInt(form.totalScore) || 100,
                 passingScore: parseInt(form.passingScore) || 60,
@@ -281,7 +278,7 @@ function EditExamPageContent({ params }: PageProps) {
                 timezone: form.timezone,
                 availableFrom: form.availableFrom || null,
                 deadline: form.deadline || null,
-                assessmentKind: isSmeMode && smeManagedRewardPolicy ? undefined : form.assessmentKind,
+                assessmentKind: isSmeMode ? undefined : form.assessmentKind,
                 awardsStars: form.awardsStars,
                 starValue: form.awardsStars ? (parseInt(form.starValue) || 0) : 0,
                 countsTowardPerformance: isSmeMode ? undefined : form.countsTowardPerformance,
@@ -606,18 +603,28 @@ function EditExamPageContent({ params }: PageProps) {
 
                             <div className="grid gap-4 md:grid-cols-2">
                                 <div className="space-y-2">
-                                    <Label>Exam Type</Label>
-                                    <Input
-                                        value={exam.examType === 'COURSE_BASED' ? 'Course-Based' : 'Standalone'}
-                                        disabled
-                                    />
+                                    <Label htmlFor="courseId">Linked Course</Label>
+                                    {canEditExam ? (
+                                        <select
+                                            id="courseId"
+                                            className="w-full h-10 px-3 border rounded-md bg-background"
+                                            value={form.courseId}
+                                            onChange={(e) => updateForm('courseId', e.target.value)}
+                                        >
+                                            <option value="">No linked course</option>
+                                            {courses.map((course) => (
+                                                <option key={course.id} value={course.id}>
+                                                    {course.title}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    ) : (
+                                        <Input value={exam.course?.title ?? 'No linked course'} disabled />
+                                    )}
+                                    <p className="text-xs text-muted-foreground">
+                                        Optionally scope this exam to a course. Leave it blank for a general event, series, or domain exam.
+                                    </p>
                                 </div>
-                                {exam.course && (
-                                    <div className="space-y-2">
-                                        <Label>Course</Label>
-                                        <Input value={exam.course.title} disabled />
-                                    </div>
-                                )}
                             </div>
                         </CardContent>
                     </Card>
@@ -677,18 +684,10 @@ function EditExamPageContent({ params }: PageProps) {
                             <CardDescription>Configure how this assessment contributes to rewards and certification.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="grid gap-4 xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
-                                <div className="space-y-2">
-                                    <Label htmlFor="assessmentKind">Assessment Kind</Label>
-                                    {smeManagedRewardPolicy ? (
-                                        <Input
-                                            id="assessmentKind"
-                                            value={formatAssessmentKindLabel(
-                                                exam?.assessmentKind === 'FORMAL' ? 'FORMAL' : form.assessmentKind
-                                            )}
-                                            disabled
-                                        />
-                                    ) : (
+                            <div className={`grid gap-4 ${isSmeMode ? 'xl:grid-cols-1' : 'xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)]'}`}>
+                                {!isSmeMode ? (
+                                    <div className="space-y-2">
+                                        <Label htmlFor="assessmentKind">Assessment Kind</Label>
                                         <select
                                             id="assessmentKind"
                                             className="w-full h-10 px-3 border rounded-md bg-background"
@@ -698,12 +697,10 @@ function EditExamPageContent({ params }: PageProps) {
                                         >
                                             <option value="PRACTICE">Practice</option>
                                             <option value="READINESS">Readiness</option>
-                                            {!isSmeMode ? (
-                                                <option value="FORMAL">Formal</option>
-                                            ) : null}
+                                            <option value="FORMAL">Formal</option>
                                         </select>
-                                    )}
-                                </div>
+                                    </div>
+                                ) : null}
                                 <div className={`grid gap-4 ${isSmeMode ? 'md:grid-cols-1' : 'md:grid-cols-2'}`}>
                                     <div className="rounded-lg border bg-background/70 p-4 space-y-4">
                                         <div className="flex items-center justify-between gap-4">
@@ -753,13 +750,15 @@ function EditExamPageContent({ params }: PageProps) {
                                     ) : null}
                                 </div>
                             </div>
-                            <div className="rounded-lg border bg-background/70 p-4">
-                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Certificate</p>
-                                <p className="mt-2 text-lg font-semibold">{certificateForm.isEnabled ? 'Enabled' : 'Not enabled'}</p>
-                                <p className="mt-1 text-sm text-muted-foreground">
-                                    Certificates are managed separately and are typically reserved for admin-managed formal assessments. Practice and readiness exams are better suited to stars and domain badges.
-                                </p>
-                            </div>
+                            {!isSmeMode ? (
+                                <div className="rounded-lg border bg-background/70 p-4">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Certificate</p>
+                                    <p className="mt-2 text-lg font-semibold">{certificateForm.isEnabled ? 'Enabled' : 'Not enabled'}</p>
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        Certificates are managed separately and are typically reserved for admin-managed formal assessments. Practice and readiness exams are better suited to stars and domain badges.
+                                    </p>
+                                </div>
+                            ) : null}
                         </CardContent>
                     </Card>
 

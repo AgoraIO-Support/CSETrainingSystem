@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useState, useEffect, use, useRef } from 'react'
+import { Suspense, useState, useEffect, use, useRef, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -147,9 +147,25 @@ function ExamQuestionsPageContent({ params }: PageProps) {
         difficulty: 'mixed' as 'EASY' | 'MEDIUM' | 'HARD' | 'mixed',
     })
 
+    const loadData = useCallback(async () => {
+        setLoading(true)
+        try {
+            const [examRes, questionsRes] = await Promise.all([
+                ApiClient.getAdminExam(examId),
+                ApiClient.getExamQuestions(examId),
+            ])
+            setExam(examRes.data)
+            setQuestions(questionsRes.data)
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to load data')
+        } finally {
+            setLoading(false)
+        }
+    }, [examId])
+
     useEffect(() => {
         loadData()
-    }, [examId])
+    }, [loadData])
 
     useEffect(() => {
         setSelectedQuestionIds((prev) => prev.filter((id) => questions.some((q) => q.id === id)))
@@ -192,22 +208,6 @@ function ExamQuestionsPageContent({ params }: PageProps) {
             cancelled = true
         }
     }, [showGenerateDialog, examId])
-
-    const loadData = async () => {
-        setLoading(true)
-        try {
-            const [examRes, questionsRes] = await Promise.all([
-                ApiClient.getAdminExam(examId),
-                ApiClient.getExamQuestions(examId),
-            ])
-            setExam(examRes.data)
-            setQuestions(questionsRes.data)
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to load data')
-        } finally {
-            setLoading(false)
-        }
-    }
 
     const closeQuestionForm = () => {
         setShowForm(false)
@@ -751,12 +751,10 @@ function ExamQuestionsPageContent({ params }: PageProps) {
                             )}
                             Delete Selected ({selectedQuestionIds.length})
                         </Button>
-                        {!isSmeMode && (
-                            <Button variant="outline" onClick={() => setShowGenerateDialog(true)} disabled={!canEditQuestions}>
-                                <Sparkles className="h-4 w-4 mr-2" />
-                                Generate with AI
-                            </Button>
-                        )}
+                        <Button variant="outline" onClick={() => setShowGenerateDialog(true)} disabled={!canEditQuestions}>
+                            <Sparkles className="h-4 w-4 mr-2" />
+                            Generate with AI
+                        </Button>
                         <Button onClick={handleCreateQuestion} disabled={!canEditQuestions}>
                             <Plus className="h-4 w-4 mr-2" />
                             Add Question
@@ -1345,9 +1343,9 @@ function ExamQuestionsPageContent({ params }: PageProps) {
 
                                 {!knowledgeLessonsLoading && !knowledgeLessonsError && knowledgeLessons.length === 0 && (
                                     <div className="text-sm text-muted-foreground">
-                                        {exam.examType === 'STANDALONE'
-                                            ? "This is a standalone exam. Select lesson knowledge contexts from any course (upload VTTs and generate XML first)."
-                                            : "No lessons available for this exam’s course."}
+                                        {exam.course
+                                            ? "No lessons available for this exam’s linked course."
+                                            : "This exam is not linked to a course. Select lesson knowledge contexts from any course (upload VTTs and generate XML first)."}
                                     </div>
                                 )}
 
@@ -1473,15 +1471,13 @@ function ExamQuestionsPageContent({ params }: PageProps) {
                         {questions.length === 0 ? (
                             <div className="text-center py-12">
                                 <p className="text-muted-foreground mb-4">
-                                    No questions yet. Add questions manually{isSmeMode ? '.' : ' or generate them with AI.'}
+                                    No questions yet. Add questions manually or generate them with AI.
                                 </p>
                                 <div className="flex items-center justify-center gap-2">
-                                    {!isSmeMode && (
-                                        <Button variant="outline" onClick={() => setShowGenerateDialog(true)} disabled={!canEditQuestions}>
-                                            <Sparkles className="h-4 w-4 mr-2" />
-                                            Generate with AI
-                                        </Button>
-                                    )}
+                                    <Button variant="outline" onClick={() => setShowGenerateDialog(true)} disabled={!canEditQuestions}>
+                                        <Sparkles className="h-4 w-4 mr-2" />
+                                        Generate with AI
+                                    </Button>
                                     <Button onClick={handleCreateQuestion} disabled={!canEditQuestions}>
                                         <Plus className="h-4 w-4 mr-2" />
                                         Add Question

@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "scopeModel": "PRODUCT_DOMAIN",
+  "activeDomains": [
+    "tier-1-enablement"
+  ],
+  "items": [
+    {
+      "scope": "DOMAIN",
+      "domainSlug": "tier-1-enablement",
+      "level": "READY",
+      "name": "Tier 1 Ready",
+      "slug": "tier-1-ready",
+      "description": "Earned through steady participation in Tier 1 case studies and frontline support learning sessions.",
+      "thresholdStars": 4,
+      "sortOrder": 10,
+      "active": true
+    },
+    {
+      "scope": "DOMAIN",
+      "domainSlug": "tier-1-enablement",
+      "level": "PRACTITIONER",
+      "name": "Tier 1 Practitioner",
+      "slug": "tier-1-practitioner",
+      "description": "Demonstrates consistent handling of common Tier 1 scenarios and active contribution during support reviews.",
+      "thresholdStars": 10,
+      "sortOrder": 20,
+      "active": true
+    },
+    {
+      "scope": "DOMAIN",
+      "domainSlug": "tier-1-enablement",
+      "level": "TROUBLESHOOTER",
+      "name": "Tier 1 Troubleshooter",
+      "slug": "tier-1-troubleshooter",
+      "description": "Shows strong issue diagnosis and clear explanation skills in recurring frontline support cases.",
+      "thresholdStars": 18,
+      "sortOrder": 30,
+      "active": true
+    },
+    {
+      "scope": "DOMAIN",
+      "domainSlug": "tier-1-enablement",
+      "level": "DOMAIN_SPECIALIST",
+      "name": "Tier 1 Enablement Specialist",
+      "slug": "tier-1-enablement-specialist",
+      "description": "Recognizes sustained contribution to Tier 1 coaching, case-study sharing, and practical support guidance.",
+      "thresholdStars": 28,
+      "sortOrder": 40,
+      "active": true
+    }
+  ]
+}

@@ -1,6 +1,5 @@
 import {
     LessonAssetType,
-    ExamType,
     ExamQuestionType,
     DifficultyLevel,
     ExamStatus,
@@ -9,6 +8,7 @@ import { z } from 'zod'
 import { LessonCompletionRule, LessonType } from '@prisma/client'
 import { DEFAULT_EXAM_TIMEZONE, isValidExamTimeZone } from '@/lib/exam-timezone'
 import { slugifyCriterionTitle } from '@/lib/essay-grading'
+import { LEARNING_EVENT_FORMATS, LEARNING_SERIES_TYPES } from '@/lib/training-ops-series-event-rules'
 
 // User schemas
 export const registerSchema = z.object({
@@ -86,30 +86,12 @@ const optionalNullableDateInput = () =>
 const productDomainCategories = ['RTE', 'AI'] as const
 const productTracks = ['AGILE', 'MASTERY', 'RELEASE', 'FINAL'] as const
 const smeKpiModes = ['DELTA', 'RETENTION', 'READINESS'] as const
-const learningSeriesTypes = [
-    'WEEKLY_DRILL',
-    'CASE_STUDY',
-    'KNOWLEDGE_SHARING',
-    'FAQ_SHARE',
-    'RELEASE_READINESS',
-    'QUARTERLY_FINAL',
-    'YEAR_END_FINAL',
-] as const
-const learningEventFormats = [
-    'CASE_STUDY',
-    'KNOWLEDGE_SHARING',
-    'FAQ_SHARE',
-    'RELEASE_BRIEFING',
-    'QUIZ_REVIEW',
-    'FINAL_EXAM',
-    'WORKSHOP',
-] as const
 const learningEventStatuses = ['DRAFT', 'SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELED'] as const
 const assessmentKinds = ['PRACTICE', 'READINESS', 'FORMAL'] as const
 
 export const createLearningEventSchema = z.object({
     title: z.string().trim().min(1, 'Title is required').max(200, 'Title is too long'),
-    format: z.enum(learningEventFormats),
+    format: z.enum(LEARNING_EVENT_FORMATS),
     status: z.enum(learningEventStatuses).default('DRAFT'),
     seriesId: z.string().uuid().optional().nullable(),
     domainId: z.string().uuid().optional().nullable(),
@@ -164,12 +146,11 @@ export const updateProductDomainSchema = productDomainSchemaBase.partial().refin
 const learningSeriesSchemaBase = z.object({
     name: z.string().trim().min(1, 'Name is required').max(160, 'Name is too long'),
     slug: z.string().trim().min(1, 'Slug is required').regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
-    type: z.enum(learningSeriesTypes),
+    type: z.enum(LEARNING_SERIES_TYPES),
     domainId: z.string().uuid().optional().nullable(),
     description: z.string().trim().optional().nullable(),
     cadence: z.string().trim().max(120, 'Cadence is too long').optional().nullable(),
     isActive: z.boolean().default(true),
-    badgeEligible: z.boolean().default(true),
     countsTowardPerformance: z.boolean().default(false),
     defaultStarValue: z.number().int().min(0).max(20).optional().nullable(),
     ownerId: z.string().uuid().optional().nullable(),
@@ -346,8 +327,7 @@ const examTimeZoneInput = () =>
         .refine(isValidExamTimeZone, 'Timezone must be a valid IANA timezone')
 
 export const createExamSchema = z.object({
-    examType: z.nativeEnum(ExamType),
-    courseId: z.string().uuid().optional(),
+    courseId: z.string().uuid().optional().nullable(),
     title: z.string().min(1, 'Title is required').max(200),
     description: z.string().optional(),
     instructions: z.string().optional(),
@@ -372,6 +352,7 @@ export const createExamSchema = z.object({
 })
 
 export const updateExamSchema = z.object({
+    courseId: z.string().uuid().optional().nullable(),
     title: z.string().min(1).max(200).optional(),
     description: z.string().optional().nullable(),
     instructions: z.string().optional().nullable(),

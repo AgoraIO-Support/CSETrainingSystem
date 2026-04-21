@@ -16,6 +16,7 @@ export type SmeMcpToolExecutionResult = {
     summary: string
     data: unknown
     nextActions: string[]
+    recommendedNextInputs?: Record<string, unknown>
     warnings?: string[]
 }
 
@@ -112,8 +113,13 @@ const parameterDescription = (
 const parameterExample = (toolName: keyof typeof smeMcpToolMetadataByName, parameterName: string) =>
     getSmeMcpToolParameterMetadata(toolName, parameterName)?.example
 
+const parameterExampleString = (toolName: keyof typeof smeMcpToolMetadataByName, parameterName: string) => {
+    const example = parameterExample(toolName, parameterName)
+    return typeof example === 'string' ? example : undefined
+}
+
 const parameterAcceptedValues = (toolName: keyof typeof smeMcpToolMetadataByName, parameterName: string) =>
-    getSmeMcpToolParameterMetadata(toolName, parameterName)?.acceptedValues
+    getSmeMcpToolParameterMetadata(toolName, parameterName)?.acceptedValues?.map((option) => option.value)
 
 const emptyObjectJsonSchema = {
     type: 'object',
@@ -166,7 +172,7 @@ const assignCourseInvitationsSchema = z.object({
 
 const prepareTranscriptUploadSchema = z.object({
     lessonId: z.string().uuid(),
-    videoAssetId: z.string().uuid(),
+    videoAssetId: z.string().uuid().optional(),
     filename: z.string().trim().min(1).max(255),
     contentType: z.literal('text/vtt').optional(),
     languageCode: z.string().trim().min(2).max(20).optional(),
@@ -183,7 +189,6 @@ const processTranscriptKnowledgeSchema = z.object({
     processKnowledge: z.boolean().optional(),
     force: z.boolean().optional(),
     knowledgePromptTemplateId: z.string().uuid().optional().nullable(),
-    anchorsPromptTemplateId: z.string().uuid().optional().nullable(),
 })
 
 const publishExamWithInvitationsSchema = z.object({
@@ -437,7 +442,7 @@ export const smeMcpToolDefinitions = [
                     parameterExample('prepare_transcript_upload', 'lessonId')
                 ),
                 videoAssetId: describedUuidSchema(
-                    parameterDescription('prepare_transcript_upload', 'videoAssetId', 'Required video asset UUID.'),
+                    parameterDescription('prepare_transcript_upload', 'videoAssetId', 'Optional video asset UUID.'),
                     parameterExample('prepare_transcript_upload', 'videoAssetId')
                 ),
                 filename: describedStringSchema(
@@ -477,18 +482,23 @@ export const smeMcpToolDefinitions = [
                     parameterDescription('prepare_transcript_upload', 'setAsPrimaryForAI', 'Optional primary-for-AI flag.')
                 ),
             },
-            required: ['lessonId', 'videoAssetId', 'filename'],
+            required: ['lessonId', 'filename'],
             additionalProperties: false,
             examples: [
                 {
                     lessonId: parameterExample('prepare_transcript_upload', 'lessonId'),
-                    videoAssetId: parameterExample('prepare_transcript_upload', 'videoAssetId'),
                     filename: parameterExample('prepare_transcript_upload', 'filename'),
                     contentType: parameterExample('prepare_transcript_upload', 'contentType'),
                     languageCode: parameterExample('prepare_transcript_upload', 'languageCode'),
                     label: parameterExample('prepare_transcript_upload', 'label'),
                     setAsDefaultSubtitle: true,
                     setAsPrimaryForAI: true,
+                },
+                {
+                    lessonId: parameterExample('prepare_transcript_upload', 'lessonId'),
+                    videoAssetId: parameterExample('prepare_transcript_upload', 'videoAssetId'),
+                    filename: parameterExample('prepare_transcript_upload', 'filename'),
+                    contentType: parameterExample('prepare_transcript_upload', 'contentType'),
                 },
             ],
         },
@@ -533,13 +543,6 @@ export const smeMcpToolDefinitions = [
                         'process_transcript_knowledge',
                         'knowledgePromptTemplateId',
                         'Optional knowledge prompt template UUID.'
-                    )
-                ),
-                anchorsPromptTemplateId: describedUuidSchema(
-                    parameterDescription(
-                        'process_transcript_knowledge',
-                        'anchorsPromptTemplateId',
-                        'Optional anchors prompt template UUID.'
                     )
                 ),
             },

@@ -43,7 +43,9 @@
     { "method": "DELETE", "path": "/admin/courses/:courseId/chapters/:chapterId/lessons/:lessonId", "description": "Delete lesson" },
     { "method": "GET",    "path": "/admin/courses/:courseId/chapters/:chapterId/lessons/:lessonId/assets", "description": "List lesson assets" },
     { "method": "POST",   "path": "/admin/courses/:courseId/chapters/:chapterId/lessons/:lessonId/assets", "description": "Replace attached assets for lesson (courseAssetIds array)" },
-    { "method": "POST",   "path": "/admin/courses/:courseId/chapters/:chapterId/lessons/:lessonId/assets/upload", "description": "Presign + create + attach a lesson asset" },
+    { "method": "POST",   "path": "/admin/courses/:courseId/chapters/:chapterId/lessons/:lessonId/assets/upload", "description": "Prepare lesson asset upload and return a presigned PUT URL" },
+    { "method": "POST",   "path": "/admin/courses/:courseId/chapters/:chapterId/lessons/:lessonId/assets/confirm", "description": "Confirm a prepared lesson asset upload and attach it to the lesson" },
+    { "method": "POST",   "path": "/admin/courses/:courseId/chapters/:chapterId/lessons/:lessonId/assets/abort", "description": "Abort a prepared lesson asset upload session" },
     { "method": "DELETE", "path": "/admin/courses/:courseId/chapters/:chapterId/lessons/:lessonId/assets/:assetId", "description": "Detach a lesson asset" },
 
     { "method": "GET",    "path": "/admin/curricula", "description": "List curricula (mapped from courses)" },

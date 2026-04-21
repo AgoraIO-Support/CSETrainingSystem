@@ -12,6 +12,12 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { ApiClient } from '@/lib/api-client'
+import {
+    EVENT_FORMAT_LABELS,
+    getAllowedEventFormatsForSeriesType,
+    getDefaultEventFormatForSeriesType,
+    getSeriesEventFormatGuidance,
+} from '@/lib/training-ops-series-event-rules'
 import type { AdminUser, LearningEventSummary, LearningSeriesSummary, ProductDomainSummary } from '@/types'
 
 const EMPTY_OPTION = '__none__'
@@ -86,10 +92,33 @@ function NewSmeLearningEventPageContent() {
         if (!form.domainId) return series
         return series.filter((item) => item.domain?.id === form.domainId)
     }, [form.domainId, series])
+    const selectedSeries = useMemo(
+        () => series.find((item) => item.id === form.seriesId) ?? null,
+        [form.seriesId, series]
+    )
+    const allowedFormats = useMemo(
+        () => getAllowedEventFormatsForSeriesType(selectedSeries?.type),
+        [selectedSeries]
+    )
+    const formatGuidance = useMemo(
+        () => getSeriesEventFormatGuidance(selectedSeries?.type),
+        [selectedSeries]
+    )
     const breadcrumbSeries = useMemo(
         () => series.find((item) => item.id === (initialSeriesContextId ?? form.seriesId)) ?? null,
         [form.seriesId, initialSeriesContextId, series]
     )
+
+    useEffect(() => {
+        if (allowedFormats.includes(form.format)) {
+            return
+        }
+
+        setForm((prev) => ({
+            ...prev,
+            format: getDefaultEventFormatForSeriesType(selectedSeries?.type),
+        }))
+    }, [allowedFormats, form.format, selectedSeries])
 
     const updateForm = <K extends keyof typeof form>(key: K, value: typeof form[K]) => {
         setForm((prev) => ({ ...prev, [key]: value }))
@@ -122,6 +151,11 @@ function NewSmeLearningEventPageContent() {
             ...prev,
             seriesId: value,
             domainId: prev.domainId || selectedSeries?.domain?.id || '',
+            format: selectedSeries
+                ? getAllowedEventFormatsForSeriesType(selectedSeries.type).includes(prev.format)
+                    ? prev.format
+                    : getDefaultEventFormatForSeriesType(selectedSeries.type)
+                : prev.format,
         }))
     }
 
@@ -238,14 +272,21 @@ function NewSmeLearningEventPageContent() {
                                         value={form.format}
                                         onChange={(e) => updateForm('format', e.target.value as LearningEventSummary['format'])}
                                     >
-                                        <option value="CASE_STUDY">Case Study</option>
-                                        <option value="KNOWLEDGE_SHARING">Knowledge Sharing</option>
-                                        <option value="FAQ_SHARE">FAQ Share</option>
-                                        <option value="RELEASE_BRIEFING">Release Briefing</option>
-                                        <option value="QUIZ_REVIEW">Quiz Review</option>
-                                        <option value="FINAL_EXAM">Final Exam</option>
-                                        <option value="WORKSHOP">Workshop</option>
+                                        {allowedFormats.map((format) => (
+                                            <option key={format} value={format}>
+                                                {EVENT_FORMAT_LABELS[format]}
+                                            </option>
+                                        ))}
                                     </select>
+                                    {selectedSeries ? (
+                                        <p className="text-xs text-muted-foreground">
+                                            {formatGuidance} Allowed formats: {allowedFormats.map((format) => EVENT_FORMAT_LABELS[format]).join(', ')}.
+                                        </p>
+                                    ) : (
+                                        <p className="text-xs text-muted-foreground">
+                                            Select a learning series to narrow this list to the allowed session formats for that program type.
+                                        </p>
+                                    )}
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="status">Status *</Label>

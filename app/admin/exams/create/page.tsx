@@ -13,7 +13,7 @@ import { ApiClient } from '@/lib/api-client'
 import { getBrowserTimeZone, getExamTimeZoneOptions } from '@/lib/exam-timezone'
 import { ArrowLeft, Loader2, Save } from 'lucide-react'
 import Link from 'next/link'
-import type { Course, ExamType } from '@/types'
+import type { TrainingOpsCourseSummary } from '@/types'
 
 type AssessmentKindOption = 'PRACTICE' | 'READINESS' | 'FORMAL'
 
@@ -55,7 +55,7 @@ function CreateExamPageContent() {
     const isSmeMode = searchParams.get('sme') === '1'
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
-    const [courses, setCourses] = useState<Course[]>([])
+    const [courses, setCourses] = useState<Array<{ id: string; title: string }>>([])
     const [loadingCourses, setLoadingCourses] = useState(true)
     const [loadingLinkedEvent, setLoadingLinkedEvent] = useState(Boolean(learningEventId))
     const [linkedEvent, setLinkedEvent] = useState<Awaited<ReturnType<typeof ApiClient.getTrainingOpsEvent>>['data'] | null>(null)
@@ -65,7 +65,6 @@ function CreateExamPageContent() {
         title: '',
         description: '',
         instructions: '',
-        examType: 'STANDALONE' as ExamType,
         courseId: '',
         timeLimit: '',
         totalScore: '100',
@@ -88,14 +87,22 @@ function CreateExamPageContent() {
     })
 
     useEffect(() => {
-        if (isSmeMode) {
-            setLoadingCourses(false)
-            return
-        }
         const loadCourses = async () => {
             try {
+                if (isSmeMode) {
+                    const response = await ApiClient.getSmeTrainingOpsCourses()
+                    setCourses(response.data.map((course: TrainingOpsCourseSummary) => ({
+                        id: course.id,
+                        title: course.title,
+                    })))
+                    return
+                }
+
                 const response = await ApiClient.getAdminCourses({ limit: 100, status: 'ALL' })
-                setCourses(response.data)
+                setCourses(response.data.map((course) => ({
+                    id: course.id,
+                    title: course.title,
+                })))
             } catch (err) {
                 console.error('Failed to load courses:', err)
             } finally {
@@ -147,20 +154,6 @@ function CreateExamPageContent() {
     }, [isSmeMode, learningEventId])
 
     useEffect(() => {
-        if (!isSmeMode || form.assessmentKind !== 'FORMAL') {
-            return
-        }
-
-        setForm((prev) => ({
-            ...prev,
-            assessmentKind: getDefaultAssessmentKind({
-                format: linkedEvent?.format,
-                seriesType: linkedEvent?.series?.type,
-            }, { allowFormal: false }),
-        }))
-    }, [form.assessmentKind, isSmeMode, linkedEvent?.format, linkedEvent?.series?.type])
-
-    useEffect(() => {
         if (!isSmeMode || !form.countsTowardPerformance) {
             return
         }
@@ -188,10 +181,9 @@ function CreateExamPageContent() {
         try {
             const payload = {
                 title: form.title,
-                examType: form.examType,
                 description: form.description || undefined,
                 instructions: form.instructions || undefined,
-                courseId: form.examType === 'COURSE_BASED' && form.courseId ? form.courseId : undefined,
+                courseId: form.courseId || undefined,
                 timeLimit: form.timeLimit ? parseInt(form.timeLimit) : undefined,
                 totalScore: parseInt(form.totalScore) || 100,
                 passingScore: parseInt(form.passingScore) || 60,
@@ -203,7 +195,7 @@ function CreateExamPageContent() {
                 timezone: form.timezone,
                 availableFrom: form.availableFrom || undefined,
                 deadline: form.deadline || undefined,
-                assessmentKind: form.assessmentKind,
+                assessmentKind: isSmeMode ? undefined : form.assessmentKind,
                 productDomainId: linkedEvent?.domain?.id ?? productDomainId ?? null,
                 learningSeriesId: linkedEvent?.series?.id ?? learningSeriesId ?? null,
                 learningEventId: linkedEvent?.id ?? null,
@@ -358,43 +350,25 @@ function CreateExamPageContent() {
                                 />
                             </div>
 
-                            <div className="grid gap-4 md:grid-cols-2">
-                                <div className="space-y-2">
-                                    <Label htmlFor="examType">Exam Type *</Label>
-                                    {isSmeMode ? (
-                                        <Input id="examType" value="Standalone Exam" disabled />
-                                    ) : (
-                                        <select
-                                            id="examType"
-                                            className="w-full h-10 px-3 border rounded-md bg-background"
-                                            value={form.examType}
-                                            onChange={(e) => updateForm('examType', e.target.value as ExamType)}
-                                        >
-                                            <option value="STANDALONE">Standalone Exam</option>
-                                            <option value="COURSE_BASED">Course-Based Exam</option>
-                                        </select>
-                                    )}
-                                </div>
-
-                                {!isSmeMode && form.examType === 'COURSE_BASED' && (
-                                    <div className="space-y-2">
-                                        <Label htmlFor="courseId">Course</Label>
-                                        <select
-                                            id="courseId"
-                                            className="w-full h-10 px-3 border rounded-md bg-background"
-                                            value={form.courseId}
-                                            onChange={(e) => updateForm('courseId', e.target.value)}
-                                            disabled={loadingCourses}
-                                        >
-                                            <option value="">Select a course...</option>
-                                            {courses.map(course => (
-                                                <option key={course.id} value={course.id}>
-                                                    {course.title}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                )}
+                            <div className="space-y-2">
+                                <Label htmlFor="courseId">Linked Course</Label>
+                                <select
+                                    id="courseId"
+                                    className="w-full h-10 px-3 border rounded-md bg-background"
+                                    value={form.courseId}
+                                    onChange={(e) => updateForm('courseId', e.target.value)}
+                                    disabled={loadingCourses}
+                                >
+                                    <option value="">No linked course</option>
+                                    {courses.map(course => (
+                                        <option key={course.id} value={course.id}>
+                                            {course.title}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="text-xs text-muted-foreground">
+                                    Optionally link this exam to a course. Leave blank for a general event, series, or domain exam.
+                                </p>
                             </div>
                         </CardContent>
                     </Card>
@@ -456,22 +430,22 @@ function CreateExamPageContent() {
                                     Reward defaults were prefilled from the linked learning event. You can still override them for this exam.
                                 </div>
                             ) : null}
-                            <div className="grid gap-4 xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
-                                <div className="space-y-2">
-                                    <Label htmlFor="assessmentKind">Assessment Kind</Label>
-                                    <select
-                                        id="assessmentKind"
-                                        className="w-full h-10 px-3 border rounded-md bg-background"
-                                        value={form.assessmentKind}
-                                        onChange={(e) => updateForm('assessmentKind', e.target.value as AssessmentKindOption)}
-                                    >
-                                        <option value="PRACTICE">Practice</option>
-                                        <option value="READINESS">Readiness</option>
-                                        {!isSmeMode ? (
+                            <div className={`grid gap-4 ${isSmeMode ? 'xl:grid-cols-1' : 'xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)]'}`}>
+                                {!isSmeMode ? (
+                                    <div className="space-y-2">
+                                        <Label htmlFor="assessmentKind">Assessment Kind</Label>
+                                        <select
+                                            id="assessmentKind"
+                                            className="w-full h-10 px-3 border rounded-md bg-background"
+                                            value={form.assessmentKind}
+                                            onChange={(e) => updateForm('assessmentKind', e.target.value as AssessmentKindOption)}
+                                        >
+                                            <option value="PRACTICE">Practice</option>
+                                            <option value="READINESS">Readiness</option>
                                             <option value="FORMAL">Formal</option>
-                                        ) : null}
-                                    </select>
-                                </div>
+                                        </select>
+                                    </div>
+                                ) : null}
                                 <div className={`grid gap-4 ${isSmeMode ? 'md:grid-cols-1' : 'md:grid-cols-2'}`}>
                                     <div className="rounded-lg border bg-background/70 p-4 space-y-4">
                                         <div className="flex items-center justify-between gap-4">
@@ -511,13 +485,15 @@ function CreateExamPageContent() {
                                     ) : null}
                                 </div>
                             </div>
-                            <div className="rounded-lg border bg-background/70 p-4">
-                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Certificate</p>
-                                <p className="mt-2 text-lg font-semibold">{form.certificateEnabled ? 'Enabled' : 'Not enabled'}</p>
-                                <p className="mt-1 text-sm text-muted-foreground">
-                                    Certificates are managed separately and are typically reserved for admin-managed formal assessments. Practice and readiness exams are better suited to stars and domain badges.
-                                </p>
-                            </div>
+                            {!isSmeMode ? (
+                                <div className="rounded-lg border bg-background/70 p-4">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Certificate</p>
+                                    <p className="mt-2 text-lg font-semibold">{form.certificateEnabled ? 'Enabled' : 'Not enabled'}</p>
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        Certificates are managed separately and are typically reserved for admin-managed formal assessments. Practice and readiness exams are better suited to stars and domain badges.
+                                    </p>
+                                </div>
+                            ) : null}
                         </CardContent>
                     </Card>
 

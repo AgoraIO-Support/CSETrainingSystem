@@ -50,3 +50,5 @@ yarn-error.log*
 frontend.log
 backend.log
 translation/
+.mindfs/
+.obsidian/

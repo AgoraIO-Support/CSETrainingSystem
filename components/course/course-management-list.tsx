@@ -21,6 +21,7 @@ interface CourseManagementListProps {
     pageDescription: string
     listTitle: string
     listDescription: string
+    hideThumbnail?: boolean
 }
 
 export function CourseManagementList({
@@ -29,6 +30,7 @@ export function CourseManagementList({
     pageDescription,
     listTitle,
     listDescription,
+    hideThumbnail = false,
 }: CourseManagementListProps) {
     const [courses, setCourses] = useState<Course[]>([])
     const [currentUserRole, setCurrentUserRole] = useState<UserRole>(null)
@@ -235,13 +237,15 @@ export function CourseManagementList({
                                     className="flex items-center justify-between rounded-lg border p-4 transition-colors hover:bg-accent"
                                 >
                                     <div className="flex flex-1 items-center space-x-4">
-                                        <Image
-                                            src={course.thumbnail || 'https://placehold.co/320x180/0f172a/ffffff?text=Course'}
-                                            alt={course.title}
-                                            width={80}
-                                            height={56}
-                                            className="h-14 w-20 rounded object-cover"
-                                        />
+                                        {!hideThumbnail ? (
+                                            <Image
+                                                src={course.thumbnail || 'https://placehold.co/320x180/0f172a/ffffff?text=Course'}
+                                                alt={course.title}
+                                                width={80}
+                                                height={56}
+                                                className="h-14 w-20 rounded object-cover"
+                                            />
+                                        ) : null}
                                         <div className="flex-1">
                                             <div className="flex items-center gap-2">
                                                 <Badge

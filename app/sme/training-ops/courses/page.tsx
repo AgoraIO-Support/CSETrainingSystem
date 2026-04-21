@@ -12,6 +12,7 @@ export default function SmeTrainingOpsCoursesPage() {
                 pageDescription="Create and manage courses within your SME scope."
                 listTitle="My Created Courses"
                 listDescription="Manage your SME course library with the same controls as the admin course list."
+                hideThumbnail
             />
         </DashboardLayout>
     )

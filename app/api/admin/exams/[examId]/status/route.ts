@@ -14,6 +14,12 @@ type RouteContext = {
   params: Promise<{ examId: string }>;
 };
 
+function serializeExam<T extends { examType?: unknown }>(exam: T): Omit<T, 'examType'> {
+  const rest = { ...exam } as T & { examType?: unknown };
+  delete rest.examType;
+  return rest;
+}
+
 // POST /api/admin/exams/[examId]/status - Change exam status
 export const POST = withSmeOrAdminAuth(
   async (req: NextRequest, user, context: RouteContext) => {
@@ -30,7 +36,7 @@ export const POST = withSmeOrAdminAuth(
 
       return NextResponse.json({
         success: true,
-        data: exam,
+        data: serializeExam(exam),
       });
     } catch (error) {
       console.error('Change exam status error:', error);

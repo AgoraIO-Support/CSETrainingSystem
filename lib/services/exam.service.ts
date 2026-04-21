@@ -22,8 +22,7 @@ import type { EssayGradingCriterion } from '@/lib/essay-grading';
 
 // Input types
 export interface CreateExamInput {
-  examType: ExamType;
-  courseId?: string;
+  courseId?: string | null;
   title: string;
   description?: string;
   instructions?: string;
@@ -49,6 +48,7 @@ export interface CreateExamInput {
 }
 
 export interface UpdateExamInput {
+  courseId?: string | null;
   title?: string;
   description?: string;
   instructions?: string;
@@ -95,7 +95,6 @@ export interface ExamListParams {
   page?: number;
   limit?: number;
   status?: ExamStatus;
-  examType?: ExamType;
   courseId?: string;
   createdById?: string;
   search?: string;
@@ -273,7 +272,6 @@ export class ExamService {
       page = 1,
       limit = 10,
       status,
-      examType,
       courseId,
       createdById,
       search,
@@ -283,10 +281,6 @@ export class ExamService {
 
     if (status) {
       where.status = status;
-    }
-
-    if (examType) {
-      where.examType = examType;
     }
 
     if (courseId) {
@@ -416,12 +410,7 @@ export class ExamService {
     createdById: string,
     options?: { actorRole?: UserRole }
   ): Promise<ExamWithDetails> {
-    // Validate course exists if course-based
-    if (data.examType === ExamType.COURSE_BASED) {
-      if (!data.courseId) {
-        throw new Error('COURSE_REQUIRED');
-      }
-
+    if (data.courseId) {
       const course = await prisma.course.findUnique({
         where: { id: data.courseId },
       });
@@ -513,8 +502,8 @@ export class ExamService {
 
     const exam = await prisma.exam.create({
       data: {
-        examType: data.examType,
-        courseId: data.courseId,
+        examType: data.courseId ? ExamType.COURSE_BASED : ExamType.STANDALONE,
+        courseId: data.courseId ?? null,
         title: data.title,
         description: data.description,
         instructions: data.instructions,
@@ -597,6 +586,7 @@ export class ExamService {
       select: {
         id: true,
         status: true,
+        courseId: true,
         learningEventId: true,
         learningSeriesId: true,
         assessmentKind: true,
@@ -614,6 +604,17 @@ export class ExamService {
     const nextAssessmentKind = data.assessmentKind ?? existing.assessmentKind
     const nextCountsTowardPerformance = data.countsTowardPerformance ?? existing.countsTowardPerformance
 
+    if (data.courseId !== undefined && data.courseId !== null) {
+      const course = await prisma.course.findUnique({
+        where: { id: data.courseId },
+        select: { id: true },
+      })
+
+      if (!course) {
+        throw new Error('COURSE_NOT_FOUND')
+      }
+    }
+
     if (options?.actorRole === 'SME') {
       this.assertSmeRewardPolicyAllowed({
         existingAssessmentKind: existing.assessmentKind,
@@ -629,6 +630,10 @@ export class ExamService {
       where: { id },
       data: {
         ...(data.title !== undefined && { title: data.title }),
+        ...(data.courseId !== undefined && {
+          courseId: data.courseId,
+          examType: data.courseId ? ExamType.COURSE_BASED : ExamType.STANDALONE,
+        }),
         ...(data.description !== undefined && { description: data.description }),
         ...(data.instructions !== undefined && { instructions: data.instructions }),
         ...(data.timeLimit !== undefined && { timeLimit: data.timeLimit }),
@@ -1117,9 +1122,8 @@ export class ExamService {
               },
             },
           },
-          // Exam is course-based and user is enrolled
+          // Exam is linked to a course and the user is enrolled
           {
-            examType: ExamType.COURSE_BASED,
             course: {
               enrollments: {
                 some: {
@@ -1226,8 +1230,9 @@ export class ExamService {
 
     // Check access (invitation required)
     const hasInvitation = exam.invitations.length > 0;
+    const hasCourseAccess = Boolean(exam.course && exam.course.enrollments.length > 0);
 
-    if (!hasInvitation) {
+    if (!hasInvitation && !hasCourseAccess) {
       return { canTake: false, reason: 'NO_ACCESS' };
     }
 

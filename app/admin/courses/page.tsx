@@ -12,6 +12,7 @@ export default function AdminCoursesPage() {
                 pageDescription="Create and manage training courses"
                 listTitle="All Courses"
                 listDescription="Manage your course library"
+                hideThumbnail
             />
         </DashboardLayout>
     )

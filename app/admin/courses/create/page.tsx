@@ -14,6 +14,7 @@ import type { CourseLevel } from '@/types'
 import Link from 'next/link'
 
 const levels: CourseLevel[] = ['BEGINNER', 'INTERMEDIATE', 'ADVANCED']
+const DEFAULT_COURSE_THUMBNAIL = 'https://placehold.co/800x450/0f172a/ffffff?text=Course'
 
 function CreateCoursePageContent() {
     const router = useRouter()
@@ -28,7 +29,7 @@ function CreateCoursePageContent() {
         title: '',
         slug: '',
         description: '',
-        thumbnail: '',
+        thumbnail: DEFAULT_COURSE_THUMBNAIL,
         level: 'BEGINNER',
         category: '',
         tags: '',
@@ -169,6 +170,9 @@ function CreateCoursePageContent() {
                             <div>
                                 <Label htmlFor="thumbnail">Thumbnail URL</Label>
                                 <Input id="thumbnail" value={form.thumbnail} onChange={e => handleChange('thumbnail', e.target.value)} />
+                                <p className="mt-2 text-xs text-muted-foreground">
+                                    This is the course cover image URL. A default cover is prefilled and will be used unless you replace it with another public image link.
+                                </p>
                             </div>
                             <div>
                                 <Label htmlFor="category">Category</Label>

@@ -6,14 +6,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth-middleware';
 import prisma from '@/lib/prisma';
-import { ExamStatus, ExamType } from '@prisma/client';
+import { ExamStatus } from '@prisma/client';
 
 // GET /api/exams - List exams available to the user
 export const GET = withAuth(async (req: NextRequest, user) => {
   try {
     const { searchParams } = new URL(req.url);
     const courseId = searchParams.get('courseId');
-    const type = searchParams.get('type') as ExamType | null;
 
     // Get exams the user has access to:
     // - Published exams they are explicitly invited to (assignment required).
@@ -21,8 +20,6 @@ export const GET = withAuth(async (req: NextRequest, user) => {
       where: {
         status: ExamStatus.PUBLISHED,
         AND: [
-          // Filter by type if specified
-          type ? { examType: type } : {},
           // Filter by course if specified
           courseId ? { courseId } : {},
           // User must have an explicit invitation
@@ -83,12 +80,12 @@ export const GET = withAuth(async (req: NextRequest, user) => {
         id: exam.id,
         title: exam.title,
         description: exam.description,
-        examType: exam.examType,
         assessmentKind: exam.assessmentKind,
         awardsStars: exam.awardsStars,
         starValue: exam.starValue,
         countsTowardPerformance: exam.countsTowardPerformance,
         certificateEligible: exam.assessmentKind === 'FORMAL' && Boolean(exam.certificateTemplate?.isEnabled),
+        courseId: exam.courseId,
         course: exam.course,
         timeLimit: exam.timeLimit,
         totalScore: exam.totalScore,

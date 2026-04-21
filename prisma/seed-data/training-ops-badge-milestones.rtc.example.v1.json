@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "scopeModel": "PRODUCT_DOMAIN",
+  "activeDomains": [
+    "rtc"
+  ],
+  "items": [
+    {
+      "scope": "DOMAIN",
+      "domainSlug": "rtc",
+      "level": "READY",
+      "name": "RTC Ready",
+      "slug": "rtc-ready",
+      "description": "Earned through steady participation in RTC weekly case studies.",
+      "thresholdStars": 4,
+      "sortOrder": 10,
+      "active": true
+    },
+    {
+      "scope": "DOMAIN",
+      "domainSlug": "rtc",
+      "level": "PRACTITIONER",
+      "name": "RTC Practitioner",
+      "slug": "rtc-practitioner",
+      "description": "Demonstrates consistent RTC practice and technical review participation.",
+      "thresholdStars": 10,
+      "sortOrder": 20,
+      "active": true
+    },
+    {
+      "scope": "DOMAIN",
+      "domainSlug": "rtc",
+      "level": "TROUBLESHOOTER",
+      "name": "RTC Troubleshooter",
+      "slug": "rtc-troubleshooter",
+      "description": "Shows strong troubleshooting capability in RTC support and escalation scenarios.",
+      "thresholdStars": 18,
+      "sortOrder": 30,
+      "active": true
+    },
+    {
+      "scope": "DOMAIN",
+      "domainSlug": "rtc",
+      "level": "DOMAIN_SPECIALIST",
+      "name": "RTC Domain Specialist",
+      "slug": "rtc-domain-specialist",
+      "description": "Recognizes sustained RTC expertise developed through repeated case-study performance.",
+      "thresholdStars": 28,
+      "sortOrder": 40,
+      "active": true
+    }
+  ]
+}

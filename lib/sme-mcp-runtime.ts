@@ -38,6 +38,8 @@ export const parseAndExecuteSmeMcpTool = async (
 }
 
 export const normalizeSmeMcpError = (error: unknown) => {
+    const details = extractErrorDetails(error)
+
     if (error instanceof SmeMcpError) {
         return {
             status: error.status,
@@ -81,7 +83,7 @@ export const normalizeSmeMcpError = (error: unknown) => {
             return errorResponse(
                 400,
                 'PROMPT_TEMPLATE_USE_CASE_MISMATCH',
-                'Prompt template use case does not match the SME MCP course AI template workflow'
+                'Prompt template use case does not match this SME MCP workflow'
             )
         }
 
@@ -161,6 +163,24 @@ export const normalizeSmeMcpError = (error: unknown) => {
             return errorResponse(400, 'VIDEO_ASSET_NOT_FOUND', 'Video asset not found for this lesson')
         }
 
+        if (message === 'VIDEO_ASSET_NOT_IN_LESSON') {
+            return errorResponse(
+                400,
+                'VIDEO_ASSET_NOT_IN_LESSON',
+                'The selected video asset does not belong to the specified lesson',
+                details
+            )
+        }
+
+        if (message === 'VIDEO_ASSET_SELECTION_REQUIRED') {
+            return errorResponse(
+                400,
+                'VIDEO_ASSET_SELECTION_REQUIRED',
+                'videoAssetId is required because this lesson has multiple video assets',
+                details
+            )
+        }
+
         if (message === 'TRANSCRIPT_UPLOAD_FIELDS_REQUIRED') {
             return errorResponse(
                 400,
@@ -215,6 +235,14 @@ export const normalizeSmeMcpError = (error: unknown) => {
     }
 
     return errorResponse(500, 'SME_MCP_TOOL_FAILED', 'Failed to execute SME MCP tool')
+}
+
+const extractErrorDetails = (error: unknown) => {
+    if (error && typeof error === 'object' && 'details' in error) {
+        return (error as { details?: unknown }).details
+    }
+
+    return undefined
 }
 
 const normalizeToolPayload = (body: unknown) => {

@@ -3,6 +3,7 @@ import { Prisma, ProductDomainCategory, ProductTrack, SmeKpiMode, LearningSeries
 import { ExamService } from '@/lib/services/exam.service'
 import { CourseService } from '@/lib/services/course.service'
 import { CascadeDeleteService } from '@/lib/services/cascade-delete.service'
+import { isEventFormatAllowedForSeriesType } from '@/lib/training-ops-series-event-rules'
 
 type TrainingOpsOperatorRole = 'USER' | 'SME' | 'ADMIN'
 type TrainingOpsOperator = {
@@ -398,6 +399,26 @@ export class TrainingOpsService {
         }
 
         return 'PRACTICE'
+    }
+
+    private static assertEventFormatMatchesSeriesType(input: {
+        format: LearningEventFormat
+        seriesType?: LearningSeriesType | null
+        allowLegacyMismatch?: boolean
+    }) {
+        if (!input.seriesType) {
+            return
+        }
+
+        if (isEventFormatAllowedForSeriesType(input.seriesType, input.format)) {
+            return
+        }
+
+        if (input.allowLegacyMismatch) {
+            return
+        }
+
+        throw new Error('INVALID_EVENT_FORMAT_FOR_SERIES')
     }
 
     private static async buildExamStats(examIds: string[]) {
@@ -1149,7 +1170,6 @@ export class TrainingOpsService {
                 description: item.description,
                 cadence: item.cadence,
                 isActive: item.isActive,
-                badgeEligible: item.badgeEligible,
                 countsTowardPerformance: item.countsTowardPerformance,
                 defaultStarValue: item.defaultStarValue,
                 domain: item.domain,
@@ -1216,7 +1236,6 @@ export class TrainingOpsService {
             description: item.description,
             cadence: item.cadence,
             isActive: item.isActive,
-            badgeEligible: item.badgeEligible,
             countsTowardPerformance: item.countsTowardPerformance,
             defaultStarValue: item.defaultStarValue,
             domain: item.domain,
@@ -1238,7 +1257,7 @@ export class TrainingOpsService {
         description?: string | null
         cadence?: string | null
         isActive: boolean
-        badgeEligible: boolean
+        badgeEligible?: boolean
         countsTowardPerformance: boolean
         defaultStarValue?: number | null
         ownerId?: string | null
@@ -1273,7 +1292,7 @@ export class TrainingOpsService {
                 description: payload.description ?? null,
                 cadence: payload.cadence ?? null,
                 isActive: payload.isActive,
-                badgeEligible: payload.badgeEligible,
+                badgeEligible: payload.badgeEligible ?? true,
                 countsTowardPerformance: payload.countsTowardPerformance,
                 defaultStarValue: payload.defaultStarValue ?? null,
                 ownerId: payload.ownerId ?? null,
@@ -1338,7 +1357,7 @@ export class TrainingOpsService {
                 description: payload.description,
                 cadence: payload.cadence,
                 isActive: payload.isActive,
-                badgeEligible: payload.badgeEligible,
+                ...(payload.badgeEligible !== undefined && { badgeEligible: payload.badgeEligible }),
                 countsTowardPerformance: payload.countsTowardPerformance,
                 defaultStarValue: payload.defaultStarValue,
                 ownerId: payload.ownerId,
@@ -1787,7 +1806,7 @@ export class TrainingOpsService {
         const series = payload.seriesId
             ? await prisma.learningSeries.findUnique({
                 where: { id: payload.seriesId },
-                select: { id: true, domainId: true },
+                select: { id: true, domainId: true, type: true },
             })
             : null
 
@@ -1830,6 +1849,11 @@ export class TrainingOpsService {
         if (payload.startsAt && payload.endsAt && payload.endsAt < payload.startsAt) {
             throw new Error('INVALID_EVENT_TIME_RANGE')
         }
+
+        this.assertEventFormatMatchesSeriesType({
+            format: payload.format,
+            seriesType: series?.type ?? null,
+        })
 
         const event = await prisma.learningEvent.create({
             data: {
@@ -1937,6 +1961,11 @@ export class TrainingOpsService {
                 countsTowardPerformance: true,
                 starValue: true,
                 hostId: true,
+                series: {
+                    select: {
+                        type: true,
+                    },
+                },
             },
         })
 
@@ -1950,7 +1979,7 @@ export class TrainingOpsService {
         const series = nextSeriesId
             ? await prisma.learningSeries.findUnique({
                 where: { id: nextSeriesId },
-                select: { id: true, domainId: true },
+                select: { id: true, domainId: true, type: true },
             })
             : null
 
@@ -1998,6 +2027,15 @@ export class TrainingOpsService {
         if (nextStartsAt && nextEndsAt && nextEndsAt < nextStartsAt) {
             throw new Error('INVALID_EVENT_TIME_RANGE')
         }
+
+        const nextFormat = payload.format === undefined ? existing.format : payload.format
+        this.assertEventFormatMatchesSeriesType({
+            format: nextFormat,
+            seriesType: series?.type ?? existing.series?.type ?? null,
+            allowLegacyMismatch:
+                existing.seriesId === nextSeriesId &&
+                existing.format === nextFormat,
+        })
 
         await prisma.learningEvent.update({
             where: { id },
@@ -2377,7 +2415,6 @@ export class TrainingOpsService {
             description?: string | null
             cadence?: string | null
             isActive: boolean
-            badgeEligible: boolean
             countsTowardPerformance: boolean
             defaultStarValue?: number | null
             ownerId?: string | null
@@ -2425,7 +2462,6 @@ export class TrainingOpsService {
             description?: string | null
             cadence?: string | null
             isActive?: boolean
-            badgeEligible?: boolean
             countsTowardPerformance?: boolean
             defaultStarValue?: number | null
             ownerId?: string | null
@@ -2893,6 +2929,12 @@ export class TrainingOpsService {
                 level: true,
                 rating: true,
                 learningEventId: true,
+                learningEvent: {
+                    select: {
+                        domainId: true,
+                        seriesId: true,
+                    },
+                },
                 instructor: {
                     select: {
                         id: true,
@@ -2921,6 +2963,8 @@ export class TrainingOpsService {
             level: course.level,
             rating: course.rating,
             learningEventId: course.learningEventId,
+            productDomainId: course.learningEvent?.domainId ?? null,
+            learningSeriesId: course.learningEvent?.seriesId ?? null,
             instructor: course.instructor,
             chapters: Array.from({ length: course._count.chapters }).map((_, index) => ({ id: `${course.id}-chapter-${index}` })),
         }))
@@ -3229,7 +3273,6 @@ export class TrainingOpsService {
 
         return ExamService.createExam(
             {
-                examType: 'STANDALONE',
                 title: `${event.title} Assessment`,
                 description: event.description ?? undefined,
                 instructions: event.description ?? undefined,

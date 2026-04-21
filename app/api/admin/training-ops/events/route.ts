@@ -141,6 +141,7 @@ export const POST = withAdminAuth(async (req: NextRequest, user) => {
                 HOST_NOT_FOUND: { status: 404, message: 'Host user not found or inactive' },
                 SERIES_DOMAIN_MISMATCH: { status: 400, message: 'Selected series does not belong to the selected product domain' },
                 INVALID_EVENT_TIME_RANGE: { status: 400, message: 'Event end time must be later than the scheduled or start time' },
+                INVALID_EVENT_FORMAT_FOR_SERIES: { status: 400, message: 'Selected event format is not allowed for the chosen learning series type' },
             }
 
             const mapped = errorMessages[error.message]

@@ -279,6 +279,17 @@ upload_to_presigned_url() {
   fi
 }
 
+confirm_lesson_asset_upload() {
+  local course_id="$1"
+  local chapter_id="$2"
+  local lesson_id="$3"
+  local upload_session_id="$4"
+
+  api_post "/api/admin/courses/$course_id/chapters/$chapter_id/lessons/$lesson_id/assets/confirm" "{
+    \"uploadSessionId\":\"$upload_session_id\"
+  }"
+}
+
 poll_transcript_completion() {
   set +x +v 2>/dev/null || true
   unsetopt xtrace verbose 2>/dev/null || true
@@ -509,8 +520,12 @@ DOC_UPLOAD_JSON=$(
 printf '%s' "$DOC_UPLOAD_JSON" | assert_success "prepare document upload"
 print_response "$DOC_UPLOAD_JSON"
 DOC_UPLOAD_URL=$(printf '%s' "$DOC_UPLOAD_JSON" | json_extract 'json.data?.uploadUrl')
-DOC_ASSET_ID=$(printf '%s' "$DOC_UPLOAD_JSON" | json_extract 'json.data?.asset?.id')
+DOC_UPLOAD_SESSION_ID=$(printf '%s' "$DOC_UPLOAD_JSON" | json_extract 'json.data?.uploadSessionId')
 upload_to_presigned_url "$DOC_UPLOAD_URL" "text/plain" "$DOC_FIXTURE_FILE"
+DOC_CONFIRM_JSON=$(confirm_lesson_asset_upload "$COURSE_ID" "$CHAPTER_ID" "$LESSON_ID" "$DOC_UPLOAD_SESSION_ID")
+printf '%s' "$DOC_CONFIRM_JSON" | assert_success "confirm document upload"
+print_response "$DOC_CONFIRM_JSON"
+DOC_ASSET_ID=$(printf '%s' "$DOC_CONFIRM_JSON" | json_extract 'json.data?.asset?.id')
 
 VIDEO_UPLOAD_JSON=$(
   api_post "/api/admin/courses/$COURSE_ID/chapters/$CHAPTER_ID/lessons/$LESSON_ID/assets/upload" "{
@@ -522,8 +537,12 @@ VIDEO_UPLOAD_JSON=$(
 printf '%s' "$VIDEO_UPLOAD_JSON" | assert_success "prepare video upload"
 print_response "$VIDEO_UPLOAD_JSON"
 VIDEO_UPLOAD_URL=$(printf '%s' "$VIDEO_UPLOAD_JSON" | json_extract 'json.data?.uploadUrl')
-VIDEO_ASSET_ID=$(printf '%s' "$VIDEO_UPLOAD_JSON" | json_extract 'json.data?.asset?.id')
+VIDEO_UPLOAD_SESSION_ID=$(printf '%s' "$VIDEO_UPLOAD_JSON" | json_extract 'json.data?.uploadSessionId')
 upload_to_presigned_url "$VIDEO_UPLOAD_URL" "video/mp4" "$VIDEO_FIXTURE_FILE"
+VIDEO_CONFIRM_JSON=$(confirm_lesson_asset_upload "$COURSE_ID" "$CHAPTER_ID" "$LESSON_ID" "$VIDEO_UPLOAD_SESSION_ID")
+printf '%s' "$VIDEO_CONFIRM_JSON" | assert_success "confirm video upload"
+print_response "$VIDEO_CONFIRM_JSON"
+VIDEO_ASSET_ID=$(printf '%s' "$VIDEO_CONFIRM_JSON" | json_extract 'json.data?.asset?.id')
 
 LESSONS_LIST_JSON=$(api_get "/api/admin/courses/$COURSE_ID/chapters/$CHAPTER_ID/lessons")
 printf '%s' "$LESSONS_LIST_JSON" | assert_success "list lessons"

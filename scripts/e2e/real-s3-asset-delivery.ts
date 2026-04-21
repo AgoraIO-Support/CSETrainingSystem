@@ -11,11 +11,12 @@
  *
  * What it tests:
  * 1) Finds an existing VIDEO asset for a lesson (source object in S3).
- * 2) Calls the admin upload endpoint to create a NEW asset using the NEW key scheme:
+ * 2) Calls the admin upload endpoint to prepare a NEW asset upload session using the NEW key scheme:
  *      <AWS_S3_ASSET_PREFIX>/<courseId>/<lessonId>/<assetId>.mp4
  * 3) Copies the source S3 object to the new key (server-side copy, no local MP4 needed).
- * 4) Calls the learner course API and verifies the returned asset URL is fetchable (Range GET).
- * 5) Cleans up by deleting the created asset via the admin delete endpoint.
+ * 4) Confirms the prepared upload session so the asset is attached to the lesson.
+ * 5) Calls the learner course API and verifies the returned asset URL is fetchable (Range GET).
+ * 6) Cleans up by deleting the created asset via the admin delete endpoint.
  *
  * Usage:
  *   # In one terminal:
@@ -163,9 +164,11 @@ const main = async () => {
     }
   )
 
-  const createdAssetId = upload?.data?.asset?.id
+  const uploadSessionId = upload?.data?.uploadSessionId
+  const createdAssetId = upload?.data?.courseAssetId
   const destKey = upload?.data?.key
-  expectTruthy(typeof createdAssetId === 'string', 'Upload endpoint did not return asset.id')
+  expectTruthy(typeof uploadSessionId === 'string', 'Upload endpoint did not return uploadSessionId')
+  expectTruthy(typeof createdAssetId === 'string', 'Upload endpoint did not return courseAssetId')
   expectTruthy(typeof destKey === 'string', 'Upload endpoint did not return key')
 
   // Key should follow: <AWS_S3_ASSET_PREFIX>/<courseId>/<lessonId>/<assetId>.mp4
@@ -188,6 +191,15 @@ const main = async () => {
   )
 
   await waitForHead(s3, assetBucket, destKey)
+
+  await jsonFetch<any>(
+    `${env.baseUrl}/api/admin/courses/${env.courseId}/chapters/${chapterId}/lessons/${env.lessonId}/assets/confirm`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify({ uploadSessionId }),
+    }
+  )
 
   // 6) Fetch course again and verify the created asset has a fetchable URL.
   const courseAfter = await jsonFetch<any>(`${env.baseUrl}/api/courses/${env.courseId}`, {

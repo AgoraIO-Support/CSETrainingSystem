@@ -10,8 +10,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Switch } from '@/components/ui/switch'
 import { ApiClient } from '@/lib/api-client'
+import {
+    EVENT_FORMAT_LABELS,
+    getAllowedEventFormatsForSeriesType,
+    getDefaultEventFormatForSeriesType,
+    getSeriesEventFormatGuidance,
+} from '@/lib/training-ops-series-event-rules'
 import type { AdminUser, LearningEventSummary, LearningSeriesSummary, ProductDomainSummary } from '@/types'
 
 const EMPTY_OPTION = '__none__'
@@ -98,6 +103,29 @@ export default function EditLearningEventPage() {
         if (!form.domainId) return series
         return series.filter((item) => item.domain?.id === form.domainId)
     }, [form.domainId, series])
+    const selectedSeries = useMemo(
+        () => series.find((item) => item.id === form.seriesId) ?? null,
+        [form.seriesId, series]
+    )
+    const allowedFormats = useMemo(
+        () => getAllowedEventFormatsForSeriesType(selectedSeries?.type),
+        [selectedSeries]
+    )
+    const formatGuidance = useMemo(
+        () => getSeriesEventFormatGuidance(selectedSeries?.type),
+        [selectedSeries]
+    )
+
+    useEffect(() => {
+        if (allowedFormats.includes(form.format)) {
+            return
+        }
+
+        setForm((prev) => ({
+            ...prev,
+            format: getDefaultEventFormatForSeriesType(selectedSeries?.type),
+        }))
+    }, [allowedFormats, form.format, selectedSeries])
 
     const updateForm = <K extends keyof typeof form>(key: K, value: typeof form[K]) => {
         setForm((prev) => ({ ...prev, [key]: value }))
@@ -127,6 +155,11 @@ export default function EditLearningEventPage() {
             ...prev,
             seriesId: value,
             domainId: prev.domainId || selectedSeries?.domain?.id || '',
+            format: selectedSeries
+                ? getAllowedEventFormatsForSeriesType(selectedSeries.type).includes(prev.format)
+                    ? prev.format
+                    : getDefaultEventFormatForSeriesType(selectedSeries.type)
+                : prev.format,
         }))
     }
 
@@ -196,14 +229,21 @@ export default function EditLearningEventPage() {
                                 <div className="space-y-2">
                                     <Label htmlFor="format">Format *</Label>
                                     <select id="format" className="h-10 w-full rounded-md border bg-background px-3" value={form.format} onChange={(e) => updateForm('format', e.target.value as LearningEventSummary['format'])}>
-                                        <option value="CASE_STUDY">Case Study</option>
-                                        <option value="KNOWLEDGE_SHARING">Knowledge Sharing</option>
-                                        <option value="FAQ_SHARE">FAQ Share</option>
-                                        <option value="RELEASE_BRIEFING">Release Briefing</option>
-                                        <option value="QUIZ_REVIEW">Quiz Review</option>
-                                        <option value="FINAL_EXAM">Final Exam</option>
-                                        <option value="WORKSHOP">Workshop</option>
+                                        {allowedFormats.map((format) => (
+                                            <option key={format} value={format}>
+                                                {EVENT_FORMAT_LABELS[format]}
+                                            </option>
+                                        ))}
                                     </select>
+                                    {selectedSeries ? (
+                                        <p className="text-xs text-muted-foreground">
+                                            {formatGuidance} Allowed formats: {allowedFormats.map((format) => EVENT_FORMAT_LABELS[format]).join(', ')}.
+                                        </p>
+                                    ) : (
+                                        <p className="text-xs text-muted-foreground">
+                                            Select a learning series to narrow this list to the allowed session formats for that program type.
+                                        </p>
+                                    )}
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="status">Status *</Label>
@@ -247,52 +287,9 @@ export default function EditLearningEventPage() {
                                 </div>
                             </div>
 
-                            <div className="grid gap-4 md:grid-cols-3">
-                                <div className="space-y-2">
-                                    <Label htmlFor="scheduledAt">Scheduled At</Label>
-                                    <Input id="scheduledAt" type="datetime-local" value={form.scheduledAt} onChange={(e) => updateForm('scheduledAt', e.target.value)} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="startsAt">Starts At</Label>
-                                    <Input id="startsAt" type="datetime-local" value={form.startsAt} onChange={(e) => updateForm('startsAt', e.target.value)} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="endsAt">Ends At</Label>
-                                    <Input id="endsAt" type="datetime-local" value={form.endsAt} onChange={(e) => updateForm('endsAt', e.target.value)} />
-                                </div>
-                            </div>
-
-                            <div className="grid gap-4 md:grid-cols-2">
-                                <div className="space-y-2">
-                                    <Label htmlFor="releaseVersion">Release Version</Label>
-                                    <Input id="releaseVersion" value={form.releaseVersion} onChange={(e) => updateForm('releaseVersion', e.target.value)} placeholder="e.g. 2026.03.2" />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="starValue">Star Value</Label>
-                                    <Input id="starValue" type="number" min="0" max="20" value={form.starValue} onChange={(e) => updateForm('starValue', e.target.value)} />
-                                </div>
-                            </div>
-
                             <div className="space-y-2">
                                 <Label htmlFor="description">Description</Label>
                                 <Textarea id="description" value={form.description} onChange={(e) => updateForm('description', e.target.value)} rows={5} />
-                            </div>
-
-                            <div className="grid gap-4 md:grid-cols-2">
-                                <div className="flex items-center justify-between rounded-lg border p-4">
-                                    <div>
-                                        <p className="font-medium">Required</p>
-                                        <p className="text-sm text-muted-foreground">Mark the event as mandatory for learners.</p>
-                                    </div>
-                                    <Switch checked={form.isRequired} onCheckedChange={(checked) => updateForm('isRequired', checked)} />
-                                </div>
-                                <div className="flex items-center justify-between rounded-lg border p-4">
-                                    <div>
-                                        <p className="font-medium">Counts Toward Performance</p>
-                                        <p className="text-sm text-muted-foreground">Include this event in formal assessment tracking.</p>
-                                    </div>
-                                    <Switch checked={form.countsTowardPerformance} onCheckedChange={(checked) => updateForm('countsTowardPerformance', checked)} />
-                                </div>
                             </div>
                         </CardContent>
                     </Card>

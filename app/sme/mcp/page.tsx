@@ -98,7 +98,6 @@ function buildExampleInput(
         case 'prepare_transcript_upload':
             return {
                 lessonId: '',
-                videoAssetId: '',
                 filename: 'lesson-transcript.vtt',
                 contentType: 'text/vtt',
                 languageCode: 'en',
@@ -107,7 +106,6 @@ function buildExampleInput(
         case 'process_transcript_knowledge':
             return {
                 lessonId: '',
-                transcriptId: '',
                 processTranscript: true,
                 processKnowledge: true,
             }
@@ -211,11 +209,11 @@ export default function SmeMcpLabPage() {
                 <Card className="border border-slate-200 bg-white shadow-sm">
                     <CardContent className="space-y-5 p-7 md:p-8">
                         <Badge className="w-fit rounded-full border border-[#b8ecff] bg-[#effbff] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#006688]">
-                            SME MCP v2 Lab
+                            SME MCP v2.1 Lab
                         </Badge>
                         <div className="space-y-3">
                             <h1 className="text-3xl font-semibold tracking-[-0.04em] text-slate-950 md:text-4xl">
-                                Visual console for the SME MCP v2 workflow surface
+                                Visual console for the SME MCP v2.1 workflow surface
                             </h1>
                             <p className="max-w-3xl text-sm leading-7 text-slate-600 md:text-base">
                                 Use this lab to exercise the workflow-oriented SME MCP tools without switching to curl or JSON scripts.

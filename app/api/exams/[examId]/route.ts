@@ -67,7 +67,6 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
         title: exam.title,
         description: exam.description,
         instructions: exam.instructions,
-        examType: exam.examType,
         timeLimit: exam.timeLimit,
         totalScore: exam.totalScore,
         passingScore: exam.passingScore,
@@ -83,6 +82,7 @@ export const GET = withAuth(async (req: NextRequest, user, context: RouteContext
         countsTowardPerformance: exam.countsTowardPerformance ?? false,
         certificateEligible: exam.certificateEligible ?? false,
         questionCount: questions.length,
+        courseId: exam.courseId,
         course: exam.course
           ? {
               id: exam.course.id,

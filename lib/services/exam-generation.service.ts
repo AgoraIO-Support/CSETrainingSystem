@@ -7,7 +7,6 @@ import prisma from '@/lib/prisma';
 import {
   ExamQuestionType,
   DifficultyLevel,
-  ExamType,
   AIPromptUseCase,
   AIResponseFormat,
 } from '@prisma/client';
@@ -86,7 +85,7 @@ export class ExamGenerationService {
 
   /**
    * Generate questions for an exam based on XML knowledge context.
-   * For `COURSE_BASED` exams, this uses lesson knowledge contexts generated from VTT → XML.
+   * For exams linked to a course, this uses lesson knowledge contexts generated from VTT → XML.
    */
   async generateQuestions(
     examId: string,
@@ -381,8 +380,8 @@ export class ExamGenerationService {
   private async buildKnowledgePrefixOrThrow(exam: any, lessonIds?: string[]): Promise<string> {
     const allowSet = Array.isArray(lessonIds) && lessonIds.length > 0 ? new Set(lessonIds) : null;
 
-    // COURSE_BASED: list from the course curriculum, optionally filtered by lessonIds.
-    if (exam.examType === ExamType.COURSE_BASED && exam.course) {
+    // Course-linked exams: list from the course curriculum, optionally filtered by lessonIds.
+    if (exam.course) {
       const course = exam.course;
       const lessons: Array<{
         id: string;
@@ -429,7 +428,7 @@ export class ExamGenerationService {
       });
     }
 
-    // STANDALONE: must select lessons explicitly (can span courses).
+    // Unlinked exams: lessons must be selected explicitly and can span courses.
     if (!allowSet) throw new Error('NO_CONTENT_AVAILABLE');
 
     const selectedLessons = await prisma.lesson.findMany({

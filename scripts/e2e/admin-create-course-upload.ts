@@ -4,7 +4,7 @@
  * What it validates (end-to-end):
  * - Admin auth works
  * - Admin CRUD for course/chapter/lesson works
- * - Presigned S3 PUT upload flow works for MP4 + VTT
+ * - Prepare -> S3 PUT -> confirm upload flow works for MP4 + VTT
  * - Learner payload returns signed GET URLs and the VTT content is fetchable
  * - (Optional) Basic learner UI loads the video + subtitles track
  *
@@ -83,6 +83,24 @@ const putToS3 = async (uploadUrl: string, contentType: string, body: Uint8Array)
     const text = await res.text().catch(() => '')
     throw new Error(`S3 PUT failed: ${res.status} ${res.statusText}${text ? `: ${text.slice(0, 500)}` : ''}`)
   }
+}
+
+const confirmLessonAssetUpload = async (
+  baseUrl: string,
+  authHeaders: Record<string, string>,
+  courseId: string,
+  chapterId: string,
+  lessonId: string,
+  uploadSessionId: string
+) => {
+  return jsonFetch<any>(
+    `${baseUrl}/api/admin/courses/${courseId}/chapters/${chapterId}/lessons/${lessonId}/assets/confirm`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify({ uploadSessionId }),
+    }
+  )
 }
 
 const main = async () => {
@@ -189,12 +207,22 @@ const main = async () => {
         }),
       }
     )
-    const videoAssetId = mp4Upload?.data?.asset?.id
+    const videoUploadSessionId = mp4Upload?.data?.uploadSessionId
     const mp4UploadUrl = mp4Upload?.data?.uploadUrl
-    expectTruthy(typeof videoAssetId === 'string', 'MP4 upload prepare did not return asset.id')
+    expectTruthy(typeof videoUploadSessionId === 'string', 'MP4 upload prepare did not return uploadSessionId')
     expectTruthy(typeof mp4UploadUrl === 'string', 'MP4 upload prepare did not return uploadUrl')
-    state.videoAssetId = videoAssetId
     await putToS3(mp4UploadUrl, 'video/mp4', mp4Bytes)
+    const mp4Confirm = await confirmLessonAssetUpload(
+      env.baseUrl,
+      authHeaders,
+      courseId,
+      chapterId,
+      lessonId,
+      videoUploadSessionId
+    )
+    const videoAssetId = mp4Confirm?.data?.asset?.id
+    expectTruthy(typeof videoAssetId === 'string', 'MP4 upload confirm did not return asset.id')
+    state.videoAssetId = videoAssetId
 
     // 7) Prepare + upload VTT as TEXT asset (so learner UI can use it as subtitles)
     const vttName = path.basename(env.vttPath)
@@ -210,12 +238,22 @@ const main = async () => {
         }),
       }
     )
-    const vttAssetId = vttUpload?.data?.asset?.id
+    const vttUploadSessionId = vttUpload?.data?.uploadSessionId
     const vttUploadUrl = vttUpload?.data?.uploadUrl
-    expectTruthy(typeof vttAssetId === 'string', 'VTT upload prepare did not return asset.id')
+    expectTruthy(typeof vttUploadSessionId === 'string', 'VTT upload prepare did not return uploadSessionId')
     expectTruthy(typeof vttUploadUrl === 'string', 'VTT upload prepare did not return uploadUrl')
-    state.vttAssetId = vttAssetId
     await putToS3(vttUploadUrl, 'text/vtt', vttBytes)
+    const vttConfirm = await confirmLessonAssetUpload(
+      env.baseUrl,
+      authHeaders,
+      courseId,
+      chapterId,
+      lessonId,
+      vttUploadSessionId
+    )
+    const vttAssetId = vttConfirm?.data?.asset?.id
+    expectTruthy(typeof vttAssetId === 'string', 'VTT upload confirm did not return asset.id')
+    state.vttAssetId = vttAssetId
 
     // 8) Verify learner payload returns signed, fetchable URLs
     const coursePayload = await jsonFetch<any>(`${env.baseUrl}/api/courses/${courseId}`, {

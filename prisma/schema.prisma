@@ -489,6 +489,7 @@ model Lesson {
   // Relations
   progress                 LessonProgress[]
   assets                   LessonAsset[]
+  assetUploadSessions      LessonAssetUploadSession[]
   aiConfig                 LessonAIConfig?
   transcripts              TranscriptAsset[]
   transcriptProcessingJobs TranscriptProcessingJob[]
@@ -1096,6 +1097,14 @@ enum LessonAssetType {
   OTHER
 }
 
+enum LessonAssetUploadStatus {
+  PENDING_UPLOAD
+  CONFIRMED
+  FAILED
+  ABORTED
+  EXPIRED
+}
+
 model LessonAsset {
   id            String      @id @default(uuid())
   lessonId      String
@@ -1129,6 +1138,35 @@ model CourseAsset {
 
   @@index([courseId])
   @@map("course_assets")
+}
+
+model LessonAssetUploadSession {
+  id               String                  @id @default(uuid())
+  lessonId         String
+  lesson           Lesson                  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  courseId         String
+  preparedById     String
+  filename         String
+  contentType      String
+  assetType        LessonAssetType
+  s3Key            String                  @unique
+  courseAssetId    String                  @unique
+  status           LessonAssetUploadStatus @default(PENDING_UPLOAD)
+  expiresAt        DateTime
+  confirmedAt      DateTime?
+  failedAt         DateTime?
+  abortedAt        DateTime?
+  errorMessage     String?                 @db.Text
+  uploadedSizeBytes Int?
+  uploadedMimeType  String?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  @@index([lessonId])
+  @@index([courseId])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("lesson_asset_upload_sessions")
 }
 
 // ============================================================================

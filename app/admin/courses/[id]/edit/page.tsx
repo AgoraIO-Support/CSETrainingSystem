@@ -82,15 +82,10 @@ const steps = [
     {
         id: 1,
         title: 'Course information',
-        description: 'Basics, learning outcomes, publish rules',
+        description: 'Basics, media, outcomes, and catalog metadata',
     },
     {
         id: 2,
-        title: 'Media & ownership',
-        description: 'Thumbnail, category, level, tags',
-    },
-    {
-        id: 3,
         title: 'Design the course & AI',
         description: 'Structure, assets, AI settings',
     },
@@ -138,11 +133,9 @@ function EditCoursePageContent({ params }: { params: Promise<{ id: string }> }) 
         status: 'DRAFT',
         learningOutcomes: '',
         requirements: '',
-        completionExamId: '',
-    autoCertificate: false,
-})
-const [activeStep, setActiveStep] = useState(1)
-const [formDirty, setFormDirty] = useState(false)
+    })
+    const [activeStep, setActiveStep] = useState(1)
+    const [formDirty, setFormDirty] = useState(false)
     const titleRef = useRef<HTMLInputElement | null>(null)
     const slugRef = useRef<HTMLInputElement | null>(null)
     const descriptionRef = useRef<HTMLTextAreaElement | null>(null)
@@ -225,8 +218,6 @@ const [formDirty, setFormDirty] = useState(false)
                     status: data.status || 'DRAFT',
                     learningOutcomes: (data.learningOutcomes || []).join('\n'),
                     requirements: (data.requirements || []).join('\n'),
-                    completionExamId: '',
-                    autoCertificate: false,
                 })
                 setFormDirty(false)
 
@@ -260,8 +251,8 @@ const [formDirty, setFormDirty] = useState(false)
             { keys: ['title'], message: 'Title is required', ref: titleRef, step: 1 },
             { keys: ['slug'], message: 'Slug is required', ref: slugRef, step: 1 },
             { keys: ['description'], message: 'Description is required', ref: descriptionRef, step: 1 },
-            { keys: ['category'], message: 'Category is required', ref: categoryRef, step: 2 },
-            { keys: ['level'], message: 'Level is required', ref: levelRef, step: 2 },
+            { keys: ['category'], message: 'Category is required', ref: categoryRef, step: 1 },
+            { keys: ['level'], message: 'Level is required', ref: levelRef, step: 1 },
         ]
 
         const stepsToCheck = scope === 'all' ? [1, 2] : [scope]
@@ -298,7 +289,7 @@ const [formDirty, setFormDirty] = useState(false)
         if (validate()) return true
 
         setError('Add at least one chapter and one lesson before publishing.')
-        setActiveStep(3)
+        setActiveStep(2)
         return false
     }
 
@@ -949,7 +940,7 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                 updatePendingLessonUpload(upload.id, { uploading: true, error: null })
                 try {
                     const uploadType = isVttFile(upload.file) ? 'TEXT' : (assetTypeMap[upload.type] || 'DOCUMENT')
-                    const uploadMeta: any = await ApiClient.uploadLessonAsset(id, chapterId, lessonId!, {
+                    const uploadMeta = await ApiClient.uploadLessonAsset(id, chapterId, lessonId!, {
                         filename: upload.file.name,
                         contentType: upload.file.type || 'application/octet-stream',
                         type: uploadType,
@@ -957,13 +948,14 @@ const handleDeleteLessonAsset = async (assetId: string) => {
 
                     const s3PutResponse = await fetch(uploadMeta.data.uploadUrl, {
                         method: 'PUT',
-                        headers: {
-                            'Content-Type': upload.file.type || 'application/octet-stream',
-                            'x-amz-server-side-encryption': 'AES256',
-                        },
+                        headers: uploadMeta.data.requiredHeaders,
                         body: upload.file,
                     })
                     if (!s3PutResponse.ok) {
+                        await ApiClient.abortLessonAssetUpload(id, chapterId, lessonId!, {
+                            uploadSessionId: uploadMeta.data.uploadSessionId,
+                            reason: `S3 upload failed (${s3PutResponse.status} ${s3PutResponse.statusText})`,
+                        }).catch(() => undefined)
                         const bodyText = await s3PutResponse.text().catch(() => '')
                         throw new Error(
                             `S3 upload failed (${s3PutResponse.status} ${s3PutResponse.statusText})${bodyText ? `: ${bodyText.slice(0, 500)}` : ''
@@ -971,7 +963,11 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                         )
                     }
 
-                    const asset = uploadMeta.data.asset
+                    const confirmMeta = await ApiClient.confirmLessonAssetUpload(id, chapterId, lessonId!, {
+                        uploadSessionId: uploadMeta.data.uploadSessionId,
+                    })
+
+                    const asset = confirmMeta.data.asset
                     newAssetIds.push(asset.id)
 
                     // Track if this is a video upload
@@ -1226,7 +1222,7 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                                 Step {activeStep} of {steps.length}
                             </span>
                         </div>
-                        <div className="grid gap-2 sm:grid-cols-3">
+                        <div className="grid gap-2 sm:grid-cols-2">
                             {steps.map(step => {
                                 const isCurrent = activeStep === step.id
                                 const isDone = activeStep > step.id
@@ -1278,7 +1274,7 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                         <CardHeader className="pb-4">
                             <CardTitle>Step 1: Course information</CardTitle>
                             <p className="text-sm text-muted-foreground">
-                                Provide the core course details learners will see in the catalog.
+                                Provide the core course details, media, and metadata learners will see in the catalog.
                             </p>
                         </CardHeader>
                         <CardContent>
@@ -1357,47 +1353,76 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                                             />
                                         </div>
                                     </div>
-                                </section>
 
-                                <section className="space-y-4">
-                                    <div className="border rounded-lg p-4 space-y-3">
-                                        <p className="text-xs uppercase tracking-wider text-muted-foreground">Publish</p>
-                                        <p className="text-sm font-semibold">Publish settings</p>
-                                        <p className="text-xs text-muted-foreground">
-                                            Set completion conditions, certificate rules, and publish status.
+                                    <div>
+                                        <p className="text-xs uppercase tracking-wider text-muted-foreground">Catalog metadata</p>
+                                        <h3 className="text-lg font-semibold">Media & discovery</h3>
+                                        <p className="text-sm text-muted-foreground">
+                                            Add the cover image and metadata learners use to find the course.
                                         </p>
-                                        <div>
-                                            <p className="text-sm font-semibold">Completion & Certificate</p>
-                                            <p className="text-xs text-muted-foreground">
-                                                Set how learners complete the course and whether to auto-issue certificates.
-                                            </p>
-                                        </div>
+                                    </div>
+
+                                    <div className="grid gap-4 md:grid-cols-2">
                                         <div className="space-y-2">
-                                            <Label htmlFor="completionExamId">Completion condition (exam ID or name)</Label>
-                                            <Input
-                                                id="completionExamId"
-                                                placeholder="e.g., exam-media-quality"
-                                                value={form.completionExamId}
-                                                onChange={e => handleChange('completionExamId', e.target.value)}
-                                            />
-                                            <p className="text-xs text-muted-foreground">
-                                                Learners must pass this exam to complete the course.
-                                            </p>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <p className="text-sm font-medium">Auto-issue certificate</p>
-                                                <p className="text-xs text-muted-foreground">
-                                                    Issue a certificate to the learner account after passing the exam.
-                                                </p>
+                                            <div className="flex items-center gap-2">
+                                                <Label htmlFor="thumbnail">Thumbnail URL</Label>
+                                                <InfoHint text="Optional image for course cards; use a 16:9 link." />
                                             </div>
                                             <Input
-                                                type="checkbox"
-                                                className="h-4 w-4"
-                                                checked={form.autoCertificate}
-                                                onChange={e => handleChange('autoCertificate', e.target.checked)}
+                                                id="thumbnail"
+                                                value={form.thumbnail}
+                                                onChange={e => handleChange('thumbnail', e.target.value)}
                                             />
                                         </div>
+                                        <div className="space-y-2">
+                                            <div className="flex items-center gap-2">
+                                                <Label htmlFor="category">Category</Label>
+                                                <InfoHint text="Helps learners filter the catalog." />
+                                            </div>
+                                            <Input
+                                                id="category"
+                                                value={form.category}
+                                                onChange={e => handleChange('category', e.target.value)}
+                                                required
+                                                ref={categoryRef}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid gap-4 md:grid-cols-2">
+                                        <div className="space-y-2">
+                                            <div className="flex items-center gap-2">
+                                                <Label>Level</Label>
+                                                <InfoHint text="Difficulty level visible to learners." />
+                                            </div>
+                                            <Select value={form.level} onValueChange={value => handleChange('level', value)}>
+                                                <SelectTrigger ref={levelRef}>
+                                                    <SelectValue placeholder="Select level" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {levels.map(level => (
+                                                        <SelectItem key={level} value={level}>
+                                                            {level}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-2">
+                                            <Label htmlFor="tags">Tags</Label>
+                                            <InfoHint text="Comma-separated keywords for search." />
+                                        </div>
+                                        <Input
+                                            id="tags"
+                                            value={form.tags}
+                                            onChange={e => handleChange('tags', e.target.value)}
+                                        />
+                                        <p className="text-xs text-muted-foreground">
+                                            Comma-separated keywords that power search, e.g. security, fundamentals.
+                                        </p>
                                     </div>
                                 </section>
 
@@ -1484,103 +1509,10 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                 </div>
                 )}
 
-                {activeStep === 2 && (
+                {course && activeStep === 2 && (
                     <Card>
                         <CardHeader>
-                            <CardTitle>Step 2: Media & ownership</CardTitle>
-                            <p className="text-sm text-muted-foreground">
-                                Provide visuals and metadata so learners can find and trust the course.
-                            </p>
-                        </CardHeader>
-                        <CardContent className="space-y-6">
-                            <div className="grid gap-4 md:grid-cols-2">
-                                <div className="space-y-2">
-                                    <div className="flex items-center gap-2">
-                                        <Label htmlFor="thumbnail">Thumbnail URL</Label>
-                                        <InfoHint text="Optional image for course cards; use a 16:9 link." />
-                                    </div>
-                                    <Input
-                                        id="thumbnail"
-                                        value={form.thumbnail}
-                                        onChange={e => handleChange('thumbnail', e.target.value)}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <div className="flex items-center gap-2">
-                                        <Label htmlFor="category">Category</Label>
-                                        <InfoHint text="Helps learners filter the catalog." />
-                                    </div>
-                                    <Input
-                                        id="category"
-                                        value={form.category}
-                                        onChange={e => handleChange('category', e.target.value)}
-                                        required
-                                        ref={categoryRef}
-                                    />
-                                </div>
-                            </div>
-                            <div className="grid gap-4 md:grid-cols-2">
-                                <div className="space-y-2">
-                                    <div className="flex items-center gap-2">
-                                        <Label>Level</Label>
-                                        <InfoHint text="Difficulty level visible to learners." />
-                                    </div>
-                                    <Select value={form.level} onValueChange={value => handleChange('level', value)}>
-                                        <SelectTrigger ref={levelRef}>
-                                            <SelectValue placeholder="Select level" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {levels.map(level => (
-                                                <SelectItem key={level} value={level}>
-                                                    {level}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <div className="flex items-center gap-2">
-                                    <Label htmlFor="tags">Tags</Label>
-                                    <InfoHint text="Comma-separated keywords for search." />
-                                </div>
-                                <Input
-                                    id="tags"
-                                    value={form.tags}
-                                    onChange={e => handleChange('tags', e.target.value)}
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    Comma-separated keywords that power search, e.g. security, fundamentals.
-                                </p>
-                            </div>
-
-                            <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:justify-end">
-                                <Button type="button" variant="outline" onClick={() => goToStep(1)} disabled={submitting}>
-                                    Back to Step 1
-                                </Button>
-                                <Button
-                                    type="button"
-                                    variant="secondary"
-                                    onClick={async () => {
-                                        const saved = await saveCourseInfo({ silent: false, validateStep: 2 })
-                                        if (saved) router.push(isSmeMode ? '/sme/training-ops/courses' : '/admin/courses')
-                                    }}
-                                    disabled={submitting}
-                                >
-                                    {submitting ? 'Saving…' : 'Save changes & Exit'}
-                                </Button>
-                                <Button type="button" onClick={() => goToStep(3)} disabled={submitting}>
-                                    Go to Step 3
-                                </Button>
-                            </div>
-                        </CardContent>
-                    </Card>
-                )}
-
-                {course && activeStep === 3 && (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Step 3: Design the course</CardTitle>
+                            <CardTitle>Step 2: Design the course</CardTitle>
                             <p className="text-sm text-muted-foreground">
                                 Build chapters and lessons, then attach lesson-specific materials.
                             </p>
@@ -1721,7 +1653,7 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                     </Card>
                 )}
 
-                {course && activeStep === 3 && (
+                {course && activeStep === 2 && (
                     <>
                         <Card>
                             <CardHeader>
@@ -1738,8 +1670,8 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                             </CardContent>
                         </Card>
                         <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:justify-end">
-                            <Button type="button" variant="outline" onClick={() => goToStep(2)} disabled={submitting}>
-                                Back to Step 2
+                            <Button type="button" variant="outline" onClick={() => goToStep(1)} disabled={submitting}>
+                                Back to Step 1
                             </Button>
                             <Button
                                 type="button"

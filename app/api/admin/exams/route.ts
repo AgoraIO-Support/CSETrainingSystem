@@ -13,8 +13,14 @@ import {
   normalizeExamTimeZone,
   optionalLocalDateTimeToUtc,
 } from '@/lib/exam-timezone';
-import { ExamStatus, ExamType } from '@prisma/client';
+import { ExamStatus } from '@prisma/client';
 import { z } from 'zod';
+
+function serializeExam<T extends { examType?: unknown }>(exam: T): Omit<T, 'examType'> {
+  const rest = { ...exam } as T & { examType?: unknown };
+  delete rest.examType;
+  return rest;
+}
 
 // GET /api/admin/exams - List exams with filters
 export const GET = withAdminAuth(async (req: NextRequest) => {
@@ -24,7 +30,6 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
     const status = searchParams.get('status') as ExamStatus | null;
-    const examType = searchParams.get('examType') as ExamType | null;
     const courseId = searchParams.get('courseId');
     const search = searchParams.get('search');
 
@@ -32,14 +37,13 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
       page,
       limit,
       status: status || undefined,
-      examType: examType || undefined,
       courseId: courseId || undefined,
       search: search || undefined,
     });
 
     return NextResponse.json({
       success: true,
-      data: exams,
+      data: exams.map(serializeExam),
       pagination,
     });
   } catch (error) {
@@ -82,7 +86,7 @@ export const POST = withSmeOrAdminAuth(async (req: NextRequest, user) => {
     return NextResponse.json(
       {
         success: true,
-        data: exam,
+        data: serializeExam(exam),
       },
       { status: 201 }
     );
@@ -118,19 +122,6 @@ export const POST = withSmeOrAdminAuth(async (req: NextRequest, user) => {
                 error.message === 'INVALID_EXAM_TIME_RANGE'
                   ? 'Deadline must be later than Available From.'
                   : 'Invalid exam date/time for the selected timezone.',
-            },
-          },
-          { status: 400 }
-        );
-      }
-
-      if (error.message === 'COURSE_REQUIRED') {
-        return NextResponse.json(
-          {
-            success: false,
-            error: {
-              code: 'EXAM_002',
-              message: 'Course ID is required for course-based exams',
             },
           },
           { status: 400 }

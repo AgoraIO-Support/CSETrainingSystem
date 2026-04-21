@@ -1,9 +1,10 @@
 import prisma from '@/lib/prisma'
+import s3Client, { ASSET_S3_BUCKET_NAME, S3_ASSET_BASE_PREFIX } from '@/lib/aws-s3'
 import { LessonAssetType, LessonCompletionRule, LessonType } from '@prisma/client'
 import { FileService } from '@/lib/services/file.service'
-import { S3_ASSET_BASE_PREFIX } from '@/lib/aws-s3'
 import { v4 as uuidv4 } from 'uuid'
 import path from 'path'
+import { HeadObjectCommand } from '@aws-sdk/client-s3'
 
 const joinPathSegments = (...segments: (string | undefined | null)[]) => {
     return segments
@@ -346,7 +347,7 @@ export class CourseStructureService {
         return course
     }
 
-    static async createUploadAndAttachLessonAsset(lessonId: string, params: {
+    static async prepareLessonAssetUpload(lessonId: string, preparedById: string, params: {
         filename: string
         contentType: string
         type: LessonAssetType
@@ -360,6 +361,7 @@ export class CourseStructureService {
         // New key scheme (for CloudFront `/assets/*` behavior):
         //   <AWS_S3_ASSET_PREFIX>/<courseId>/<lessonId>/<assetId>.<ext>
         // `AWS_S3_ASSET_PREFIX` should be set to `assets` in production to match `/assets/*`.
+        const uploadSessionId = uuidv4()
         const assetId = uuidv4()
         const ext = (() => {
             const fromName = path.extname(params.filename || '').trim()
@@ -376,34 +378,185 @@ export class CourseStructureService {
             key,
         })
 
-        const courseAsset = await prisma.courseAsset.create({
+        const uploadSession = await prisma.lessonAssetUploadSession.create({
             data: {
-                id: assetId,
+                id: uploadSessionId,
+                lessonId,
                 courseId: lesson.chapter.courseId,
-                title: params.filename.replace(/\.[^/.]+$/, '') || params.filename,
-                type: params.type,
-                // Do not store expiring access URLs in DB. Always compute at read-time.
-                url: upload.key,
-                cloudfrontUrl: null,
+                preparedById,
+                filename: params.filename,
+                contentType: params.contentType,
+                assetType: params.type,
                 s3Key: upload.key,
-                mimeType: params.contentType,
+                courseAssetId: assetId,
+                expiresAt: new Date(Date.now() + upload.expiresIn * 1000),
             },
-        })
-
-        await prisma.lessonAsset.create({
-            data: { lessonId, courseAssetId: courseAsset.id },
         })
 
         return {
             upload,
-            asset: {
-                id: courseAsset.id,
-                title: courseAsset.title,
-                type: courseAsset.type,
-                url: await FileService.getAssetAccessUrl(courseAsset.s3Key),
-                mimeType: courseAsset.mimeType ?? courseAsset.contentType ?? undefined,
-                s3Key: courseAsset.s3Key,
+            uploadSession: {
+                id: uploadSession.id,
+                lessonId: uploadSession.lessonId,
+                courseId: uploadSession.courseId,
+                courseAssetId: uploadSession.courseAssetId,
+                s3Key: uploadSession.s3Key,
+                status: uploadSession.status,
+                expiresAt: uploadSession.expiresAt,
             },
+        }
+    }
+
+    static async confirmLessonAssetUpload(lessonId: string, uploadSessionId: string) {
+        const uploadSession = await prisma.lessonAssetUploadSession.findUnique({
+            where: { id: uploadSessionId },
+        })
+
+        if (!uploadSession || uploadSession.lessonId !== lessonId) {
+            throw new Error('LESSON_ASSET_UPLOAD_SESSION_NOT_FOUND')
+        }
+
+        if (uploadSession.status === 'ABORTED') {
+            throw new Error('LESSON_ASSET_UPLOAD_ABORTED')
+        }
+
+        if (uploadSession.status === 'CONFIRMED') {
+            const existingAsset = await prisma.courseAsset.findUnique({
+                where: { id: uploadSession.courseAssetId },
+            })
+
+            if (!existingAsset) {
+                throw new Error('COURSE_ASSET_NOT_FOUND')
+            }
+
+            return {
+                uploadSession,
+                asset: {
+                    id: existingAsset.id,
+                    title: existingAsset.title,
+                    type: existingAsset.type,
+                    url: await FileService.getAssetAccessUrl(existingAsset.s3Key),
+                    mimeType: existingAsset.mimeType ?? existingAsset.contentType ?? undefined,
+                    s3Key: existingAsset.s3Key,
+                },
+            }
+        }
+
+        let head
+        try {
+            head = await s3Client.send(
+                new HeadObjectCommand({
+                    Bucket: ASSET_S3_BUCKET_NAME,
+                    Key: uploadSession.s3Key,
+                })
+            )
+        } catch (error) {
+            await prisma.lessonAssetUploadSession.update({
+                where: { id: uploadSession.id },
+                data: {
+                    status: 'FAILED',
+                    failedAt: new Date(),
+                    errorMessage: error instanceof Error ? error.message : 'Failed to locate uploaded object in S3',
+                },
+            })
+            throw new Error('LESSON_ASSET_UPLOAD_OBJECT_NOT_FOUND')
+        }
+
+        const mimeType = head.ContentType || uploadSession.contentType
+        const sizeBytes = typeof head.ContentLength === 'number' ? head.ContentLength : null
+
+        const asset = await prisma.$transaction(async (tx) => {
+            const existingAsset = await tx.courseAsset.findUnique({
+                where: { id: uploadSession.courseAssetId },
+            })
+
+            const courseAsset =
+                existingAsset ??
+                (await tx.courseAsset.create({
+                    data: {
+                        id: uploadSession.courseAssetId,
+                        courseId: uploadSession.courseId,
+                        title: uploadSession.filename.replace(/\.[^/.]+$/, '') || uploadSession.filename,
+                        type: uploadSession.assetType,
+                        url: uploadSession.s3Key,
+                        cloudfrontUrl: null,
+                        s3Key: uploadSession.s3Key,
+                        contentType: mimeType,
+                        mimeType,
+                    },
+                }))
+
+            const existingBinding = await tx.lessonAsset.findFirst({
+                where: {
+                    lessonId,
+                    courseAssetId: courseAsset.id,
+                },
+            })
+
+            if (!existingBinding) {
+                await tx.lessonAsset.create({
+                    data: {
+                        lessonId,
+                        courseAssetId: courseAsset.id,
+                    },
+                })
+            }
+
+            await tx.lessonAssetUploadSession.update({
+                where: { id: uploadSession.id },
+                data: {
+                    status: 'CONFIRMED',
+                    confirmedAt: new Date(),
+                    uploadedMimeType: mimeType,
+                    uploadedSizeBytes: sizeBytes ?? undefined,
+                    errorMessage: null,
+                },
+            })
+
+            return courseAsset
+        })
+
+        return {
+            uploadSession: {
+                ...uploadSession,
+                status: 'CONFIRMED' as const,
+            },
+            asset: {
+                id: asset.id,
+                title: asset.title,
+                type: asset.type,
+                url: await FileService.getAssetAccessUrl(asset.s3Key),
+                mimeType: asset.mimeType ?? asset.contentType ?? undefined,
+                s3Key: asset.s3Key,
+            },
+        }
+    }
+
+    static async abortLessonAssetUpload(lessonId: string, uploadSessionId: string, reason?: string | null) {
+        const uploadSession = await prisma.lessonAssetUploadSession.findUnique({
+            where: { id: uploadSessionId },
+        })
+
+        if (!uploadSession || uploadSession.lessonId !== lessonId) {
+            throw new Error('LESSON_ASSET_UPLOAD_SESSION_NOT_FOUND')
+        }
+
+        if (uploadSession.status === 'CONFIRMED') {
+            throw new Error('LESSON_ASSET_UPLOAD_ALREADY_CONFIRMED')
+        }
+
+        await prisma.lessonAssetUploadSession.update({
+            where: { id: uploadSession.id },
+            data: {
+                status: 'ABORTED',
+                abortedAt: new Date(),
+                errorMessage: reason?.trim() || uploadSession.errorMessage || null,
+            },
+        })
+
+        return {
+            id: uploadSession.id,
+            status: 'ABORTED' as const,
         }
     }
 

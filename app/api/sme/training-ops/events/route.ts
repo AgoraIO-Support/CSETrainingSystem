@@ -116,6 +116,16 @@ export const POST = withSmeOrAdminAuth(async (req: NextRequest, user) => {
             }, { status: 403 })
         }
 
+        if (error instanceof Error && error.message === 'INVALID_EVENT_FORMAT_FOR_SERIES') {
+            return NextResponse.json({
+                success: false,
+                error: {
+                    code: 'VALIDATION_ERROR',
+                    message: 'Selected event format is not allowed for the chosen learning series type.',
+                },
+            }, { status: 400 })
+        }
+
         return NextResponse.json({
             success: false,
             error: {

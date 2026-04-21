@@ -35,7 +35,6 @@ export default function SmeTrainingOpsSeriesPage() {
     const stats = useMemo(() => ({
         total: series.length,
         active: series.filter((item) => item.isActive).length,
-        badgeEligible: series.filter((item) => item.badgeEligible).length,
     }), [series])
 
     return (
@@ -61,10 +60,9 @@ export default function SmeTrainingOpsSeriesPage() {
                     </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <div className="grid gap-4 md:grid-cols-2">
                     <Card><CardHeader className="pb-2"><CardDescription>Total</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.total}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Series in your SME scope.</p></CardContent></Card>
                     <Card><CardHeader className="pb-2"><CardDescription>Active</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.active}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Currently schedulable series.</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2"><CardDescription>Domain Badge Enabled</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.badgeEligible}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Series that can contribute stars toward domain badges.</p></CardContent></Card>
                 </div>
 
                 <Card>
@@ -106,9 +104,7 @@ export default function SmeTrainingOpsSeriesPage() {
                                             </Link>
                                         </div>
                                     </div>
-                                    <div className="mt-4 grid gap-3 md:grid-cols-4 text-sm text-muted-foreground">
-                                        <div>Default stars: {item.defaultStarValue ?? '—'}</div>
-                                        <div>Domain badges: {item.badgeEligible ? 'Enabled' : 'Disabled'}</div>
+                                    <div className="mt-4 grid gap-3 md:grid-cols-2 text-sm text-muted-foreground">
                                         <div>{item.counts.events} events</div>
                                         <div>{item.counts.exams} exams</div>
                                     </div>

@@ -241,9 +241,6 @@ export default function AdminExamsPage() {
                                                 <Badge variant={(statusConfig[exam.status] ?? { variant: 'outline', label: exam.status }).variant}>
                                                     {(statusConfig[exam.status] ?? { variant: 'outline', label: exam.status }).label}
                                                 </Badge>
-                                                <Badge variant="outline">
-                                                    {exam.examType === 'COURSE_BASED' ? 'Course-Based' : 'Standalone'}
-                                                </Badge>
                                             </div>
                                             {exam.description && (
                                                 <p className="text-sm text-muted-foreground mb-2 line-clamp-1">
@@ -263,6 +260,12 @@ export default function AdminExamsPage() {
                                                     <span className="flex items-center gap-1">
                                                         <Clock className="h-4 w-4" />
                                                         {exam.timeLimit} min
+                                                    </span>
+                                                )}
+                                                {exam.course && (
+                                                    <span className="flex items-center gap-1">
+                                                        <BookOpen className="h-4 w-4" />
+                                                        {exam.course.title}
                                                     </span>
                                                 )}
                                                 <span className="flex items-center gap-1">

@@ -21,6 +21,12 @@ type RouteContext = {
   params: Promise<{ examId: string }>;
 };
 
+function serializeExam<T extends { examType?: unknown }>(exam: T): Omit<T, 'examType'> {
+  const rest = { ...exam } as T & { examType?: unknown };
+  delete rest.examType;
+  return rest;
+}
+
 // GET /api/admin/exams/[examId] - Get exam details
 export const GET = withSmeOrAdminAuth(
   async (req: NextRequest, user, context: RouteContext) => {
@@ -47,7 +53,7 @@ export const GET = withSmeOrAdminAuth(
 
       return NextResponse.json({
         success: true,
-        data: exam,
+        data: serializeExam(exam),
       });
     } catch (error) {
       console.error('Get exam error:', error);
@@ -113,6 +119,7 @@ export const PATCH = withSmeOrAdminAuth(
       // Transform nullable values to undefined for service compatibility
       const updateData = {
         ...data,
+        courseId: data.courseId === undefined ? undefined : data.courseId,
         description: data.description ?? undefined,
         instructions: data.instructions ?? undefined,
         timeLimit: data.timeLimit ?? undefined,
@@ -127,7 +134,7 @@ export const PATCH = withSmeOrAdminAuth(
 
       return NextResponse.json({
         success: true,
-        data: exam,
+        data: serializeExam(exam),
       });
     } catch (error) {
       console.error('Update exam error:', error);
@@ -198,6 +205,19 @@ export const PATCH = withSmeOrAdminAuth(
               error: {
                 code: 'EXAM_NOT_FOUND',
                 message: 'Exam not found',
+              },
+            },
+            { status: 404 }
+          );
+        }
+
+        if (error.message === 'COURSE_NOT_FOUND') {
+          return NextResponse.json(
+            {
+              success: false,
+              error: {
+                code: 'EXAM_003',
+                message: 'Course not found',
               },
             },
             { status: 404 }

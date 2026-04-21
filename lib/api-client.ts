@@ -35,7 +35,6 @@ import type {
     CourseInvitation,
     ExamAnalytics,
     ExamStatus,
-    ExamType,
     ExamQuestionType,
     EssayAIGradingBreakdown,
     EssayGradingCriterion,
@@ -430,8 +429,54 @@ export class ApiClient {
         })
     }
 
-    static async uploadLessonAsset(courseId: string, chapterId: string, lessonId: string, payload: { filename: string; contentType: string; type: 'VIDEO' | 'DOCUMENT' | 'PRESENTATION' | 'TEXT' | 'AUDIO' | 'OTHER' }) {
+    static async uploadLessonAsset(courseId: string, chapterId: string, lessonId: string, payload: { filename: string; contentType: string; type: 'VIDEO' | 'DOCUMENT' | 'PRESENTATION' | 'TEXT' | 'AUDIO' | 'OTHER' }): Promise<{
+        success: boolean
+        data: {
+            uploadSessionId: string
+            courseAssetId: string
+            status: 'PENDING_UPLOAD'
+            uploadUrl: string
+            key: string
+            url: string
+            mimeType: string
+            expiresIn: number
+            requiredHeaders: Record<string, string>
+        }
+    }> {
         return this.request(`/admin/courses/${courseId}/chapters/${chapterId}/lessons/${lessonId}/assets/upload`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async confirmLessonAssetUpload(courseId: string, chapterId: string, lessonId: string, payload: {
+        uploadSessionId: string
+    }): Promise<{
+        success: boolean
+        data: {
+            uploadSessionId: string
+            status: 'CONFIRMED'
+            asset: {
+                id: string
+                title: string
+                type: 'VIDEO' | 'DOCUMENT' | 'PRESENTATION' | 'TEXT' | 'AUDIO' | 'OTHER'
+                url: string
+                mimeType?: string
+                s3Key: string
+            }
+        }
+    }> {
+        return this.request(`/admin/courses/${courseId}/chapters/${chapterId}/lessons/${lessonId}/assets/confirm`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async abortLessonAssetUpload(courseId: string, chapterId: string, lessonId: string, payload: {
+        uploadSessionId: string
+        reason?: string | null
+    }): Promise<{ success: boolean; data: { id: string; status: 'ABORTED' } }> {
+        return this.request(`/admin/courses/${courseId}/chapters/${chapterId}/lessons/${lessonId}/assets/abort`, {
             method: 'POST',
             body: JSON.stringify(payload),
         })
@@ -696,7 +741,6 @@ export class ApiClient {
         description?: string | null
         cadence?: string | null
         isActive: boolean
-        badgeEligible: boolean
         countsTowardPerformance?: boolean
         defaultStarValue?: number | null
         ownerId?: string | null
@@ -718,7 +762,6 @@ export class ApiClient {
         description?: string | null
         cadence?: string | null
         isActive?: boolean
-        badgeEligible?: boolean
         countsTowardPerformance?: boolean
         defaultStarValue?: number | null
         ownerId?: string | null
@@ -966,7 +1009,6 @@ export class ApiClient {
         description?: string | null
         cadence?: string | null
         isActive: boolean
-        badgeEligible: boolean
         countsTowardPerformance?: boolean
         defaultStarValue?: number | null
     }): Promise<{
@@ -994,7 +1036,6 @@ export class ApiClient {
         description?: string | null
         cadence?: string | null
         isActive?: boolean
-        badgeEligible?: boolean
         countsTowardPerformance?: boolean
         defaultStarValue?: number | null
         ownerId?: string | null
@@ -1353,8 +1394,7 @@ export class ApiClient {
 
     static async createExam(payload: {
         title: string
-        examType: ExamType
-        courseId?: string
+        courseId?: string | null
         description?: string
         instructions?: string
         timeLimit?: number
@@ -1383,6 +1423,7 @@ export class ApiClient {
     }
 
     static async updateExam(examId: string, payload: Partial<{
+        courseId: string | null
         title: string
         description: string | null
         instructions: string | null
