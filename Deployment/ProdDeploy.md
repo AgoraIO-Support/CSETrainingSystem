@@ -135,3 +135,65 @@ localhost/cselearning-migrator:prod-amd64
 ```
 
 Production images should be built on Ubuntu or CI, not on the M2 laptop, to avoid slow cross-architecture emulation and QEMU instability during `next build`.
+
+## MCP Production Notes
+
+The standard MCP server runs inside the same `cselearning-web` container and is exposed at:
+
+```text
+/api/mcp
+```
+
+Before enabling MCP in production, add these variables to `/home/ubuntu/cselearning.env`:
+
+```env
+SME_MCP_INTERNAL_TOKEN=replace-with-long-random-token
+SME_MCP_INTERNAL_USER_EMAIL=admin@agora.io
+SME_MCP_PROD_MODE=true
+SME_MCP_DISABLE_FALLBACK_USER=true
+SME_MCP_TRUST_PROXY_HEADERS=true
+SME_MCP_ENABLE_ADVANCED_TOOLS=false
+SME_MCP_ENABLE_INSIGHT_TOOLS=false
+SME_MCP_AUDIT_LOGGING=true
+SME_MCP_RATE_LIMIT_ENABLED=true
+SME_MCP_RATE_LIMIT_WINDOW_MS=60000
+SME_MCP_RATE_LIMIT_MAX_REQUESTS=120
+SME_MCP_RATE_LIMIT_MAX_TOOL_CALLS=60
+SME_MCP_ALLOWED_CALLER_IPS=10.0.0.10,10.0.0.11
+SME_MCP_ALLOWED_CALLER_IDS=internal-gateway
+```
+
+You can copy the ready-made MCP block from:
+
+- [/Users/zhonghuang/Documents/CSETrainingSystem/Deployment/cselearning.env.mcp.example](/Users/zhonghuang/Documents/CSETrainingSystem/Deployment/cselearning.env.mcp.example)
+
+Recommended access model:
+
+- Do not expose `/api/mcp` directly to arbitrary public MCP clients.
+- Put `/api/mcp` behind your reverse proxy / internal gateway.
+- Only the trusted gateway should hold `SME_MCP_INTERNAL_TOKEN`.
+- Only the trusted gateway should inject `x-sme-user-email`.
+
+After updating the env file, restart the web service:
+
+```bash
+systemctl --user restart container-cselearning-web.service
+```
+
+### MCP smoke checks
+
+```bash
+curl -s https://your-domain.example.com/api/mcp
+```
+
+```bash
+BASE_URL=https://your-domain.example.com/api/mcp \
+INTERNAL_MCP_TOKEN=replace-with-token \
+MCP_USER_EMAIL=rtcsme@agora.io \
+zsh scripts/mcp/test-standard-mcp.sh
+```
+
+For the detailed production rollout and reverse-proxy guidance, see:
+
+- [/Users/zhonghuang/Documents/CSETrainingSystem/Deployment/MCP-Prod-GoLive.md](/Users/zhonghuang/Documents/CSETrainingSystem/Deployment/MCP-Prod-GoLive.md)
+- [/Users/zhonghuang/Documents/CSETrainingSystem/Deployment/nginx-mcp.conf.example](/Users/zhonghuang/Documents/CSETrainingSystem/Deployment/nginx-mcp.conf.example)

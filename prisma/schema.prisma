@@ -26,6 +26,16 @@ enum UserStatus {
   DELETED
 }
 
+enum McpAccessTokenScope {
+  SME_MCP
+}
+
+enum McpAccessTokenStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
 enum ProductDomainCategory {
   RTE
   AI
@@ -129,6 +139,7 @@ model User {
   createdLearningEvents LearningEvent[]  @relation("LearningEventCreator")
   starAwards            StarAward[]
   badgeAwards           BadgeAward[]
+  mcpAccessTokens       McpAccessToken[]
 
   // Exam relations
   examAttempts        ExamAttempt[]
@@ -141,6 +152,33 @@ model User {
   @@index([role])
   @@index([status])
   @@map("users")
+}
+
+model McpAccessToken {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name        String
+  tokenPrefix String @unique
+  tokenHash   String @unique
+  scope       McpAccessTokenScope  @default(SME_MCP)
+  status      McpAccessTokenStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  lastUsedAt        DateTime?
+  lastUsedIp        String?
+  lastUsedUserAgent String?
+
+  @@index([userId, status])
+  @@index([expiresAt])
+  @@index([lastUsedAt])
+  @@map("mcp_access_tokens")
 }
 
 // ============================================================================

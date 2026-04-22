@@ -1,12 +1,29 @@
 import prisma from '@/lib/prisma'
 import { S3_ASSET_BASE_PREFIX } from '@/lib/aws-s3'
 import { TrainingOpsService } from '@/lib/services/training-ops.service'
+import { CourseService } from '@/lib/services/course.service'
+import { CourseStructureService } from '@/lib/services/course-structure.service'
+import { ExamService } from '@/lib/services/exam.service'
+import { ExamGenerationService } from '@/lib/services/exam-generation.service'
 import { FileService } from '@/lib/services/file.service'
 import { KnowledgeContextJobService } from '@/lib/services/knowledge-context-job.service'
 import { TranscriptJobService } from '@/lib/services/transcript-job.service'
 import { WecomWebhookService } from '@/lib/services/wecom-webhook.service'
 import { AuthUser } from '@/lib/auth-middleware'
-import { AIPromptUseCase, AssessmentKind, ExamStatus, LearningEventFormat, LearningEventStatus } from '@prisma/client'
+import { DEFAULT_EXAM_TIMEZONE } from '@/lib/exam-timezone'
+import {
+    AIPromptUseCase,
+    AssessmentKind,
+    CourseLevel,
+    CourseStatus,
+    DifficultyLevel,
+    ExamQuestionType,
+    ExamStatus,
+    LessonAssetType,
+    LearningEventFormat,
+    LearningEventStatus,
+    LearningSeriesType,
+} from '@prisma/client'
 import {
     inviteUsersSchema,
 } from '@/lib/validations'
@@ -35,6 +52,56 @@ const KNOWLEDGE_CONTEXT_OVERRIDE_USE_CASE = AIPromptUseCase.VTT_TO_XML_ENRICHMEN
 
 const errorWithDetails = (message: string, details: unknown) =>
     Object.assign(new Error(message), { details })
+
+const normalizeLookupValue = (value: string) => value.trim().toLowerCase()
+
+const slugifyValue = (value: string) =>
+    value
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .replace(/-{2,}/g, '-')
+
+const optionalText = (value?: string | null) => {
+    const normalized = value?.trim()
+    return normalized ? normalized : null
+}
+
+const isUuid = (value: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+
+type DomainReference = Awaited<ReturnType<typeof TrainingOpsService.getScopedDomains>>[number]
+type SeriesReference = Awaited<ReturnType<typeof TrainingOpsService.getScopedSeries>>[number]
+type EventReference = Awaited<ReturnType<typeof TrainingOpsService.getScopedEvents>>[number]
+type CourseReference = Awaited<ReturnType<typeof TrainingOpsService.getScopedCourses>>[number]
+type ExamReference = Awaited<ReturnType<typeof TrainingOpsService.getScopedExams>>[number]
+
+const pickReferenceMatch = <T extends { id: string }>(
+    ref: string,
+    candidates: T[],
+    codes: {
+        notFound: string
+        ambiguous: string
+    },
+    summarize: (candidate: T) => Record<string, unknown>
+) => {
+    if (candidates.length === 1) {
+        return candidates[0]
+    }
+
+    if (candidates.length === 0) {
+        throw errorWithDetails(codes.notFound, {
+            ref,
+        })
+    }
+
+    throw errorWithDetails(codes.ambiguous, {
+        ref,
+        candidates: candidates.slice(0, 10).map(summarize),
+    })
+}
 
 export class SmeMcpService {
     static async listMyWorkspace(
@@ -105,320 +172,1245 @@ export class SmeMcpService {
                 weakTopics: learnerGaps.weakTopics,
                 learnerGaps: learnerGaps.learnerGaps,
             },
-            nextActions: ['create_case_study_bundle', 'get_event_execution_status', 'list_my_series_badges'],
+            nextActions: ['create_badge', 'create_series', 'create_event', 'create_course', 'create_exam'],
         }
     }
 
-    static async createCaseStudyBundle(
+    private static async resolveDomainReference(user: MappableUser, ref: string): Promise<DomainReference> {
+        const domains = await TrainingOpsService.getScopedDomains(user)
+        const trimmed = ref.trim()
+        const normalized = normalizeLookupValue(trimmed)
+        const slugCandidate = slugifyValue(trimmed)
+
+        const directIdMatch = domains.find((domain) => domain.id === trimmed)
+        if (directIdMatch) {
+            return directIdMatch
+        }
+
+        const matches = domains.filter((domain) => {
+            const slug = normalizeLookupValue(domain.slug)
+            const name = normalizeLookupValue(domain.name)
+            return slug === normalized || name === normalized || slug === slugCandidate
+        })
+
+        return pickReferenceMatch(
+            ref,
+            matches,
+            {
+                notFound: 'DOMAIN_REFERENCE_NOT_FOUND',
+                ambiguous: 'DOMAIN_REFERENCE_AMBIGUOUS',
+            },
+            (domain) => ({ id: domain.id, slug: domain.slug, name: domain.name })
+        )
+    }
+
+    private static async resolveSeriesReference(
+        user: MappableUser,
+        ref: string,
+        options?: { domainId?: string | null }
+    ): Promise<SeriesReference> {
+        const scopedSeries = await TrainingOpsService.getScopedSeries(user)
+        const series = options?.domainId
+            ? scopedSeries.filter((item) => item.domain?.id === options.domainId)
+            : scopedSeries
+
+        const trimmed = ref.trim()
+        const normalized = normalizeLookupValue(trimmed)
+        const slugCandidate = slugifyValue(trimmed)
+
+        const directIdMatch = series.find((item) => item.id === trimmed)
+        if (directIdMatch) {
+            return directIdMatch
+        }
+
+        const matches = series.filter((item) => {
+            const slug = normalizeLookupValue(item.slug)
+            const name = normalizeLookupValue(item.name)
+            return slug === normalized || name === normalized || slug === slugCandidate
+        })
+
+        return pickReferenceMatch(
+            ref,
+            matches,
+            {
+                notFound: 'SERIES_REFERENCE_NOT_FOUND',
+                ambiguous: 'SERIES_REFERENCE_AMBIGUOUS',
+            },
+            (item) => ({
+                id: item.id,
+                slug: item.slug,
+                name: item.name,
+                domainId: item.domain?.id ?? null,
+            })
+        )
+    }
+
+    private static async resolveEventReference(user: MappableUser, ref: string): Promise<EventReference> {
+        const events = await TrainingOpsService.getScopedEvents(user)
+        const trimmed = ref.trim()
+        const normalized = normalizeLookupValue(trimmed)
+
+        const directIdMatch = events.find((event) => event.id === trimmed)
+        if (directIdMatch) {
+            return directIdMatch
+        }
+
+        const matches = events.filter((event) => normalizeLookupValue(event.title) === normalized)
+
+        return pickReferenceMatch(
+            ref,
+            matches,
+            {
+                notFound: 'EVENT_REFERENCE_NOT_FOUND',
+                ambiguous: 'EVENT_REFERENCE_AMBIGUOUS',
+            },
+            (event) => ({
+                id: event.id,
+                title: event.title,
+                seriesId: event.series?.id ?? null,
+                domainId: event.domain?.id ?? null,
+            })
+        )
+    }
+
+    private static async resolveCourseReference(user: MappableUser, ref: string): Promise<CourseReference> {
+        const courses = await TrainingOpsService.getScopedCourses(user)
+        const trimmed = ref.trim()
+        const normalized = normalizeLookupValue(trimmed)
+        const slugCandidate = slugifyValue(trimmed)
+
+        const directIdMatch = courses.find((course) => course.id === trimmed)
+        if (directIdMatch) {
+            return directIdMatch
+        }
+
+        const matches = courses.filter((course) => {
+            const title = normalizeLookupValue(course.title)
+            const slug = normalizeLookupValue(course.slug)
+            return title === normalized || slug === normalized || slug === slugCandidate
+        })
+
+        return pickReferenceMatch(
+            ref,
+            matches,
+            {
+                notFound: 'COURSE_REFERENCE_NOT_FOUND',
+                ambiguous: 'COURSE_REFERENCE_AMBIGUOUS',
+            },
+            (course) => ({
+                id: course.id,
+                title: course.title,
+                slug: course.slug,
+                learningEventId: course.learningEventId ?? null,
+            })
+        )
+    }
+
+    private static async resolveExamReference(user: MappableUser, ref: string): Promise<ExamReference> {
+        const exams = await TrainingOpsService.getScopedExams(user)
+        const trimmed = ref.trim()
+        const normalized = normalizeLookupValue(trimmed)
+
+        const directIdMatch = exams.find((exam) => exam.id === trimmed)
+        if (directIdMatch) {
+            return directIdMatch
+        }
+
+        const matches = exams.filter((exam) => normalizeLookupValue(exam.title) === normalized)
+
+        return pickReferenceMatch(
+            ref,
+            matches,
+            {
+                notFound: 'EXAM_REFERENCE_NOT_FOUND',
+                ambiguous: 'EXAM_REFERENCE_AMBIGUOUS',
+            },
+            (exam) => ({
+                id: exam.id,
+                title: exam.title,
+                learningEventId: exam.learningEventId ?? null,
+            })
+        )
+    }
+
+    private static async resolveActiveUserReference(user: MappableUser, ref?: string | null) {
+        if (!ref || ref.trim().length === 0 || ref === 'current_user') {
+            const currentUser = await prisma.user.findUnique({
+                where: { id: user.id },
+                select: { id: true, name: true, email: true, status: true },
+            })
+
+            if (!currentUser || currentUser.status !== 'ACTIVE') {
+                throw new Error('USER_REFERENCE_NOT_FOUND')
+            }
+
+            return currentUser
+        }
+
+        const trimmed = ref.trim()
+        const resolvedUser = await prisma.user.findFirst({
+            where: isUuid(trimmed)
+                ? { id: trimmed, status: 'ACTIVE' }
+                : { email: { equals: trimmed, mode: 'insensitive' }, status: 'ACTIVE' },
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                status: true,
+            },
+        })
+
+        if (!resolvedUser) {
+            throw errorWithDetails('USER_REFERENCE_NOT_FOUND', {
+                ref,
+            })
+        }
+
+        return resolvedUser
+    }
+
+    private static async getActiveDefaultCourseTemplate() {
+        const defaultTemplate = await prisma.aIPromptDefault.findUnique({
+            where: { useCase: AI_ASSISTANT_COURSE_USE_CASE },
+            include: {
+                template: {
+                    select: {
+                        id: true,
+                        name: true,
+                        useCase: true,
+                        isActive: true,
+                    },
+                },
+            },
+        })
+
+        if (!defaultTemplate?.template?.isActive) {
+            return null
+        }
+
+        return {
+            id: defaultTemplate.template.id,
+            name: defaultTemplate.template.name,
+            useCase: defaultTemplate.template.useCase,
+        }
+    }
+
+    static async createBadge(
         user: MappableUser,
         input: {
-            domainId: string
-            seriesId: string
-            title: string
-            scheduledAt?: Date | null
+            name: string
+            domain: string
+            thresholdStars: number
+            icon?: string | null
             description?: string | null
-            hostId?: string | null
-            starValue?: number | null
-            assessmentKind?: AssessmentKind
+            active?: boolean
+        }
+    ): Promise<ToolResult<{
+        badge: Awaited<ReturnType<typeof TrainingOpsService.createScopedBadgeMilestone>>
+        normalized: {
+            slug: string
+            domainId: string
+        }
+    }>> {
+        const domain = await this.resolveDomainReference(user, input.domain)
+        const badge = await TrainingOpsService.createScopedBadgeMilestone(user, {
+            name: input.name.trim(),
+            slug: slugifyValue(input.name),
+            description: optionalText(input.description),
+            icon: optionalText(input.icon),
+            thresholdStars: input.thresholdStars,
+            active: input.active ?? true,
+            domainId: domain.id,
+        })
+
+        return {
+            success: true,
+            tool: 'create_badge',
+            summary: `Created badge "${badge.name}" in domain "${domain.name}".`,
+            data: {
+                badge,
+                normalized: {
+                    slug: badge.slug,
+                    domainId: domain.id,
+                },
+            },
+            nextActions: ['list_my_workspace', 'create_series'],
+            recommendedNextInputs: {
+                list_my_workspace: {
+                    domainId: domain.id,
+                },
+            },
+        }
+    }
+
+    static async createSeries(
+        user: MappableUser,
+        input: {
+            name: string
+            seriesType: LearningSeriesType
+            productDomain: string
+            seriesOwner?: string | null
+            cadence?: string | null
+            description?: string | null
+            active?: boolean
+            contributesToDomainBadges?: boolean
+        }
+    ): Promise<ToolResult<{
+        series: Awaited<ReturnType<typeof TrainingOpsService.createScopedLearningSeries>>
+        normalized: {
+            slug: string
+            domainId: string
+            ownerId: string | null
+        }
+    }>> {
+        const domain = await this.resolveDomainReference(user, input.productDomain)
+        const owner =
+            user.role === 'ADMIN'
+                ? await this.resolveActiveUserReference(user, input.seriesOwner ?? 'current_user')
+                : await this.resolveActiveUserReference(user, 'current_user')
+
+        const series = await TrainingOpsService.createScopedLearningSeries(user, {
+            name: input.name.trim(),
+            slug: slugifyValue(input.name),
+            type: input.seriesType,
+            domainId: domain.id,
+            description: optionalText(input.description),
+            cadence: optionalText(input.cadence),
+            isActive: input.active ?? true,
+            badgeEligible: input.contributesToDomainBadges ?? true,
+            countsTowardPerformance: false,
+            defaultStarValue: null,
+            ownerId: owner.id,
+        })
+
+        return {
+            success: true,
+            tool: 'create_series',
+            summary: `Created learning series "${series.name}" in domain "${domain.name}".`,
+            data: {
+                series,
+                normalized: {
+                    slug: series.slug,
+                    domainId: domain.id,
+                    ownerId: series.owner?.id ?? owner.id,
+                },
+            },
+            nextActions: ['create_event', 'list_my_workspace'],
+            recommendedNextInputs: {
+                create_event: {
+                    learningSeries: series.id,
+                    productDomain: domain.id,
+                },
+            },
+        }
+    }
+
+    static async createEvent(
+        user: MappableUser,
+        input: {
+            title: string
+            learningSeries: string
+            format: LearningEventFormat
+            status?: LearningEventStatus
+            host?: string | null
+            productDomain?: string | null
+            description?: string | null
+            scheduledAt?: Date | null
             countsTowardPerformance?: boolean
+            starValue?: number | null
         }
     ): Promise<ToolResult<{
         event: Awaited<ReturnType<typeof TrainingOpsService.createScopedLearningEvent>>
-        course: Awaited<ReturnType<typeof TrainingOpsService.createScopedDraftCourseFromEvent>>
-        exam: {
+        resolvedSeries: {
             id: string
-            title: string
-            description: string | null
-            instructions: string | null
-            status: ExamStatus
-            assessmentKind: AssessmentKind
-            awardsStars: boolean
-            starValue: number | null
-            countsTowardPerformance: boolean
-            productDomain: {
-                id: string
-                name: string
-                slug: string
-            } | null
-            learningSeries: {
-                id: string
-                name: string
-                slug: string
-            } | null
-            learningEvent: {
-                id: string
-                title: string
-            } | null
+            name: string
+            slug: string
+            type: LearningSeriesType
+        }
+        resolvedDomain: {
+            id: string | null
+            name: string | null
+            slug: string | null
         }
     }>> {
+        const series = await this.resolveSeriesReference(user, input.learningSeries)
+        const explicitDomain = input.productDomain
+            ? await this.resolveDomainReference(user, input.productDomain)
+            : null
+        const host = input.host
+            ? await this.resolveActiveUserReference(user, input.host)
+            : await this.resolveActiveUserReference(user, 'current_user')
+
         const event = await TrainingOpsService.createScopedLearningEvent(user, {
-            title: input.title,
-            format: LearningEventFormat.CASE_STUDY,
-            status: input.scheduledAt ? LearningEventStatus.SCHEDULED : LearningEventStatus.DRAFT,
-            domainId: input.domainId,
-            seriesId: input.seriesId,
-            description: input.description ?? null,
+            title: input.title.trim(),
+            format: input.format,
+            status: input.status ?? LearningEventStatus.DRAFT,
+            domainId: explicitDomain?.id ?? series.domain?.id ?? null,
+            seriesId: series.id,
+            description: optionalText(input.description),
             scheduledAt: input.scheduledAt ?? null,
             startsAt: input.scheduledAt ?? null,
             endsAt: null,
             isRequired: false,
             countsTowardPerformance: input.countsTowardPerformance ?? false,
-            starValue: input.starValue ?? 2,
-            hostId: input.hostId ?? user.id,
-        })
-
-        const [course, createdExam] = await Promise.all([
-            TrainingOpsService.createScopedDraftCourseFromEvent(user, event.id),
-            TrainingOpsService.createScopedDraftExamFromEvent(user, event.id),
-        ])
-
-        const exam = await prisma.exam.update({
-            where: { id: createdExam.id },
-            data: {
-                assessmentKind: input.assessmentKind ?? AssessmentKind.PRACTICE,
-                awardsStars: (input.starValue ?? 2) > 0,
-                starValue: input.starValue ?? 2,
-                countsTowardPerformance: input.countsTowardPerformance ?? false,
-                description: input.description ?? createdExam.description,
-                instructions: input.description ?? createdExam.instructions,
-            },
-            include: {
-                learningEvent: { select: { id: true, title: true } },
-                learningSeries: { select: { id: true, name: true, slug: true } },
-                productDomain: { select: { id: true, name: true, slug: true } },
-            },
+            starValue: input.starValue ?? null,
+            hostId: host.id,
         })
 
         return {
             success: true,
-            tool: 'create_case_study_bundle',
-            summary: `Created case study bundle for "${input.title}" with one event, one draft course, and one draft exam.`,
+            tool: 'create_event',
+            summary: `Created event "${event.title}" in series "${series.name}".`,
             data: {
                 event,
-                course,
-                exam,
-            },
-            nextActions: ['set_course_ai_template', 'get_event_execution_status'],
-            recommendedNextInputs: {
-                set_course_ai_template: {
-                    courseId: course.id,
-                    useDefault: true,
+                resolvedSeries: {
+                    id: series.id,
+                    name: series.name,
+                    slug: series.slug,
+                    type: series.type,
                 },
-                get_event_execution_status: {
-                    eventId: event.id,
+                resolvedDomain: {
+                    id: event.domain?.id ?? series.domain?.id ?? null,
+                    name: event.domain?.name ?? series.domain?.name ?? null,
+                    slug: event.domain?.slug ?? series.domain?.slug ?? null,
+                },
+            },
+            nextActions: ['create_course', 'create_exam', 'review_event_status'],
+            recommendedNextInputs: {
+                create_course: {
+                    event: event.id,
+                },
+                create_exam: {
+                    event: event.id,
+                },
+                review_event_status: {
+                    event: event.id,
                 },
             },
         }
     }
 
-    static async setCourseAiTemplate(
+    static async createCourse(
         user: MappableUser,
         input: {
-            courseId: string
-            templateId?: string
-            useDefault?: boolean
-            enabled?: boolean
+            title: string
+            event?: string | null
+            description?: string | null
+            whatYouWillLearn?: string[]
+            requirements?: string[]
+            thumbnailUrl?: string | null
+            category?: string | null
+            level?: CourseLevel
+            status?: CourseStatus
+            instructor?: string | null
+            tags?: string[]
         }
     ): Promise<ToolResult<{
-        mode: 'default' | 'template'
-        assignment: {
-            id: string
-            courseId: string
-            templateId: string
-            isEnabled: boolean
-            useCase: AIPromptUseCase
-        } | null
-        template: {
-            id: string
-            name: string
-            useCase: AIPromptUseCase
-        } | null
+        course: Awaited<ReturnType<typeof CourseService.createCourse>>
+        binding: {
+            mode: 'standalone' | 'event-bound'
+            event: {
+                id: string
+                title: string
+            } | null
+        }
+        aiAssistant: {
+            enabled: boolean
+            mode: 'default'
+            template: {
+                id: string
+                name: string
+            } | null
+        }
     }>> {
-        await TrainingOpsService.assertScopedCourseAccess(user, input.courseId)
+        const resolvedEvent = input.event ? await this.resolveEventReference(user, input.event) : null
+        const instructor =
+            user.role === 'ADMIN'
+                ? await this.resolveActiveUserReference(user, input.instructor ?? 'current_user')
+                : await this.resolveActiveUserReference(user, 'current_user')
 
-        if (input.useDefault) {
-            const warnings: string[] = []
+        if (resolvedEvent) {
+            await TrainingOpsService.getScopedLearningEventById(user, resolvedEvent.id)
+        }
 
-            await prisma.courseAIPromptAssignment.deleteMany({
-                where: {
-                    courseId: input.courseId,
-                    useCase: AI_ASSISTANT_COURSE_USE_CASE,
+        const course = await CourseService.createCourse({
+            title: input.title.trim(),
+            slug: slugifyValue(input.title),
+            description: optionalText(input.description) ?? `${input.title.trim()} course`,
+            thumbnail: optionalText(input.thumbnailUrl) ?? undefined,
+            level: input.level ?? CourseLevel.BEGINNER,
+            category: optionalText(input.category) ?? resolvedEvent?.domain?.name ?? 'General',
+            tags: input.tags ?? [],
+            learningOutcomes: input.whatYouWillLearn ?? [],
+            requirements: input.requirements ?? [],
+            instructorId: instructor.id,
+            learningEventId: resolvedEvent?.id ?? null,
+            status: input.status ?? CourseStatus.DRAFT,
+        })
+
+        const defaultTemplate = await this.getActiveDefaultCourseTemplate()
+        const warnings: string[] = []
+        if (!defaultTemplate) {
+            warnings.push('No active admin default AI template is configured for courses. The course still uses default assistant behavior.')
+        }
+
+        return {
+            success: true,
+            tool: 'create_course',
+            summary: resolvedEvent
+                ? `Created course "${course.title}" and linked it to event "${resolvedEvent.title}".`
+                : `Created standalone course "${course.title}".`,
+            data: {
+                course,
+                binding: {
+                    mode: resolvedEvent ? 'event-bound' : 'standalone',
+                    event: resolvedEvent
+                        ? {
+                            id: resolvedEvent.id,
+                            title: resolvedEvent.title,
+                        }
+                        : null,
                 },
-            })
-
-            const defaultTemplate = await prisma.aIPromptDefault.findUnique({
-                where: { useCase: AI_ASSISTANT_COURSE_USE_CASE },
-                include: {
-                    template: {
-                        select: {
-                            id: true,
-                            name: true,
-                            useCase: true,
-                            isActive: true,
-                        },
-                    },
+                aiAssistant: {
+                    enabled: true,
+                    mode: 'default',
+                    template: defaultTemplate
+                        ? {
+                            id: defaultTemplate.id,
+                            name: defaultTemplate.name,
+                        }
+                        : null,
                 },
-            })
-
-            const activeDefaultTemplate = defaultTemplate?.template?.isActive
+            },
+            nextActions: resolvedEvent ? ['review_event_status'] : ['list_my_workspace'],
+            recommendedNextInputs: resolvedEvent
                 ? {
-                    id: defaultTemplate.template.id,
-                    name: defaultTemplate.template.name,
-                    useCase: defaultTemplate.template.useCase,
+                    review_event_status: {
+                        event: resolvedEvent.id,
+                    },
                 }
-                : null
+                : undefined,
+            ...(warnings.length > 0 ? { warnings } : {}),
+        }
+    }
 
-            if (!activeDefaultTemplate) {
-                warnings.push('No active admin default template is configured for this course use case.')
-            }
+    static async createExam(
+        user: MappableUser,
+        input: {
+            title: string
+            event?: string | null
+            description?: string | null
+            instructions?: string | null
+            examType: AssessmentKind
+            totalScore: number
+            passingScore: number
+            maxAttempts: number
+            options?: {
+                timeLimit?: number
+                randomizeQuestions?: boolean
+                randomizeOptions?: boolean
+                showResultsImmediately?: boolean
+                allowReview?: boolean
+            } | null
+        }
+    ): Promise<ToolResult<{
+        exam: Awaited<ReturnType<typeof ExamService.createExam>>
+        binding: {
+            mode: 'standalone' | 'event-bound'
+            event: {
+                id: string
+                title: string
+            } | null
+        }
+        resolvedOptions: {
+            timeLimit: number | null
+            randomizeQuestions: boolean
+            randomizeOptions: boolean
+            showResultsImmediately: boolean
+            allowReview: boolean
+            timezone: string
+        }
+    }>> {
+        const resolvedEvent = input.event ? await this.resolveEventReference(user, input.event) : null
+        if (resolvedEvent) {
+            await TrainingOpsService.getScopedLearningEventById(user, resolvedEvent.id)
+        }
+
+        const timeLimit = input.options?.timeLimit
+        const randomizeQuestions = input.options?.randomizeQuestions ?? false
+        const randomizeOptions = input.options?.randomizeOptions ?? false
+        const showResultsImmediately = input.options?.showResultsImmediately ?? true
+        const allowReview = input.options?.allowReview ?? true
+
+        const exam = await ExamService.createExam(
+            {
+                title: input.title.trim(),
+                description: optionalText(input.description) ?? undefined,
+                instructions: optionalText(input.instructions) ?? undefined,
+                timezone: DEFAULT_EXAM_TIMEZONE,
+                totalScore: input.totalScore,
+                passingScore: input.passingScore,
+                maxAttempts: input.maxAttempts,
+                timeLimit,
+                randomizeQuestions,
+                randomizeOptions,
+                showResultsImmediately,
+                allowReview,
+                assessmentKind: input.examType,
+                learningEventId: resolvedEvent?.id ?? null,
+            },
+            user.id,
+            { actorRole: user.role }
+        )
+
+        return {
+            success: true,
+            tool: 'create_exam',
+            summary: resolvedEvent
+                ? `Created exam "${exam.title}" and linked it to event "${resolvedEvent.title}".`
+                : `Created standalone exam "${exam.title}".`,
+            data: {
+                exam,
+                binding: {
+                    mode: resolvedEvent ? 'event-bound' : 'standalone',
+                    event: resolvedEvent
+                        ? {
+                            id: resolvedEvent.id,
+                            title: resolvedEvent.title,
+                        }
+                        : null,
+                },
+                resolvedOptions: {
+                    timeLimit: timeLimit ?? null,
+                    randomizeQuestions,
+                    randomizeOptions,
+                    showResultsImmediately,
+                    allowReview,
+                    timezone: DEFAULT_EXAM_TIMEZONE,
+                },
+            },
+            nextActions: resolvedEvent ? ['review_event_status', 'publish_exam_for_learners'] : ['list_my_workspace'],
+            recommendedNextInputs: resolvedEvent
+                ? {
+                    review_event_status: {
+                        event: resolvedEvent.id,
+                    },
+                    publish_exam_for_learners: {
+                        exam: exam.id,
+                        userIds: [],
+                        sendNotification: false,
+                    },
+                }
+                : undefined,
+        }
+    }
+
+    private static buildGeneratedCourseOutline(input: {
+        courseTitle: string
+        brief: string
+        lessonCount?: number
+    }) {
+        const totalLessons = Math.max(1, Math.min(input.lessonCount ?? 3, 12))
+        const foundationTemplates = ['Context and Goals', 'Core Concepts', 'Common Scenarios']
+        const appliedTemplates = ['Troubleshooting Workflow', 'Applied Practice', 'Knowledge Check']
+        const chapterTemplates =
+            totalLessons <= 3
+                ? [
+                    {
+                        title: 'Foundation',
+                        templates: foundationTemplates,
+                    },
+                ]
+                : [
+                    {
+                        title: 'Foundation',
+                        templates: foundationTemplates,
+                    },
+                    {
+                        title: 'Applied Practice',
+                        templates: appliedTemplates,
+                    },
+                ]
+
+        let lessonCursor = 0
+        return chapterTemplates.map((chapter, chapterIndex) => {
+            const remaining = totalLessons - lessonCursor
+            const chapterLessonCount =
+                chapterIndex === chapterTemplates.length - 1
+                    ? remaining
+                    : Math.max(1, Math.ceil(totalLessons / chapterTemplates.length))
+
+            const lessons = Array.from({ length: chapterLessonCount }).map((_, index) => {
+                const template = chapter.templates[index] ?? `Lesson ${lessonCursor + 1}`
+                lessonCursor += 1
+                return {
+                    title: `${input.courseTitle}: ${template}`,
+                    objective: `Help learners understand ${template.toLowerCase()} for ${input.courseTitle}.`,
+                    summary: input.brief,
+                }
+            })
 
             return {
-                success: true,
-                tool: 'set_course_ai_template',
-                summary: activeDefaultTemplate
-                    ? `Reset the selected course to use the default AI assistant template "${activeDefaultTemplate.name}".`
-                    : 'Reset the selected course to use the default AI assistant behavior.',
-                data: {
-                    mode: 'default',
-                    assignment: null,
-                    template: activeDefaultTemplate,
-                },
-                nextActions: ['get_event_execution_status', 'prepare_transcript_upload'],
-                ...(warnings.length > 0 ? { warnings } : {}),
+                title: chapter.title,
+                description: input.brief,
+                lessons,
+            }
+        })
+    }
+
+    static async designCourse(
+        user: MappableUser,
+        input: {
+            course: string
+            mode: 'generate_outline' | 'manual_outline'
+            brief?: string
+            targetAudience?: string | null
+            lessonCount?: number
+            chapters?: Array<{
+                title: string
+                description?: string | null
+                lessons: Array<{
+                    title: string
+                    objective?: string | null
+                    summary?: string | null
+                }>
+            }>
+            assetPlan?: Array<{
+                lessonRef: string
+                assetType: LessonAssetType
+                title: string
+                sourceKind: 'upload' | 'external_url'
+                transcriptNeeded?: boolean
+            }>
+            transcriptPlan?: Array<{
+                lessonRef: string
+                languageCode?: string
+                setAsDefaultSubtitle?: boolean
+                setAsPrimaryForAI?: boolean
+            }>
+        }
+    ): Promise<ToolResult<{
+        course: {
+            id: string
+            title: string
+            slug: string
+        }
+        mode: 'generate_outline' | 'manual_outline'
+        chaptersCreated: Array<{
+            id: string
+            title: string
+            description: string | null
+        }>
+        lessonsCreated: Array<{
+            id: string
+            chapterId: string
+            title: string
+            objective: string | null
+            summary: string | null
+        }>
+        courseStructure: Array<{
+            chapterId: string
+            chapterTitle: string
+            lessons: Array<{
+                lessonId: string
+                lessonTitle: string
+            }>
+        }>
+        uploadTasks: Array<{
+            lessonRef: string
+            lessonId: string | null
+            title: string
+            assetType: LessonAssetType
+            sourceKind: 'upload' | 'external_url'
+            transcriptNeeded: boolean
+            status: 'ready' | 'unresolved'
+        }>
+        transcriptTasks: Array<{
+            lessonRef: string
+            lessonId: string | null
+            languageCode: string
+            setAsDefaultSubtitle: boolean
+            setAsPrimaryForAI: boolean
+            status: 'ready' | 'unresolved'
+        }>
+    }>> {
+        const course = await this.resolveCourseReference(user, input.course)
+        await TrainingOpsService.assertScopedCourseAccess(user, course.id)
+
+        const outline =
+            input.mode === 'manual_outline'
+                ? input.chapters ?? []
+                : this.buildGeneratedCourseOutline({
+                    courseTitle: course.title,
+                    brief: input.brief?.trim() || `${course.title} course outline`,
+                    lessonCount: input.lessonCount,
+                })
+
+        const createdChapters: Array<{ id: string; title: string; description: string | null }> = []
+        const createdLessons: Array<{ id: string; chapterId: string; title: string; objective: string | null; summary: string | null }> = []
+        const lessonLookup = new Map<string, { id: string; title: string }>()
+
+        for (const chapterInput of outline) {
+            const createdChapter = await CourseStructureService.createChapter(course.id, {
+                title: chapterInput.title.trim(),
+                description: optionalText(chapterInput.description),
+            })
+
+            createdChapters.push({
+                id: createdChapter.id,
+                title: createdChapter.title,
+                description: createdChapter.description ?? null,
+            })
+
+            for (const lessonInput of chapterInput.lessons) {
+                const objective = optionalText(lessonInput.objective)
+                const summary = optionalText(lessonInput.summary)
+                const createdLesson = await CourseStructureService.createLesson(createdChapter.id, {
+                    title: lessonInput.title.trim(),
+                    description: summary ?? objective ?? undefined,
+                    learningObjectives: objective ? [objective] : [],
+                })
+
+                createdLessons.push({
+                    id: createdLesson.id,
+                    chapterId: createdChapter.id,
+                    title: createdLesson.title,
+                    objective,
+                    summary,
+                })
+
+                lessonLookup.set(createdLesson.id, { id: createdLesson.id, title: createdLesson.title })
+                lessonLookup.set(normalizeLookupValue(createdLesson.title), { id: createdLesson.id, title: createdLesson.title })
             }
         }
 
-        const template = await prisma.aIPromptTemplate.findUnique({
-            where: { id: input.templateId },
-            select: {
-                id: true,
-                name: true,
-                useCase: true,
-                isActive: true,
-            },
+        const uploadTasks = (input.assetPlan ?? []).map((task) => {
+            const resolvedLesson =
+                lessonLookup.get(task.lessonRef) ??
+                lessonLookup.get(normalizeLookupValue(task.lessonRef))
+
+            return {
+                lessonRef: task.lessonRef,
+                lessonId: resolvedLesson?.id ?? null,
+                title: task.title,
+                assetType: task.assetType,
+                sourceKind: task.sourceKind,
+                transcriptNeeded: task.transcriptNeeded ?? false,
+                status: resolvedLesson ? 'ready' as const : 'unresolved' as const,
+            }
         })
 
-        if (!template || !template.isActive) {
-            throw new Error('PROMPT_TEMPLATE_NOT_FOUND')
-        }
+        const transcriptTasks = (input.transcriptPlan ?? []).map((task) => {
+            const resolvedLesson =
+                lessonLookup.get(task.lessonRef) ??
+                lessonLookup.get(normalizeLookupValue(task.lessonRef))
 
-        if (template.useCase !== AI_ASSISTANT_COURSE_USE_CASE) {
-            throw new Error('PROMPT_TEMPLATE_USE_CASE_MISMATCH')
-        }
-
-        const assignment = await prisma.courseAIPromptAssignment.upsert({
-            where: {
-                courseId_useCase: {
-                    courseId: input.courseId,
-                    useCase: AI_ASSISTANT_COURSE_USE_CASE,
-                },
-            },
-            create: {
-                courseId: input.courseId,
-                templateId: template.id,
-                useCase: AI_ASSISTANT_COURSE_USE_CASE,
-                isEnabled: input.enabled ?? true,
-            },
-            update: {
-                templateId: template.id,
-                isEnabled: input.enabled ?? true,
-            },
-            select: {
-                id: true,
-                courseId: true,
-                templateId: true,
-                isEnabled: true,
-                useCase: true,
-            },
+            return {
+                lessonRef: task.lessonRef,
+                lessonId: resolvedLesson?.id ?? null,
+                languageCode: task.languageCode?.trim() || 'en',
+                setAsDefaultSubtitle: task.setAsDefaultSubtitle ?? true,
+                setAsPrimaryForAI: task.setAsPrimaryForAI ?? true,
+                status: resolvedLesson ? 'ready' as const : 'unresolved' as const,
+            }
         })
+
+        const warnings: string[] = []
+        if (input.mode === 'generate_outline') {
+            warnings.push('generate_outline currently creates a scaffolded outline. Review and refine chapter and lesson titles in the course editor if needed.')
+        }
+
+        const unresolvedUploadTasks = uploadTasks.filter((task) => task.status === 'unresolved').length
+        const unresolvedTranscriptTasks = transcriptTasks.filter((task) => task.status === 'unresolved').length
+        if (unresolvedUploadTasks > 0 || unresolvedTranscriptTasks > 0) {
+            warnings.push('Some asset or transcript tasks could not be matched to a created lesson. Use the returned lesson IDs or exact lesson titles when planning uploads.')
+        }
 
         return {
             success: true,
-            tool: 'set_course_ai_template',
-            summary: `Applied AI assistant template "${template.name}" to the selected course.`,
+            tool: 'design_course',
+            summary: `Created ${createdChapters.length} chapters and ${createdLessons.length} lessons for course "${course.title}".`,
             data: {
-                mode: 'template',
-                assignment,
-                template: {
-                    id: template.id,
-                    name: template.name,
-                    useCase: template.useCase,
+                course: {
+                    id: course.id,
+                    title: course.title,
+                    slug: course.slug,
                 },
+                mode: input.mode,
+                chaptersCreated: createdChapters,
+                lessonsCreated: createdLessons,
+                courseStructure: createdChapters.map((chapter) => ({
+                    chapterId: chapter.id,
+                    chapterTitle: chapter.title,
+                    lessons: createdLessons
+                        .filter((lesson) => lesson.chapterId === chapter.id)
+                        .map((lesson) => ({
+                            lessonId: lesson.id,
+                            lessonTitle: lesson.title,
+                        })),
+                })),
+                uploadTasks,
+                transcriptTasks,
             },
-            nextActions: ['get_event_execution_status', 'prepare_transcript_upload'],
+            nextActions: ['review_event_status'],
+            recommendedNextInputs: course.learningEventId
+                ? {
+                    review_event_status: {
+                        event: course.learningEventId,
+                    },
+                }
+                : undefined,
+            ...(warnings.length > 0 ? { warnings } : {}),
         }
     }
 
-    static async linkExistingCourseToEvent(
+    static async designExamQuestions(
         user: MappableUser,
         input: {
-            eventId: string
-            courseId: string
+            exam: string
+            mode: 'generate_from_course' | 'generate_from_event' | 'manual_payload'
+            sourceCourse?: string | null
+            sourceEvent?: string | null
+            questionCount?: number
+            difficultyMix?: DifficultyLevel | 'mixed'
+            questionTypes?: Array<ExamQuestionType>
+            coverageNotes?: string | null
+            questions?: Array<{
+                type: ExamQuestionType
+                difficulty?: DifficultyLevel
+                question: string
+                options?: string[]
+                correctAnswer?: string
+                rubric?: string
+                sampleAnswer?: string
+                maxWords?: number
+                points?: number
+                explanation?: string
+                topic?: string
+                tags?: string[]
+            }>
         }
     ): Promise<ToolResult<{
-        event: Awaited<ReturnType<typeof TrainingOpsService.getScopedLearningEventById>>
-        course: Awaited<ReturnType<typeof TrainingOpsService.getScopedCourseById>>
+        exam: {
+            id: string
+            title: string
+            learningEventId: string | null
+            courseId: string | null
+        }
+        mode: 'generate_from_course' | 'generate_from_event' | 'manual_payload'
+        sourceCourse: {
+            id: string
+            title: string
+            slug: string
+        } | null
+        questionSummary: {
+            totalQuestions: number
+            createdThisRun: number
+            byType: Record<string, number>
+        }
+        scoreSummary: {
+            examTotalScore: number
+            questionPointsTotal: number
+            matchesExamTotal: boolean
+        }
     }>> {
-        const [event, course] = await Promise.all([
-            TrainingOpsService.attachScopedCourseToEvent(user, input.eventId, input.courseId),
-            TrainingOpsService.getScopedCourseById(user, input.courseId),
-        ])
+        const exam = await this.resolveExamReference(user, input.exam)
+        await TrainingOpsService.assertScopedExamAccess(user, exam.id)
+
+        const examRecord = await ExamService.getExamById(exam.id)
+        if (!examRecord) {
+            throw new Error('EXAM_NOT_FOUND')
+        }
+
+        let sourceCourse: CourseReference | null = null
+        const warnings: string[] = []
+
+        if (input.mode === 'generate_from_course') {
+            if (!input.sourceCourse) {
+                throw new Error('QUESTION_SOURCE_COURSE_REQUIRED')
+            }
+
+            sourceCourse = await this.resolveCourseReference(user, input.sourceCourse)
+            await TrainingOpsService.assertScopedCourseAccess(user, sourceCourse.id)
+        }
+
+        if (input.mode === 'generate_from_event') {
+            if (!input.sourceEvent) {
+                throw new Error('QUESTION_SOURCE_EVENT_REQUIRED')
+            }
+
+            const sourceEvent = await this.resolveEventReference(user, input.sourceEvent)
+            const linkedCourses = (await TrainingOpsService.getScopedCourses(user)).filter(
+                (course) => course.learningEventId === sourceEvent.id
+            )
+
+            if (linkedCourses.length === 0) {
+                throw errorWithDetails('EVENT_LINKED_COURSE_NOT_FOUND', {
+                    eventId: sourceEvent.id,
+                    title: sourceEvent.title,
+                })
+            }
+
+            if (linkedCourses.length > 1) {
+                throw errorWithDetails('EVENT_LINKED_COURSE_AMBIGUOUS', {
+                    eventId: sourceEvent.id,
+                    title: sourceEvent.title,
+                    candidates: linkedCourses.map((course) => ({
+                        id: course.id,
+                        title: course.title,
+                        slug: course.slug,
+                    })),
+                })
+            }
+
+            sourceCourse = linkedCourses[0]
+        }
+
+        if (sourceCourse && examRecord.courseId !== sourceCourse.id) {
+            await ExamService.updateExam(
+                exam.id,
+                { courseId: sourceCourse.id },
+                { actorRole: user.role }
+            )
+        }
+
+        const beforeQuestions = await ExamService.getQuestions(exam.id)
+        const beforeQuestionIds = new Set(beforeQuestions.map((question) => String(question.id)))
+
+        if (input.mode === 'manual_payload') {
+            for (const question of input.questions ?? []) {
+                await ExamService.addQuestion(exam.id, {
+                    type: question.type,
+                    difficulty: question.difficulty ?? DifficultyLevel.MEDIUM,
+                    question: question.question,
+                    options: question.options,
+                    correctAnswer: question.correctAnswer,
+                    rubric: question.rubric,
+                    sampleAnswer: question.sampleAnswer,
+                    maxWords: question.maxWords,
+                    points: question.points,
+                    explanation: question.explanation,
+                    topic: question.topic,
+                    tags: question.tags,
+                })
+            }
+        } else {
+            const questionTypes = input.questionTypes && input.questionTypes.length > 0
+                ? input.questionTypes
+                : [ExamQuestionType.MULTIPLE_CHOICE]
+            const questionCount =
+                input.questionCount ??
+                Math.max(1, Math.round((examRecord.totalScore ?? 100) / 10))
+
+            const questionCounts: {
+                singleChoice?: number
+                multipleChoice?: number
+                trueFalse?: number
+                fillInBlank?: number
+                essay?: number
+            } = {}
+
+            questionTypes.forEach((type, index) => {
+                const base = Math.floor(questionCount / questionTypes.length)
+                const remainder = index < questionCount % questionTypes.length ? 1 : 0
+                const assignedCount = base + remainder
+                if (assignedCount <= 0) return
+
+                switch (type) {
+                    case ExamQuestionType.MULTIPLE_CHOICE:
+                        questionCounts.singleChoice = (questionCounts.singleChoice ?? 0) + assignedCount
+                        break
+                    case ExamQuestionType.TRUE_FALSE:
+                        questionCounts.trueFalse = (questionCounts.trueFalse ?? 0) + assignedCount
+                        break
+                    case ExamQuestionType.FILL_IN_BLANK:
+                        questionCounts.fillInBlank = (questionCounts.fillInBlank ?? 0) + assignedCount
+                        break
+                    case ExamQuestionType.ESSAY:
+                        questionCounts.essay = (questionCounts.essay ?? 0) + assignedCount
+                        break
+                    default:
+                        questionCounts.singleChoice = (questionCounts.singleChoice ?? 0) + assignedCount
+                        warnings.push(`Question type "${type}" is not supported by the generator, so it was mapped to MULTIPLE_CHOICE.`)
+                        break
+                }
+            })
+
+            const focusAreas = input.coverageNotes
+                ? input.coverageNotes
+                    .split(/[\n,;]+/)
+                    .map((item) => item.trim())
+                    .filter(Boolean)
+                : undefined
+
+            const generationService = new ExamGenerationService()
+            const generationResult = await generationService.generateQuestions(exam.id, {
+                questionCounts,
+                difficulty: input.difficultyMix ?? 'mixed',
+                focusAreas,
+                topics: focusAreas,
+            })
+
+            warnings.push(...generationResult.warnings)
+        }
+
+        const questions = await ExamService.getQuestions(exam.id)
+        const createdThisRun = questions.filter((question) => !beforeQuestionIds.has(String(question.id)))
+        const byType = questions.reduce<Record<string, number>>((acc, question) => {
+            const key = String(question.type)
+            acc[key] = (acc[key] ?? 0) + 1
+            return acc
+        }, {})
+        const questionPointsTotal = questions.reduce((sum, question) => sum + (Number(question.points) || 0), 0)
+
+        if (questionPointsTotal !== examRecord.totalScore) {
+            warnings.push(
+                `Question points total is ${questionPointsTotal}, while the exam totalScore is ${examRecord.totalScore}. Update the exam or question points before publishing.`
+            )
+        }
 
         return {
             success: true,
-            tool: 'link_existing_course_to_event',
-            summary: `Linked course "${course.title}" to event "${event.title}".`,
+            tool: 'design_exam_questions',
+            summary: `Added ${createdThisRun.length} questions to exam "${examRecord.title}".`,
             data: {
-                event,
-                course,
-            },
-            nextActions: ['set_course_ai_template', 'get_event_execution_status'],
-            recommendedNextInputs: {
-                set_course_ai_template: {
-                    courseId: course.id,
-                    useDefault: true,
+                exam: {
+                    id: examRecord.id,
+                    title: examRecord.title,
+                    learningEventId: examRecord.learningEventId ?? null,
+                    courseId: sourceCourse?.id ?? examRecord.courseId ?? null,
                 },
-                get_event_execution_status: {
-                    eventId: event.id,
+                mode: input.mode,
+                sourceCourse: sourceCourse
+                    ? {
+                        id: sourceCourse.id,
+                        title: sourceCourse.title,
+                        slug: sourceCourse.slug,
+                    }
+                    : null,
+                questionSummary: {
+                    totalQuestions: questions.length,
+                    createdThisRun: createdThisRun.length,
+                    byType,
+                },
+                scoreSummary: {
+                    examTotalScore: examRecord.totalScore,
+                    questionPointsTotal,
+                    matchesExamTotal: questionPointsTotal === examRecord.totalScore,
                 },
             },
+            nextActions: ['review_event_status', 'publish_exam_for_learners'],
+            recommendedNextInputs: examRecord.learningEventId
+                ? {
+                    review_event_status: {
+                        event: examRecord.learningEventId,
+                    },
+                    publish_exam_for_learners: {
+                        exam: examRecord.id,
+                        userIds: [],
+                        sendNotification: false,
+                    },
+                }
+                : undefined,
+            ...(warnings.length > 0 ? { warnings } : {}),
         }
     }
 
-    static async linkExistingExamToEvent(
+    static async reviewEventStatus(
         user: MappableUser,
         input: {
-            eventId: string
-            examId: string
+            event: string
         }
-    ): Promise<ToolResult<{
-        event: Awaited<ReturnType<typeof TrainingOpsService.getScopedLearningEventById>>
-        exam: Awaited<ReturnType<typeof TrainingOpsService.getScopedExamById>>
-    }>> {
-        const [event, exam] = await Promise.all([
-            TrainingOpsService.attachScopedExamToEvent(user, input.eventId, input.examId),
-            TrainingOpsService.getScopedExamById(user, input.examId),
-        ])
+    ) {
+        const event = await this.resolveEventReference(user, input.event)
+        const result = await this.getEventExecutionStatus(user, { eventId: event.id })
+        const nextActions = new Set<string>()
+        const recommendedNextInputs: Record<string, unknown> = {}
+
+        const singleCourse = result.data.courses.length === 1 ? result.data.courses[0] : null
+        const singleExam = result.data.exams.length === 1 ? result.data.exams[0] : null
+        const publishableExam = result.data.exams.find((exam) => exam.status !== ExamStatus.PUBLISHED && exam.publishPreconditionsMet) ?? null
+
+        if (result.data.courses.length === 0) {
+            nextActions.add('create_course')
+            recommendedNextInputs.create_course = {
+                event: event.id,
+            }
+        }
+
+        if (result.data.exams.length === 0) {
+            nextActions.add('create_exam')
+            recommendedNextInputs.create_exam = {
+                event: event.id,
+                examType: 'PRACTICE',
+                totalScore: 100,
+                passingScore: 80,
+                maxAttempts: 3,
+            }
+        }
+
+        if (result.data.courses.length > 0 && result.data.lessonStates.length === 0) {
+            nextActions.add('design_course')
+            if (singleCourse) {
+                recommendedNextInputs.design_course = {
+                    course: singleCourse.id,
+                    mode: 'generate_outline',
+                    brief: `Design a starter outline for ${singleCourse.title}.`,
+                }
+            }
+        }
+
+        if (result.data.exams.some((exam) => exam.questionCount === 0)) {
+            nextActions.add('design_exam_questions')
+            if (singleExam) {
+                recommendedNextInputs.design_exam_questions = singleCourse
+                    ? {
+                        exam: singleExam.id,
+                        mode: 'generate_from_course',
+                        sourceCourse: singleCourse.id,
+                        questionCount: Math.max(1, Math.round(singleExam.totalScore / 10)),
+                    }
+                    : {
+                        exam: singleExam.id,
+                        mode: 'manual_payload',
+                        questions: [],
+                    }
+            }
+        }
+
+        if (singleCourse && singleCourse.status === CourseStatus.PUBLISHED && singleCourse.enrolledCount === 0) {
+            nextActions.add('share_course_with_learners')
+            recommendedNextInputs.share_course_with_learners = {
+                course: singleCourse.id,
+                userIds: [],
+                sendNotification: false,
+            }
+        }
+
+        if (publishableExam) {
+            nextActions.add('publish_exam_for_learners')
+            recommendedNextInputs.publish_exam_for_learners = {
+                exam: publishableExam.id,
+                userIds: [],
+                sendNotification: false,
+            }
+        }
+
+        const warnings = [...(result.warnings ?? [])]
+        if (result.data.transcriptStatus.lessonsMissingTranscript > 0 || result.data.knowledgeStatus.missingLessons > 0) {
+            warnings.push('Transcript and knowledge processing remain available as advanced tools if this event needs subtitles or AI knowledge extraction.')
+        }
+
+        if (nextActions.size === 0) {
+            nextActions.add('list_my_workspace')
+        }
 
         return {
-            success: true,
-            tool: 'link_existing_exam_to_event',
-            summary: `Linked exam "${exam.title}" to event "${event.title}".`,
-            data: {
-                event,
-                exam,
-            },
-            nextActions: ['publish_exam_with_invitations', 'get_event_execution_status'],
-            recommendedNextInputs: {
-                publish_exam_with_invitations: {
-                    examId: exam.id,
-                    userIds: [],
-                    sendNotification: false,
-                },
-                get_event_execution_status: {
-                    eventId: event.id,
-                },
-            },
+            ...result,
+            tool: 'review_event_status',
+            nextActions: Array.from(nextActions),
+            recommendedNextInputs: Object.keys(recommendedNextInputs).length > 0 ? recommendedNextInputs : undefined,
+            ...(warnings.length > 0 ? { warnings } : {}),
         }
     }
 
@@ -862,9 +1854,9 @@ export class SmeMcpService {
         }
 
         const nextActions = new Set<string>()
-        if (event.courses.length === 0) nextActions.add('link_existing_course_to_event')
-        if (event.exams.length === 0) nextActions.add('link_existing_exam_to_event')
-        if (event.courses.length > 0) nextActions.add('set_course_ai_template')
+        if (event.courses.length === 0) nextActions.add('create_course')
+        if (event.exams.length === 0) nextActions.add('create_exam')
+        if (event.courses.length > 0 && lessonStates.length === 0) nextActions.add('design_course')
         if (transcriptStatus.lessonsMissingTranscript > 0) nextActions.add('prepare_transcript_upload')
         if (
             lessonStates.some((lesson) => lesson.transcript !== null && lesson.knowledge.status !== 'READY')
@@ -872,7 +1864,7 @@ export class SmeMcpService {
             nextActions.add('process_transcript_knowledge')
         }
         if (exams.some((exam) => exam.status !== ExamStatus.PUBLISHED && exam.publishPreconditionsMet)) {
-            nextActions.add('publish_exam_with_invitations')
+            nextActions.add('publish_exam_for_learners')
         }
         if (nextActions.size === 0) {
             nextActions.add('list_my_workspace')
@@ -912,7 +1904,7 @@ export class SmeMcpService {
             tool: 'list_my_series_badges',
             summary: `Returned domain badge progressions for ${data.domains.length} scoped domains.`,
             data,
-            nextActions: ['list_my_workspace', 'create_case_study_bundle'],
+            nextActions: ['list_my_workspace', 'create_badge', 'create_series'],
         }
     }
 
@@ -1066,11 +2058,11 @@ export class SmeMcpService {
                 notificationsSent: notificationResults.sent,
                 notificationsFailed: notificationResults.failed,
             },
-            nextActions: ['get_event_execution_status', 'list_my_workspace'],
+            nextActions: updatedExam?.learningEventId ? ['review_event_status', 'list_my_workspace'] : ['list_my_workspace'],
             recommendedNextInputs: updatedExam?.learningEventId
                 ? {
-                    get_event_execution_status: {
-                        eventId: updatedExam.learningEventId,
+                    review_event_status: {
+                        event: updatedExam.learningEventId,
                     },
                 }
                 : undefined,
@@ -1190,16 +2182,88 @@ export class SmeMcpService {
                 notificationsSent: notificationResults.sent,
                 notificationsFailed: notificationResults.failed,
             },
-            nextActions: ['get_event_execution_status', 'list_my_workspace'],
+            nextActions: course.learningEventId ? ['review_event_status', 'list_my_workspace'] : ['list_my_workspace'],
             recommendedNextInputs: course.learningEventId
                 ? {
-                    get_event_execution_status: {
-                        eventId: course.learningEventId,
+                    review_event_status: {
+                        event: course.learningEventId,
                     },
                 }
                 : {
                     list_my_workspace: {},
                 },
+        }
+    }
+
+    static async publishExamForLearners(
+        user: MappableUser,
+        input: {
+            exam: string
+            userIds?: string[]
+            sendNotification?: boolean
+        }
+    ): Promise<ToolResult<{
+        exam: {
+            id: string
+            title: string
+            status: ExamStatus
+            publishedAt: Date | null
+            invitationCount: number
+        }
+        invitationsCreated: number
+        invitationsSkipped: number
+        notificationsSent: number
+        notificationsFailed: number
+    }>> {
+        const exam = await this.resolveExamReference(user, input.exam)
+        const result = await this.publishExamWithInvitations(user, {
+            examId: exam.id,
+            userIds: input.userIds ?? [],
+            sendNotification: input.sendNotification,
+        })
+
+        return {
+            ...result,
+            tool: 'publish_exam_for_learners',
+            summary:
+                result.data.invitationsCreated > 0
+                    ? `Published exam "${result.data.exam.title}" for learners and created ${result.data.invitationsCreated} invitations.`
+                    : `Published exam "${result.data.exam.title}" for learners.`,
+        }
+    }
+
+    static async shareCourseWithLearners(
+        user: MappableUser,
+        input: {
+            course: string
+            userIds: string[]
+            sendNotification?: boolean
+        }
+    ): Promise<ToolResult<{
+        course: {
+            id: string
+            title: string
+            status: string
+        }
+        invitationsCreated: number
+        invitationsSkipped: number
+        notificationsSent: number
+        notificationsFailed: number
+    }>> {
+        const course = await this.resolveCourseReference(user, input.course)
+        const result = await this.assignCourseInvitations(user, {
+            courseId: course.id,
+            userIds: input.userIds,
+            sendNotification: input.sendNotification,
+        })
+
+        return {
+            ...result,
+            tool: 'share_course_with_learners',
+            summary:
+                result.data.invitationsCreated > 0
+                    ? `Shared course "${result.data.course.title}" with ${result.data.invitationsCreated} learners.`
+                    : `No new learner assignments were needed for course "${result.data.course.title}".`,
         }
     }
 
@@ -1415,7 +2479,7 @@ export class SmeMcpService {
                     'x-amz-server-side-encryption': 'AES256',
                 },
             },
-            nextActions: ['process_transcript_knowledge', 'get_event_execution_status'],
+            nextActions: ['process_transcript_knowledge', 'review_event_status'],
             recommendedNextInputs: {
                 process_transcript_knowledge: {
                     lessonId: input.lessonId,
@@ -1587,7 +2651,7 @@ export class SmeMcpService {
             tool: toolName,
             summary: `Queued transcript/knowledge processing for lesson "${input.lessonId}".`,
             data: result,
-            nextActions: ['get_event_execution_status'],
+            nextActions: ['review_event_status'],
         }
     }
 

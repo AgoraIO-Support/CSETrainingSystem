@@ -114,9 +114,12 @@ export default function SettingsPage() {
                     <Card>
                         <CardHeader>
                             <CardTitle>Quick Links</CardTitle>
-                            <CardDescription>Jump to the learner pages you will use most often.</CardDescription>
+                            <CardDescription>Jump to the account and access pages you will use most often.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">
+                            <Button asChild variant="outline" className="w-full justify-between">
+                                <Link href="/settings/mcp-access">Open MCP Access</Link>
+                            </Button>
                             <Button asChild variant="outline" className="w-full justify-between">
                                 <Link href="/profile">Edit Profile</Link>
                             </Button>

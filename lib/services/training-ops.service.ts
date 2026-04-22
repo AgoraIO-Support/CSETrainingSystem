@@ -2415,6 +2415,7 @@ export class TrainingOpsService {
             description?: string | null
             cadence?: string | null
             isActive: boolean
+            badgeEligible?: boolean
             countsTowardPerformance: boolean
             defaultStarValue?: number | null
             ownerId?: string | null

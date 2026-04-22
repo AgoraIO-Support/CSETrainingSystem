@@ -1,4 +1,5 @@
 import { AuthUser } from '@/lib/auth-middleware'
+import { isToolExposedOnStandardMcpServer } from '@/lib/mcp-production-policy'
 import { SmeMcpService } from '@/lib/services/sme-mcp.service'
 import {
     getSmeMcpToolMetadata,
@@ -6,6 +7,7 @@ import {
     smeMcpToolMetadataByName,
 } from '@/lib/sme-mcp-tool-metadata'
 import { inviteUsersSchema } from '@/lib/validations'
+import { DifficultyLevel, ExamQuestionType, LessonAssetType } from '@prisma/client'
 import { z } from 'zod'
 
 type MappableUser = Pick<AuthUser, 'id' | 'role'>
@@ -82,11 +84,15 @@ const describedIntegerSchema = (
         ...(options?.examples ? { examples: options.examples } : {}),
     }) satisfies JsonSchema
 
-const parseArrayExample = (rawExample?: string) => {
+const parseArrayExample = (rawExample?: unknown) => {
     if (!rawExample) return undefined
 
+    if (Array.isArray(rawExample)) {
+        return rawExample.filter((value): value is string => typeof value === 'string')
+    }
+
     try {
-        const parsed = JSON.parse(rawExample)
+        const parsed = JSON.parse(String(rawExample))
         return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === 'string') : undefined
     } catch {
         return undefined
@@ -102,6 +108,32 @@ const describedUuidArraySchema = (description: string, options?: { example?: str
         ...(parseArrayExample(options?.example) ? { examples: [parseArrayExample(options?.example)] } : {}),
     }) satisfies JsonSchema
 
+const describedStringArraySchema = (
+    description: string,
+    options?: { example?: unknown; minItems?: number }
+) =>
+    ({
+        type: 'array',
+        description,
+        items: { type: 'string' },
+        ...(options?.minItems === undefined ? {} : { minItems: options.minItems }),
+        ...(Array.isArray(options?.example) ? { examples: [options?.example] } : {}),
+    }) satisfies JsonSchema
+
+const describedObjectSchema = (
+    description: string,
+    properties: Record<string, unknown>,
+    options?: { required?: string[]; example?: unknown }
+) =>
+    ({
+        type: 'object',
+        description,
+        properties,
+        ...(options?.required ? { required: options.required } : {}),
+        additionalProperties: false,
+        ...(options?.example ? { examples: [options.example] } : {}),
+    }) satisfies JsonSchema
+
 const toolInputDescription = (toolName: keyof typeof smeMcpToolMetadataByName) => getSmeMcpToolMetadata(toolName).inputSummary
 
 const parameterDescription = (
@@ -110,16 +142,13 @@ const parameterDescription = (
     fallback: string
 ) => getSmeMcpToolParameterMetadata(toolName, parameterName)?.description ?? fallback
 
-const parameterExample = (toolName: keyof typeof smeMcpToolMetadataByName, parameterName: string) =>
+const parameterExample = (toolName: keyof typeof smeMcpToolMetadataByName, parameterName: string): any =>
     getSmeMcpToolParameterMetadata(toolName, parameterName)?.example
 
-const parameterExampleString = (toolName: keyof typeof smeMcpToolMetadataByName, parameterName: string) => {
-    const example = parameterExample(toolName, parameterName)
-    return typeof example === 'string' ? example : undefined
-}
-
 const parameterAcceptedValues = (toolName: keyof typeof smeMcpToolMetadataByName, parameterName: string) =>
-    getSmeMcpToolParameterMetadata(toolName, parameterName)?.acceptedValues?.map((option) => option.value)
+    getSmeMcpToolParameterMetadata(toolName, parameterName)?.acceptedValues
+        ?.map((option) => option.value)
+        .filter((value): value is string => typeof value === 'string')
 
 const emptyObjectJsonSchema = {
     type: 'object',
@@ -132,40 +161,206 @@ const listWorkspaceSchema = z.object({
     domainId: z.string().uuid().optional(),
 })
 
-const createCaseStudyBundleSchema = z.object({
-    domainId: z.string().uuid(),
-    seriesId: z.string().uuid(),
-    title: z.string().trim().min(1).max(200),
-    scheduledAt: z.coerce.date().optional().nullable(),
+const createBadgeSchema = z.object({
+    name: z.string().trim().min(1).max(120),
+    domain: z.string().trim().min(1).max(160),
+    thresholdStars: z.number().int().min(1).max(1000),
+    icon: z.string().trim().max(32).optional().nullable(),
     description: z.string().trim().optional().nullable(),
-    hostId: z.string().uuid().optional().nullable(),
-    starValue: z.number().int().min(0).max(20).optional().nullable(),
-    assessmentKind: z.enum(['PRACTICE', 'READINESS', 'FORMAL']).optional(),
-    countsTowardPerformance: z.boolean().optional(),
+    active: z.boolean().optional(),
 })
 
-const setCourseAiTemplateSchema = z
-    .object({
-        courseId: z.string().uuid(),
-        templateId: z.string().uuid().optional(),
-        useDefault: z.boolean().optional(),
-        enabled: z.boolean().optional(),
-    })
-    .superRefine((value, ctx) => {
-        const hasTemplateId = Boolean(value.templateId)
-        const useDefault = value.useDefault === true
+const createSeriesSchema = z.object({
+    name: z.string().trim().min(1).max(160),
+    seriesType: z.enum(['WEEKLY_DRILL', 'CASE_STUDY', 'KNOWLEDGE_SHARING', 'FAQ_SHARE', 'RELEASE_READINESS', 'QUARTERLY_FINAL', 'YEAR_END_FINAL']),
+    productDomain: z.string().trim().min(1).max(160),
+    seriesOwner: z.string().trim().min(1).max(255).optional().nullable(),
+    cadence: z.string().trim().max(120).optional().nullable(),
+    description: z.string().trim().optional().nullable(),
+    active: z.boolean().optional(),
+    contributesToDomainBadges: z.boolean().optional(),
+})
 
-        if (useDefault === hasTemplateId) {
+const createEventSchema = z.object({
+    title: z.string().trim().min(1).max(200),
+    learningSeries: z.string().trim().min(1).max(200),
+    format: z.enum(['CASE_STUDY', 'KNOWLEDGE_SHARING', 'FAQ_SHARE', 'RELEASE_BRIEFING', 'QUIZ_REVIEW', 'FINAL_EXAM', 'WORKSHOP']),
+    status: z.enum(['DRAFT', 'SCHEDULED']).optional(),
+    host: z.string().trim().min(1).max(255).optional().nullable(),
+    productDomain: z.string().trim().min(1).max(160).optional().nullable(),
+    description: z.string().trim().optional().nullable(),
+    scheduledAt: z.coerce.date().optional().nullable(),
+    countsTowardPerformance: z.boolean().optional(),
+    starValue: z.number().int().min(0).max(20).optional().nullable(),
+})
+
+const createCourseSchema = z.object({
+    title: z.string().trim().min(1).max(200),
+    event: z.string().trim().min(1).max(200).optional().nullable(),
+    description: z.string().trim().optional().nullable(),
+    whatYouWillLearn: z.array(z.string().trim().min(1)).optional(),
+    requirements: z.array(z.string().trim().min(1)).optional(),
+    thumbnailUrl: z.string().trim().optional().nullable(),
+    category: z.string().trim().max(120).optional().nullable(),
+    level: z.enum(['BEGINNER', 'INTERMEDIATE', 'ADVANCED']).optional(),
+    status: z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED']).optional(),
+    instructor: z.string().trim().min(1).max(255).optional().nullable(),
+    tags: z.array(z.string().trim().min(1)).optional(),
+})
+
+const createExamSchema = z.object({
+    title: z.string().trim().min(1).max(200),
+    event: z.string().trim().min(1).max(200).optional().nullable(),
+    description: z.string().trim().optional().nullable(),
+    instructions: z.string().trim().optional().nullable(),
+    examType: z.enum(['PRACTICE', 'READINESS', 'FORMAL']),
+    totalScore: z.number().int().positive(),
+    passingScore: z.number().int().nonnegative(),
+    maxAttempts: z.number().int().positive(),
+    options: z
+        .object({
+            timeLimit: z.number().int().positive().optional(),
+            randomizeQuestions: z.boolean().optional(),
+            randomizeOptions: z.boolean().optional(),
+            showResultsImmediately: z.boolean().optional(),
+            allowReview: z.boolean().optional(),
+        })
+        .optional()
+        .nullable(),
+})
+    .superRefine((value, ctx) => {
+        if (value.passingScore > value.totalScore) {
             ctx.addIssue({
                 code: z.ZodIssueCode.custom,
-                path: hasTemplateId ? ['templateId'] : ['useDefault'],
-                message: 'Provide either templateId or useDefault=true.',
+                path: ['passingScore'],
+                message: 'passingScore must be less than or equal to totalScore.',
             })
         }
     })
 
-const assignCourseInvitationsSchema = z.object({
-    courseId: z.string().uuid(),
+const designCourseSchema = z
+    .object({
+        course: z.string().trim().min(1).max(200),
+        mode: z.enum(['generate_outline', 'manual_outline']),
+        brief: z.string().trim().optional(),
+        targetAudience: z.string().trim().optional().nullable(),
+        lessonCount: z.number().int().positive().max(12).optional(),
+        chapters: z
+            .array(
+                z.object({
+                    title: z.string().trim().min(1).max(160),
+                    description: z.string().trim().optional().nullable(),
+                    lessons: z
+                        .array(
+                            z.object({
+                                title: z.string().trim().min(1).max(160),
+                                objective: z.string().trim().optional().nullable(),
+                                summary: z.string().trim().optional().nullable(),
+                            })
+                        )
+                        .min(1),
+                })
+            )
+            .optional(),
+        assetPlan: z
+            .array(
+                z.object({
+                    lessonRef: z.string().trim().min(1).max(160),
+                    assetType: z.nativeEnum(LessonAssetType),
+                    title: z.string().trim().min(1).max(160),
+                    sourceKind: z.enum(['upload', 'external_url']),
+                    transcriptNeeded: z.boolean().optional(),
+                })
+            )
+            .optional(),
+        transcriptPlan: z
+            .array(
+                z.object({
+                    lessonRef: z.string().trim().min(1).max(160),
+                    languageCode: z.string().trim().min(2).max(20).optional(),
+                    setAsDefaultSubtitle: z.boolean().optional(),
+                    setAsPrimaryForAI: z.boolean().optional(),
+                })
+            )
+            .optional(),
+    })
+    .superRefine((value, ctx) => {
+        if (value.mode === 'generate_outline' && !value.brief?.trim()) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['brief'],
+                message: 'brief is required when mode is generate_outline.',
+            })
+        }
+
+        if (value.mode === 'manual_outline' && (!value.chapters || value.chapters.length === 0)) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['chapters'],
+                message: 'chapters are required when mode is manual_outline.',
+            })
+        }
+    })
+
+const manualQuestionSchema = z.object({
+    type: z.nativeEnum(ExamQuestionType),
+    difficulty: z.nativeEnum(DifficultyLevel).optional(),
+    question: z.string().trim().min(1),
+    options: z.array(z.string().trim().min(1)).optional(),
+    correctAnswer: z.string().trim().optional(),
+    rubric: z.string().trim().optional(),
+    sampleAnswer: z.string().trim().optional(),
+    maxWords: z.number().int().positive().optional(),
+    points: z.number().int().positive().optional(),
+    explanation: z.string().trim().optional(),
+    topic: z.string().trim().optional(),
+    tags: z.array(z.string().trim().min(1)).optional(),
+})
+
+const designExamQuestionsSchema = z
+    .object({
+        exam: z.string().trim().min(1).max(200),
+        mode: z.enum(['generate_from_course', 'generate_from_event', 'manual_payload']),
+        sourceCourse: z.string().trim().min(1).max(200).optional().nullable(),
+        sourceEvent: z.string().trim().min(1).max(200).optional().nullable(),
+        questionCount: z.number().int().positive().max(100).optional(),
+        difficultyMix: z.union([z.nativeEnum(DifficultyLevel), z.literal('mixed')]).optional(),
+        questionTypes: z.array(z.nativeEnum(ExamQuestionType)).optional(),
+        coverageNotes: z.string().trim().optional().nullable(),
+        questions: z.array(manualQuestionSchema).optional(),
+    })
+    .superRefine((value, ctx) => {
+        if (value.mode === 'generate_from_course' && !value.sourceCourse?.trim()) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['sourceCourse'],
+                message: 'sourceCourse is required when mode is generate_from_course.',
+            })
+        }
+
+        if (value.mode === 'generate_from_event' && !value.sourceEvent?.trim()) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['sourceEvent'],
+                message: 'sourceEvent is required when mode is generate_from_event.',
+            })
+        }
+
+        if (value.mode === 'manual_payload' && (!value.questions || value.questions.length === 0)) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['questions'],
+                message: 'questions are required when mode is manual_payload.',
+            })
+        }
+    })
+
+const reviewEventStatusSchema = z.object({
+    event: z.string().trim().min(1).max(200),
+})
+
+const shareCourseWithLearnersSchema = z.object({
+    course: z.string().trim().min(1).max(200),
     userIds: inviteUsersSchema.shape.userIds,
     sendNotification: z.boolean().optional(),
 })
@@ -191,24 +386,10 @@ const processTranscriptKnowledgeSchema = z.object({
     knowledgePromptTemplateId: z.string().uuid().optional().nullable(),
 })
 
-const publishExamWithInvitationsSchema = z.object({
-    examId: z.string().uuid(),
+const publishExamForLearnersSchema = z.object({
+    exam: z.string().trim().min(1).max(200),
     userIds: z.array(z.string().uuid()).default([]),
     sendNotification: z.boolean().optional(),
-})
-
-const linkExistingCourseToEventSchema = z.object({
-    eventId: z.string().uuid(),
-    courseId: z.string().uuid(),
-})
-
-const linkExistingExamToEventSchema = z.object({
-    eventId: z.string().uuid(),
-    examId: z.string().uuid(),
-})
-
-const getEventExecutionStatusSchema = z.object({
-    eventId: z.string().uuid(),
 })
 
 export const deprecatedSmeMcpToolNames = [
@@ -254,180 +435,530 @@ export const smeMcpToolDefinitions = [
         execute: (user, input) => SmeMcpService.listMyWorkspace(user, input as z.infer<typeof listWorkspaceSchema>),
     },
     {
-        name: 'create_case_study_bundle',
-        description: smeMcpToolMetadataByName.create_case_study_bundle.description,
-        inputSchema: createCaseStudyBundleSchema,
+        name: 'create_badge',
+        description: smeMcpToolMetadataByName.create_badge.description,
+        inputSchema: createBadgeSchema,
         inputJsonSchema: {
             type: 'object',
-            description: toolInputDescription('create_case_study_bundle'),
+            description: toolInputDescription('create_badge'),
             properties: {
-                domainId: describedUuidSchema(
-                    parameterDescription('create_case_study_bundle', 'domainId', 'Required domain UUID.'),
-                    parameterExample('create_case_study_bundle', 'domainId')
+                name: describedStringSchema(parameterDescription('create_badge', 'name', 'Required badge name.'), {
+                    minLength: 1,
+                    maxLength: 120,
+                    examples: [String(parameterExample('create_badge', 'name') ?? '')],
+                }),
+                domain: describedStringSchema(parameterDescription('create_badge', 'domain', 'Required domain reference.'), {
+                    minLength: 1,
+                    maxLength: 160,
+                    examples: [String(parameterExample('create_badge', 'domain') ?? '')],
+                }),
+                thresholdStars: describedIntegerSchema(
+                    parameterDescription('create_badge', 'thresholdStars', 'Required threshold stars.'),
+                    { minimum: 1, maximum: 1000, examples: [Number(parameterExample('create_badge', 'thresholdStars') ?? 4)] }
                 ),
-                seriesId: describedUuidSchema(
-                    parameterDescription('create_case_study_bundle', 'seriesId', 'Required series UUID.'),
-                    parameterExample('create_case_study_bundle', 'seriesId')
+                icon: describedStringSchema(parameterDescription('create_badge', 'icon', 'Optional icon token.'), {
+                    maxLength: 32,
+                    examples: typeof parameterExample('create_badge', 'icon') === 'string' ? [parameterExample('create_badge', 'icon')] : undefined,
+                    nullable: true,
+                }),
+                description: describedStringSchema(parameterDescription('create_badge', 'description', 'Optional description.'), {
+                    examples: typeof parameterExample('create_badge', 'description') === 'string' ? [parameterExample('create_badge', 'description')] : undefined,
+                    nullable: true,
+                }),
+                active: describedBooleanSchema(parameterDescription('create_badge', 'active', 'Optional active flag.'), true),
+            },
+            required: ['name', 'domain', 'thresholdStars'],
+            additionalProperties: false,
+            examples: [getSmeMcpToolMetadata('create_badge').minimalExample.input, getSmeMcpToolMetadata('create_badge').fullExample?.input].filter(Boolean),
+        },
+        execute: (user, input) => SmeMcpService.createBadge(user, input as z.infer<typeof createBadgeSchema>),
+    },
+    {
+        name: 'create_series',
+        description: smeMcpToolMetadataByName.create_series.description,
+        inputSchema: createSeriesSchema,
+        inputJsonSchema: {
+            type: 'object',
+            description: toolInputDescription('create_series'),
+            properties: {
+                name: describedStringSchema(parameterDescription('create_series', 'name', 'Required series name.'), {
+                    minLength: 1,
+                    maxLength: 160,
+                    examples: [String(parameterExample('create_series', 'name') ?? '')],
+                }),
+                seriesType: describedStringSchema(parameterDescription('create_series', 'seriesType', 'Required series type.'), {
+                    enum: parameterAcceptedValues('create_series', 'seriesType'),
+                    examples: typeof parameterExample('create_series', 'seriesType') === 'string' ? [parameterExample('create_series', 'seriesType')] : undefined,
+                }),
+                productDomain: describedStringSchema(parameterDescription('create_series', 'productDomain', 'Required domain reference.'), {
+                    minLength: 1,
+                    maxLength: 160,
+                    examples: [String(parameterExample('create_series', 'productDomain') ?? '')],
+                }),
+                seriesOwner: describedStringSchema(parameterDescription('create_series', 'seriesOwner', 'Optional series owner reference.'), {
+                    examples: typeof parameterExample('create_series', 'seriesOwner') === 'string' ? [parameterExample('create_series', 'seriesOwner')] : undefined,
+                    nullable: true,
+                }),
+                cadence: describedStringSchema(parameterDescription('create_series', 'cadence', 'Optional cadence label.'), {
+                    maxLength: 120,
+                    examples: typeof parameterExample('create_series', 'cadence') === 'string' ? [parameterExample('create_series', 'cadence')] : undefined,
+                    nullable: true,
+                }),
+                description: describedStringSchema(parameterDescription('create_series', 'description', 'Optional description.'), {
+                    examples: typeof parameterExample('create_series', 'description') === 'string' ? [parameterExample('create_series', 'description')] : undefined,
+                    nullable: true,
+                }),
+                active: describedBooleanSchema(parameterDescription('create_series', 'active', 'Optional active flag.'), true),
+                contributesToDomainBadges: describedBooleanSchema(
+                    parameterDescription('create_series', 'contributesToDomainBadges', 'Optional badge-eligibility flag.'),
+                    true
                 ),
-                title: describedStringSchema(
-                    parameterDescription('create_case_study_bundle', 'title', 'Required title.'),
-                    { minLength: 1, maxLength: 200, examples: [parameterExample('create_case_study_bundle', 'title') ?? ''] }
-                ),
-                scheduledAt: describedStringSchema(
-                    parameterDescription('create_case_study_bundle', 'scheduledAt', 'Optional ISO 8601 datetime.'),
-                    { format: 'date-time', nullable: true, examples: [parameterExample('create_case_study_bundle', 'scheduledAt') ?? ''] }
-                ),
-                description: describedStringSchema(
-                    parameterDescription('create_case_study_bundle', 'description', 'Optional description.'),
-                    { nullable: true, examples: [parameterExample('create_case_study_bundle', 'description') ?? ''] }
-                ),
-                hostId: describedUuidSchema(
-                    parameterDescription('create_case_study_bundle', 'hostId', 'Optional host user UUID.')
-                ),
-                starValue: describedIntegerSchema(
-                    parameterDescription('create_case_study_bundle', 'starValue', 'Optional star value.'),
-                    { minimum: 0, maximum: 20, nullable: true, examples: [Number(parameterExample('create_case_study_bundle', 'starValue') ?? '2')] }
-                ),
-                assessmentKind: describedStringSchema(
-                    parameterDescription('create_case_study_bundle', 'assessmentKind', 'Optional assessment kind.'),
-                    {
-                        enum: ['PRACTICE', 'READINESS', 'FORMAL'] as const,
-                        examples: [parameterExample('create_case_study_bundle', 'assessmentKind') ?? 'PRACTICE'],
-                    }
-                ),
+            },
+            required: ['name', 'seriesType', 'productDomain'],
+            additionalProperties: false,
+            examples: [getSmeMcpToolMetadata('create_series').minimalExample.input, getSmeMcpToolMetadata('create_series').fullExample?.input].filter(Boolean),
+        },
+        execute: (user, input) => SmeMcpService.createSeries(user, input as z.infer<typeof createSeriesSchema>),
+    },
+    {
+        name: 'create_event',
+        description: smeMcpToolMetadataByName.create_event.description,
+        inputSchema: createEventSchema,
+        inputJsonSchema: {
+            type: 'object',
+            description: toolInputDescription('create_event'),
+            properties: {
+                title: describedStringSchema(parameterDescription('create_event', 'title', 'Required event title.'), {
+                    minLength: 1,
+                    maxLength: 200,
+                    examples: [String(parameterExample('create_event', 'title') ?? '')],
+                }),
+                learningSeries: describedStringSchema(parameterDescription('create_event', 'learningSeries', 'Required series reference.'), {
+                    minLength: 1,
+                    maxLength: 200,
+                    examples: [String(parameterExample('create_event', 'learningSeries') ?? '')],
+                }),
+                format: describedStringSchema(parameterDescription('create_event', 'format', 'Required event format.'), {
+                    enum: parameterAcceptedValues('create_event', 'format'),
+                    examples: typeof parameterExample('create_event', 'format') === 'string' ? [parameterExample('create_event', 'format')] : undefined,
+                }),
+                status: describedStringSchema(parameterDescription('create_event', 'status', 'Optional event status.'), {
+                    enum: parameterAcceptedValues('create_event', 'status'),
+                    examples: typeof parameterExample('create_event', 'status') === 'string' ? [parameterExample('create_event', 'status')] : undefined,
+                }),
+                host: describedStringSchema(parameterDescription('create_event', 'host', 'Optional host reference.'), {
+                    examples: typeof parameterExample('create_event', 'host') === 'string' ? [parameterExample('create_event', 'host')] : undefined,
+                    nullable: true,
+                }),
+                productDomain: describedStringSchema(parameterDescription('create_event', 'productDomain', 'Optional domain reference.'), {
+                    examples: typeof parameterExample('create_event', 'productDomain') === 'string' ? [parameterExample('create_event', 'productDomain')] : undefined,
+                    nullable: true,
+                }),
+                description: describedStringSchema(parameterDescription('create_event', 'description', 'Optional description.'), {
+                    examples: typeof parameterExample('create_event', 'description') === 'string' ? [parameterExample('create_event', 'description')] : undefined,
+                    nullable: true,
+                }),
+                scheduledAt: describedStringSchema(parameterDescription('create_event', 'scheduledAt', 'Optional scheduled datetime.'), {
+                    format: 'date-time',
+                    examples: typeof parameterExample('create_event', 'scheduledAt') === 'string' ? [parameterExample('create_event', 'scheduledAt')] : undefined,
+                    nullable: true,
+                }),
                 countsTowardPerformance: describedBooleanSchema(
-                    parameterDescription(
-                        'create_case_study_bundle',
-                        'countsTowardPerformance',
-                        'Optional performance flag.'
-                    )
+                    parameterDescription('create_event', 'countsTowardPerformance', 'Optional performance tracking flag.'),
+                    false
                 ),
+                starValue: describedIntegerSchema(parameterDescription('create_event', 'starValue', 'Optional star value.'), {
+                    minimum: 0,
+                    maximum: 20,
+                    examples: typeof parameterExample('create_event', 'starValue') === 'number' ? [parameterExample('create_event', 'starValue')] : [2],
+                    nullable: true,
+                }),
             },
-            required: ['domainId', 'seriesId', 'title'],
+            required: ['title', 'learningSeries', 'format'],
             additionalProperties: false,
-            examples: [
-                {
-                    domainId: parameterExample('create_case_study_bundle', 'domainId'),
-                    seriesId: parameterExample('create_case_study_bundle', 'seriesId'),
-                    title: parameterExample('create_case_study_bundle', 'title'),
-                    description: parameterExample('create_case_study_bundle', 'description'),
-                    starValue: Number(parameterExample('create_case_study_bundle', 'starValue') ?? '2'),
-                    assessmentKind: parameterExample('create_case_study_bundle', 'assessmentKind'),
-                    countsTowardPerformance: false,
-                },
-            ],
+            examples: [getSmeMcpToolMetadata('create_event').minimalExample.input, getSmeMcpToolMetadata('create_event').fullExample?.input].filter(Boolean),
         },
-        execute: (user, input) =>
-            SmeMcpService.createCaseStudyBundle(user, input as z.infer<typeof createCaseStudyBundleSchema>),
+        execute: (user, input) => SmeMcpService.createEvent(user, input as z.infer<typeof createEventSchema>),
     },
     {
-        name: 'link_existing_course_to_event',
-        description: smeMcpToolMetadataByName.link_existing_course_to_event.description,
-        inputSchema: linkExistingCourseToEventSchema,
+        name: 'create_course',
+        description: smeMcpToolMetadataByName.create_course.description,
+        inputSchema: createCourseSchema,
         inputJsonSchema: {
             type: 'object',
-            description: toolInputDescription('link_existing_course_to_event'),
+            description: toolInputDescription('create_course'),
             properties: {
-                eventId: describedUuidSchema(
-                    parameterDescription('link_existing_course_to_event', 'eventId', 'Required event UUID.'),
-                    parameterExample('link_existing_course_to_event', 'eventId')
+                title: describedStringSchema(parameterDescription('create_course', 'title', 'Required course title.'), {
+                    minLength: 1,
+                    maxLength: 200,
+                    examples: [String(parameterExample('create_course', 'title') ?? '')],
+                }),
+                event: describedStringSchema(parameterDescription('create_course', 'event', 'Optional event reference.'), {
+                    examples: typeof parameterExample('create_course', 'event') === 'string' ? [parameterExample('create_course', 'event')] : undefined,
+                    nullable: true,
+                }),
+                description: describedStringSchema(parameterDescription('create_course', 'description', 'Optional description.'), {
+                    examples: typeof parameterExample('create_course', 'description') === 'string' ? [parameterExample('create_course', 'description')] : undefined,
+                    nullable: true,
+                }),
+                whatYouWillLearn: describedStringArraySchema(
+                    parameterDescription('create_course', 'whatYouWillLearn', 'Optional learning outcomes array.'),
+                    { example: parameterExample('create_course', 'whatYouWillLearn') }
                 ),
-                courseId: describedUuidSchema(
-                    parameterDescription('link_existing_course_to_event', 'courseId', 'Required course UUID.'),
-                    parameterExample('link_existing_course_to_event', 'courseId')
+                requirements: describedStringArraySchema(
+                    parameterDescription('create_course', 'requirements', 'Optional requirements array.'),
+                    { example: parameterExample('create_course', 'requirements') }
                 ),
+                thumbnailUrl: describedStringSchema(parameterDescription('create_course', 'thumbnailUrl', 'Optional thumbnail URL.'), {
+                    examples: typeof parameterExample('create_course', 'thumbnailUrl') === 'string' ? [parameterExample('create_course', 'thumbnailUrl')] : undefined,
+                    nullable: true,
+                }),
+                category: describedStringSchema(parameterDescription('create_course', 'category', 'Optional category label.'), {
+                    examples: typeof parameterExample('create_course', 'category') === 'string' ? [parameterExample('create_course', 'category')] : undefined,
+                    nullable: true,
+                }),
+                level: describedStringSchema(parameterDescription('create_course', 'level', 'Optional course level.'), {
+                    enum: parameterAcceptedValues('create_course', 'level'),
+                    examples: typeof parameterExample('create_course', 'level') === 'string' ? [parameterExample('create_course', 'level')] : undefined,
+                }),
+                status: describedStringSchema(parameterDescription('create_course', 'status', 'Optional course status.'), {
+                    enum: parameterAcceptedValues('create_course', 'status'),
+                    examples: typeof parameterExample('create_course', 'status') === 'string' ? [parameterExample('create_course', 'status')] : undefined,
+                }),
+                instructor: describedStringSchema(parameterDescription('create_course', 'instructor', 'Optional instructor reference.'), {
+                    examples: typeof parameterExample('create_course', 'instructor') === 'string' ? [parameterExample('create_course', 'instructor')] : undefined,
+                    nullable: true,
+                }),
+                tags: describedStringArraySchema(parameterDescription('create_course', 'tags', 'Optional tag array.'), {
+                    example: parameterExample('create_course', 'tags'),
+                }),
             },
-            required: ['eventId', 'courseId'],
+            required: ['title'],
             additionalProperties: false,
-            examples: [
-                {
-                    eventId: parameterExample('link_existing_course_to_event', 'eventId'),
-                    courseId: parameterExample('link_existing_course_to_event', 'courseId'),
-                },
-            ],
+            examples: [getSmeMcpToolMetadata('create_course').minimalExample.input, getSmeMcpToolMetadata('create_course').fullExample?.input].filter(Boolean),
         },
-        execute: (user, input) =>
-            SmeMcpService.linkExistingCourseToEvent(user, input as z.infer<typeof linkExistingCourseToEventSchema>),
+        execute: (user, input) => SmeMcpService.createCourse(user, input as z.infer<typeof createCourseSchema>),
     },
     {
-        name: 'link_existing_exam_to_event',
-        description: smeMcpToolMetadataByName.link_existing_exam_to_event.description,
-        inputSchema: linkExistingExamToEventSchema,
+        name: 'create_exam',
+        description: smeMcpToolMetadataByName.create_exam.description,
+        inputSchema: createExamSchema,
         inputJsonSchema: {
             type: 'object',
-            description: toolInputDescription('link_existing_exam_to_event'),
+            description: toolInputDescription('create_exam'),
             properties: {
-                eventId: describedUuidSchema(
-                    parameterDescription('link_existing_exam_to_event', 'eventId', 'Required event UUID.'),
-                    parameterExample('link_existing_exam_to_event', 'eventId')
-                ),
-                examId: describedUuidSchema(
-                    parameterDescription('link_existing_exam_to_event', 'examId', 'Required exam UUID.'),
-                    parameterExample('link_existing_exam_to_event', 'examId')
-                ),
-            },
-            required: ['eventId', 'examId'],
-            additionalProperties: false,
-            examples: [
-                {
-                    eventId: parameterExample('link_existing_exam_to_event', 'eventId'),
-                    examId: parameterExample('link_existing_exam_to_event', 'examId'),
-                },
-            ],
-        },
-        execute: (user, input) =>
-            SmeMcpService.linkExistingExamToEvent(user, input as z.infer<typeof linkExistingExamToEventSchema>),
-    },
-    {
-        name: 'set_course_ai_template',
-        description: smeMcpToolMetadataByName.set_course_ai_template.description,
-        inputSchema: setCourseAiTemplateSchema,
-        inputJsonSchema: {
-            type: 'object',
-            description: toolInputDescription('set_course_ai_template'),
-            properties: {
-                courseId: describedUuidSchema(
-                    parameterDescription('set_course_ai_template', 'courseId', 'Required course UUID.'),
-                    parameterExample('set_course_ai_template', 'courseId')
-                ),
-                templateId: describedUuidSchema(
-                    parameterDescription('set_course_ai_template', 'templateId', 'Optional template UUID.'),
-                    parameterExample('set_course_ai_template', 'templateId')
-                ),
-                useDefault: describedBooleanSchema(
-                    parameterDescription('set_course_ai_template', 'useDefault', 'Optional use-default flag.')
-                ),
-                enabled: describedBooleanSchema(
-                    parameterDescription('set_course_ai_template', 'enabled', 'Optional enabled flag.')
-                ),
-            },
-            required: ['courseId'],
-            additionalProperties: false,
-            oneOf: [
-                {
-                    required: ['courseId', 'templateId'],
-                },
-                {
-                    required: ['courseId', 'useDefault'],
-                    properties: {
-                        useDefault: { const: true },
+                title: describedStringSchema(parameterDescription('create_exam', 'title', 'Required exam title.'), {
+                    minLength: 1,
+                    maxLength: 200,
+                    examples: [String(parameterExample('create_exam', 'title') ?? '')],
+                }),
+                event: describedStringSchema(parameterDescription('create_exam', 'event', 'Optional event reference.'), {
+                    examples: typeof parameterExample('create_exam', 'event') === 'string' ? [parameterExample('create_exam', 'event')] : undefined,
+                    nullable: true,
+                }),
+                description: describedStringSchema(parameterDescription('create_exam', 'description', 'Optional description.'), {
+                    examples: typeof parameterExample('create_exam', 'description') === 'string' ? [parameterExample('create_exam', 'description')] : undefined,
+                    nullable: true,
+                }),
+                instructions: describedStringSchema(parameterDescription('create_exam', 'instructions', 'Optional instructions.'), {
+                    examples: typeof parameterExample('create_exam', 'instructions') === 'string' ? [parameterExample('create_exam', 'instructions')] : undefined,
+                    nullable: true,
+                }),
+                examType: describedStringSchema(parameterDescription('create_exam', 'examType', 'Required assessment kind.'), {
+                    enum: parameterAcceptedValues('create_exam', 'examType'),
+                    examples: typeof parameterExample('create_exam', 'examType') === 'string' ? [parameterExample('create_exam', 'examType')] : undefined,
+                }),
+                totalScore: describedIntegerSchema(parameterDescription('create_exam', 'totalScore', 'Required total score.'), {
+                    minimum: 1,
+                    examples: [Number(parameterExample('create_exam', 'totalScore') ?? 100)],
+                }),
+                passingScore: describedIntegerSchema(parameterDescription('create_exam', 'passingScore', 'Required passing score.'), {
+                    minimum: 0,
+                    examples: [Number(parameterExample('create_exam', 'passingScore') ?? 80)],
+                }),
+                maxAttempts: describedIntegerSchema(parameterDescription('create_exam', 'maxAttempts', 'Required max attempts.'), {
+                    minimum: 1,
+                    examples: [Number(parameterExample('create_exam', 'maxAttempts') ?? 3)],
+                }),
+                options: describedObjectSchema(
+                    parameterDescription('create_exam', 'options', 'Optional exam option overrides.'),
+                    {
+                        timeLimit: describedIntegerSchema('Optional time limit in minutes.', { minimum: 1 }),
+                        randomizeQuestions: describedBooleanSchema('Optional randomize-questions flag.'),
+                        randomizeOptions: describedBooleanSchema('Optional randomize-options flag.'),
+                        showResultsImmediately: describedBooleanSchema('Optional show-results-immediately flag.'),
+                        allowReview: describedBooleanSchema('Optional allow-review flag.'),
                     },
+                    { example: parameterExample('create_exam', 'options') }
+                ),
+            },
+            required: ['title', 'examType', 'totalScore', 'passingScore', 'maxAttempts'],
+            additionalProperties: false,
+            examples: [getSmeMcpToolMetadata('create_exam').minimalExample.input, getSmeMcpToolMetadata('create_exam').fullExample?.input].filter(Boolean),
+        },
+        execute: (user, input) => SmeMcpService.createExam(user, input as z.infer<typeof createExamSchema>),
+    },
+    {
+        name: 'design_course',
+        description: smeMcpToolMetadataByName.design_course.description,
+        inputSchema: designCourseSchema,
+        inputJsonSchema: {
+            type: 'object',
+            description: toolInputDescription('design_course'),
+            properties: {
+                course: describedStringSchema(parameterDescription('design_course', 'course', 'Required course reference.'), {
+                    minLength: 1,
+                    maxLength: 200,
+                    examples: [String(parameterExample('design_course', 'course') ?? '')],
+                }),
+                mode: describedStringSchema(parameterDescription('design_course', 'mode', 'Required design mode.'), {
+                    enum: parameterAcceptedValues('design_course', 'mode'),
+                    examples: typeof parameterExample('design_course', 'mode') === 'string' ? [parameterExample('design_course', 'mode')] : undefined,
+                }),
+                brief: describedStringSchema(parameterDescription('design_course', 'brief', 'Optional design brief.'), {
+                    examples: typeof parameterExample('design_course', 'brief') === 'string' ? [parameterExample('design_course', 'brief')] : undefined,
+                }),
+                targetAudience: describedStringSchema(parameterDescription('design_course', 'targetAudience', 'Optional target audience.'), {
+                    examples: typeof parameterExample('design_course', 'targetAudience') === 'string' ? [parameterExample('design_course', 'targetAudience')] : undefined,
+                    nullable: true,
+                }),
+                lessonCount: describedIntegerSchema(parameterDescription('design_course', 'lessonCount', 'Optional lesson count.'), {
+                    minimum: 1,
+                    maximum: 12,
+                    examples: typeof parameterExample('design_course', 'lessonCount') === 'number' ? [parameterExample('design_course', 'lessonCount')] : [3],
+                }),
+                chapters: {
+                    type: 'array',
+                    description: parameterDescription('design_course', 'chapters', 'Optional chapter outline.'),
+                    items: {
+                        type: 'object',
+                        properties: {
+                            title: { type: 'string' },
+                            description: { type: ['string', 'null'] },
+                            lessons: {
+                                type: 'array',
+                                items: {
+                                    type: 'object',
+                                    properties: {
+                                        title: { type: 'string' },
+                                        objective: { type: ['string', 'null'] },
+                                        summary: { type: ['string', 'null'] },
+                                    },
+                                    required: ['title'],
+                                    additionalProperties: false,
+                                },
+                            },
+                        },
+                        required: ['title', 'lessons'],
+                        additionalProperties: false,
+                    },
+                    ...(Array.isArray(parameterExample('design_course', 'chapters')) ? { examples: [parameterExample('design_course', 'chapters')] } : {}),
                 },
-            ],
-            examples: [
-                {
-                    courseId: parameterExample('set_course_ai_template', 'courseId'),
-                    useDefault: true,
+                assetPlan: {
+                    type: 'array',
+                    description: parameterDescription('design_course', 'assetPlan', 'Optional asset planning array.'),
+                    items: {
+                        type: 'object',
+                        properties: {
+                            lessonRef: { type: 'string' },
+                            assetType: { type: 'string', enum: ['VIDEO', 'DOCUMENT', 'PRESENTATION', 'TEXT', 'AUDIO', 'OTHER'] },
+                            title: { type: 'string' },
+                            sourceKind: { type: 'string', enum: ['upload', 'external_url'] },
+                            transcriptNeeded: { type: 'boolean' },
+                        },
+                        required: ['lessonRef', 'assetType', 'title', 'sourceKind'],
+                        additionalProperties: false,
+                    },
+                    ...(Array.isArray(parameterExample('design_course', 'assetPlan')) ? { examples: [parameterExample('design_course', 'assetPlan')] } : {}),
                 },
-                {
-                    courseId: parameterExample('set_course_ai_template', 'courseId'),
-                    templateId: parameterExample('set_course_ai_template', 'templateId'),
-                    enabled: true,
+                transcriptPlan: {
+                    type: 'array',
+                    description: parameterDescription('design_course', 'transcriptPlan', 'Optional transcript planning array.'),
+                    items: {
+                        type: 'object',
+                        properties: {
+                            lessonRef: { type: 'string' },
+                            languageCode: { type: 'string' },
+                            setAsDefaultSubtitle: { type: 'boolean' },
+                            setAsPrimaryForAI: { type: 'boolean' },
+                        },
+                        required: ['lessonRef'],
+                        additionalProperties: false,
+                    },
+                    ...(Array.isArray(parameterExample('design_course', 'transcriptPlan')) ? { examples: [parameterExample('design_course', 'transcriptPlan')] } : {}),
                 },
-            ],
+            },
+            required: ['course', 'mode'],
+            additionalProperties: false,
+            examples: [getSmeMcpToolMetadata('design_course').minimalExample.input, getSmeMcpToolMetadata('design_course').fullExample?.input].filter(Boolean),
+        },
+        execute: (user, input) => SmeMcpService.designCourse(user, input as z.infer<typeof designCourseSchema>),
+    },
+    {
+        name: 'design_exam_questions',
+        description: smeMcpToolMetadataByName.design_exam_questions.description,
+        inputSchema: designExamQuestionsSchema,
+        inputJsonSchema: {
+            type: 'object',
+            description: toolInputDescription('design_exam_questions'),
+            properties: {
+                exam: describedStringSchema(parameterDescription('design_exam_questions', 'exam', 'Required exam reference.'), {
+                    minLength: 1,
+                    maxLength: 200,
+                    examples: [String(parameterExample('design_exam_questions', 'exam') ?? '')],
+                }),
+                mode: describedStringSchema(parameterDescription('design_exam_questions', 'mode', 'Required design mode.'), {
+                    enum: parameterAcceptedValues('design_exam_questions', 'mode'),
+                    examples: typeof parameterExample('design_exam_questions', 'mode') === 'string' ? [parameterExample('design_exam_questions', 'mode')] : undefined,
+                }),
+                sourceCourse: describedStringSchema(parameterDescription('design_exam_questions', 'sourceCourse', 'Optional source course reference.'), {
+                    examples: typeof parameterExample('design_exam_questions', 'sourceCourse') === 'string' ? [parameterExample('design_exam_questions', 'sourceCourse')] : undefined,
+                    nullable: true,
+                }),
+                sourceEvent: describedStringSchema(parameterDescription('design_exam_questions', 'sourceEvent', 'Optional source event reference.'), {
+                    examples: typeof parameterExample('design_exam_questions', 'sourceEvent') === 'string' ? [parameterExample('design_exam_questions', 'sourceEvent')] : undefined,
+                    nullable: true,
+                }),
+                questionCount: describedIntegerSchema(parameterDescription('design_exam_questions', 'questionCount', 'Optional question count.'), {
+                    minimum: 1,
+                    maximum: 100,
+                    examples: typeof parameterExample('design_exam_questions', 'questionCount') === 'number' ? [parameterExample('design_exam_questions', 'questionCount')] : [10],
+                }),
+                difficultyMix: describedStringSchema(parameterDescription('design_exam_questions', 'difficultyMix', 'Optional difficulty mix.'), {
+                    enum: parameterAcceptedValues('design_exam_questions', 'difficultyMix'),
+                    examples: typeof parameterExample('design_exam_questions', 'difficultyMix') === 'string' ? [parameterExample('design_exam_questions', 'difficultyMix')] : undefined,
+                }),
+                questionTypes: describedStringArraySchema(parameterDescription('design_exam_questions', 'questionTypes', 'Optional question type array.'), {
+                    example: parameterExample('design_exam_questions', 'questionTypes'),
+                }),
+                coverageNotes: describedStringSchema(parameterDescription('design_exam_questions', 'coverageNotes', 'Optional coverage notes.'), {
+                    examples: typeof parameterExample('design_exam_questions', 'coverageNotes') === 'string' ? [parameterExample('design_exam_questions', 'coverageNotes')] : undefined,
+                    nullable: true,
+                }),
+                questions: {
+                    type: 'array',
+                    description: parameterDescription('design_exam_questions', 'questions', 'Optional manual question payload.'),
+                    items: {
+                        type: 'object',
+                        properties: {
+                            type: { type: 'string', enum: ['MULTIPLE_CHOICE', 'TRUE_FALSE', 'FILL_IN_BLANK', 'ESSAY', 'EXERCISE'] },
+                            difficulty: { type: 'string', enum: ['EASY', 'MEDIUM', 'HARD'] },
+                            question: { type: 'string' },
+                            options: { type: 'array', items: { type: 'string' } },
+                            correctAnswer: { type: 'string' },
+                            rubric: { type: 'string' },
+                            sampleAnswer: { type: 'string' },
+                            maxWords: { type: 'integer' },
+                            points: { type: 'integer' },
+                            explanation: { type: 'string' },
+                            topic: { type: 'string' },
+                            tags: { type: 'array', items: { type: 'string' } },
+                        },
+                        required: ['type', 'question'],
+                        additionalProperties: false,
+                    },
+                    ...(Array.isArray(parameterExample('design_exam_questions', 'questions')) ? { examples: [parameterExample('design_exam_questions', 'questions')] } : {}),
+                },
+            },
+            required: ['exam', 'mode'],
+            additionalProperties: false,
+            examples: [getSmeMcpToolMetadata('design_exam_questions').minimalExample.input, getSmeMcpToolMetadata('design_exam_questions').fullExample?.input].filter(Boolean),
         },
         execute: (user, input) =>
-            SmeMcpService.setCourseAiTemplate(user, input as z.infer<typeof setCourseAiTemplateSchema>),
+            SmeMcpService.designExamQuestions(user, input as z.infer<typeof designExamQuestionsSchema>),
+    },
+    {
+        name: 'review_event_status',
+        description: smeMcpToolMetadataByName.review_event_status.description,
+        inputSchema: reviewEventStatusSchema,
+        inputJsonSchema: {
+            type: 'object',
+            description: toolInputDescription('review_event_status'),
+            properties: {
+                event: describedStringSchema(parameterDescription('review_event_status', 'event', 'Required event reference.'), {
+                    minLength: 1,
+                    maxLength: 200,
+                    examples: [String(parameterExample('review_event_status', 'event') ?? '')],
+                }),
+            },
+            required: ['event'],
+            additionalProperties: false,
+            examples: [getSmeMcpToolMetadata('review_event_status').minimalExample.input],
+        },
+        execute: (user, input) =>
+            SmeMcpService.reviewEventStatus(user, input as z.infer<typeof reviewEventStatusSchema>),
+    },
+    {
+        name: 'share_course_with_learners',
+        description: smeMcpToolMetadataByName.share_course_with_learners.description,
+        inputSchema: shareCourseWithLearnersSchema,
+        inputJsonSchema: {
+            type: 'object',
+            description: toolInputDescription('share_course_with_learners'),
+            properties: {
+                course: describedStringSchema(parameterDescription('share_course_with_learners', 'course', 'Required course reference.'), {
+                    minLength: 1,
+                    maxLength: 200,
+                    examples: [String(parameterExample('share_course_with_learners', 'course') ?? '')],
+                }),
+                userIds: describedUuidArraySchema(
+                    parameterDescription('share_course_with_learners', 'userIds', 'Required learner UUID list.'),
+                    { minItems: 1, example: parameterExample('share_course_with_learners', 'userIds') }
+                ),
+                sendNotification: describedBooleanSchema(
+                    parameterDescription(
+                        'share_course_with_learners',
+                        'sendNotification',
+                        'Optional send-notification flag.'
+                    ),
+                    false
+                ),
+            },
+            required: ['course', 'userIds'],
+            additionalProperties: false,
+            examples: [
+                getSmeMcpToolMetadata('share_course_with_learners').minimalExample.input,
+                getSmeMcpToolMetadata('share_course_with_learners').fullExample?.input,
+            ].filter(Boolean),
+        },
+        execute: (user, input) =>
+            SmeMcpService.shareCourseWithLearners(user, input as z.infer<typeof shareCourseWithLearnersSchema>),
+    },
+    {
+        name: 'publish_exam_for_learners',
+        description: smeMcpToolMetadataByName.publish_exam_for_learners.description,
+        inputSchema: publishExamForLearnersSchema,
+        inputJsonSchema: {
+            type: 'object',
+            description: toolInputDescription('publish_exam_for_learners'),
+            properties: {
+                exam: describedStringSchema(parameterDescription('publish_exam_for_learners', 'exam', 'Required exam reference.'), {
+                    minLength: 1,
+                    maxLength: 200,
+                    examples: [String(parameterExample('publish_exam_for_learners', 'exam') ?? '')],
+                }),
+                userIds: describedUuidArraySchema(
+                    parameterDescription('publish_exam_for_learners', 'userIds', 'Optional learner UUID list.'),
+                    { example: parameterExample('publish_exam_for_learners', 'userIds') }
+                ),
+                sendNotification: describedBooleanSchema(
+                    parameterDescription(
+                        'publish_exam_for_learners',
+                        'sendNotification',
+                        'Optional send-notification flag.'
+                    ),
+                    false
+                ),
+            },
+            required: ['exam'],
+            additionalProperties: false,
+            examples: [
+                getSmeMcpToolMetadata('publish_exam_for_learners').minimalExample.input,
+                getSmeMcpToolMetadata('publish_exam_for_learners').fullExample?.input,
+            ].filter(Boolean),
+        },
+        execute: (user, input) =>
+            SmeMcpService.publishExamForLearners(user, input as z.infer<typeof publishExamForLearnersSchema>),
     },
     {
         name: 'prepare_transcript_upload',
@@ -566,102 +1097,6 @@ export const smeMcpToolDefinitions = [
             SmeMcpService.processTranscriptKnowledge(user, input as z.infer<typeof processTranscriptKnowledgeSchema>),
     },
     {
-        name: 'publish_exam_with_invitations',
-        description: smeMcpToolMetadataByName.publish_exam_with_invitations.description,
-        inputSchema: publishExamWithInvitationsSchema,
-        inputJsonSchema: {
-            type: 'object',
-            description: toolInputDescription('publish_exam_with_invitations'),
-            properties: {
-                examId: describedUuidSchema(
-                    parameterDescription('publish_exam_with_invitations', 'examId', 'Required exam UUID.'),
-                    parameterExample('publish_exam_with_invitations', 'examId')
-                ),
-                userIds: describedUuidArraySchema(
-                    parameterDescription('publish_exam_with_invitations', 'userIds', 'Optional learner UUID list.'),
-                    { example: parameterExample('publish_exam_with_invitations', 'userIds') }
-                ),
-                sendNotification: describedBooleanSchema(
-                    parameterDescription(
-                        'publish_exam_with_invitations',
-                        'sendNotification',
-                        'Optional send-notification flag.'
-                    ),
-                    false
-                ),
-            },
-            required: ['examId'],
-            additionalProperties: false,
-            examples: [
-                {
-                    examId: parameterExample('publish_exam_with_invitations', 'examId'),
-                    userIds: parseArrayExample(parameterExample('publish_exam_with_invitations', 'userIds')),
-                    sendNotification: false,
-                },
-            ],
-        },
-        execute: (user, input) =>
-            SmeMcpService.publishExamWithInvitations(user, input as z.infer<typeof publishExamWithInvitationsSchema>),
-    },
-    {
-        name: 'assign_course_invitations',
-        description: smeMcpToolMetadataByName.assign_course_invitations.description,
-        inputSchema: assignCourseInvitationsSchema,
-        inputJsonSchema: {
-            type: 'object',
-            description: toolInputDescription('assign_course_invitations'),
-            properties: {
-                courseId: describedUuidSchema(
-                    parameterDescription('assign_course_invitations', 'courseId', 'Required course UUID.'),
-                    parameterExample('assign_course_invitations', 'courseId')
-                ),
-                userIds: describedUuidArraySchema(
-                    parameterDescription('assign_course_invitations', 'userIds', 'Required learner UUID list.'),
-                    { minItems: 1, example: parameterExample('assign_course_invitations', 'userIds') }
-                ),
-                sendNotification: describedBooleanSchema(
-                    parameterDescription(
-                        'assign_course_invitations',
-                        'sendNotification',
-                        'Optional send-notification flag.'
-                    ),
-                    false
-                ),
-            },
-            required: ['courseId', 'userIds'],
-            additionalProperties: false,
-            examples: [
-                {
-                    courseId: parameterExample('assign_course_invitations', 'courseId'),
-                    userIds: parseArrayExample(parameterExample('assign_course_invitations', 'userIds')),
-                    sendNotification: false,
-                },
-            ],
-        },
-        execute: (user, input) =>
-            SmeMcpService.assignCourseInvitations(user, input as z.infer<typeof assignCourseInvitationsSchema>),
-    },
-    {
-        name: 'get_event_execution_status',
-        description: smeMcpToolMetadataByName.get_event_execution_status.description,
-        inputSchema: getEventExecutionStatusSchema,
-        inputJsonSchema: {
-            type: 'object',
-            description: toolInputDescription('get_event_execution_status'),
-            properties: {
-                eventId: describedUuidSchema(
-                    parameterDescription('get_event_execution_status', 'eventId', 'Required event UUID.'),
-                    parameterExample('get_event_execution_status', 'eventId')
-                ),
-            },
-            required: ['eventId'],
-            additionalProperties: false,
-            examples: [{ eventId: parameterExample('get_event_execution_status', 'eventId') }],
-        },
-        execute: (user, input) =>
-            SmeMcpService.getEventExecutionStatus(user, input as z.infer<typeof getEventExecutionStatusSchema>),
-    },
-    {
         name: 'list_my_series_badges',
         description: smeMcpToolMetadataByName.list_my_series_badges.description,
         inputSchema: z.object({}).default({}),
@@ -680,8 +1115,13 @@ export const activeSmeMcpToolNames = smeMcpToolDefinitions.map((definition) => d
 
 export const getSmeMcpToolDefinition = (toolName: string) => toolDefinitionMap.get(toolName)
 
+export const isSmeMcpToolExposedOnStandardServer = (toolName: string) =>
+    toolDefinitionMap.has(toolName) && isToolExposedOnStandardMcpServer(toolName)
+
 export const listMcpToolsForServer = () =>
-    smeMcpToolDefinitions.map((definition) => ({
+    smeMcpToolDefinitions
+        .filter((definition) => isToolExposedOnStandardMcpServer(definition.name))
+        .map((definition) => ({
         name: definition.name,
         description: definition.description,
         inputSchema: definition.inputJsonSchema,

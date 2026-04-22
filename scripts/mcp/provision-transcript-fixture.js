@@ -50,7 +50,7 @@ async function main() {
             durationMinutes: 5,
             lessonType: 'VIDEO',
             completionRule: 'VIEW_ASSETS',
-            content: 'Transcript smoke test fixture created by scripts/mcp/test-sme-mcp.sh',
+            content: 'Transcript smoke test fixture created by scripts/mcp/provision-transcript-fixture.js',
         },
     })
 

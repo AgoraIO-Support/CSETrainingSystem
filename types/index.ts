@@ -864,6 +864,26 @@ export interface UpdateProfilePayload {
     avatar?: string | null
 }
 
+export interface McpAccessTokenSummary {
+    id: string
+    name: string
+    tokenPrefix: string
+    scope: 'SME_MCP'
+    status: 'ACTIVE' | 'REVOKED' | 'EXPIRED'
+    createdAt: string | Date
+    updatedAt: string | Date
+    expiresAt: string | Date
+    revokedAt?: string | Date | null
+    lastUsedAt?: string | Date | null
+    lastUsedIp?: string | null
+    lastUsedUserAgent?: string | null
+}
+
+export interface CreateMcpAccessTokenPayload {
+    name: string
+    expiresInDays: number
+}
+
 export interface CourseProgressSummary {
     courseId: string
     title: string

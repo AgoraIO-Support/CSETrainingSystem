@@ -28,6 +28,8 @@ import type {
     UserProgressOverview,
     UserProfile,
     UpdateProfilePayload,
+    McpAccessTokenSummary,
+    CreateMcpAccessTokenPayload,
     Exam,
     ExamQuestion,
     ExamAttempt,
@@ -199,6 +201,7 @@ export class ApiClient {
         summary?: string
         data?: T
         nextActions?: string[]
+        recommendedNextInputs?: Record<string, unknown>
         warnings?: string[]
     }> {
         return this.request('/sme/mcp', {
@@ -245,6 +248,29 @@ export class ApiClient {
         return this.request('/profile/password', {
             method: 'POST',
             body: JSON.stringify(payload),
+        })
+    }
+
+    static async getMcpAccessTokens(): Promise<{ success: boolean; data: McpAccessTokenSummary[] }> {
+        return this.request('/mcp-access-tokens')
+    }
+
+    static async createMcpAccessToken(payload: CreateMcpAccessTokenPayload): Promise<{
+        success: boolean
+        data: {
+            token: string
+            record: McpAccessTokenSummary
+        }
+    }> {
+        return this.request('/mcp-access-tokens', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async revokeMcpAccessToken(tokenId: string): Promise<{ success: boolean; data: McpAccessTokenSummary }> {
+        return this.request(`/mcp-access-tokens/${tokenId}/revoke`, {
+            method: 'POST',
         })
     }
 
