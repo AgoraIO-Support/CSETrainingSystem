@@ -866,41 +866,31 @@ export default function SmeMcpLabPage() {
                                                                         key={tool.key}
                                                                         type="button"
                                                                         onClick={() => setSelectedTool(tool.key)}
-                                                                        className={`group w-full rounded-[24px] border p-4 text-left transition ${
+                                                                        className={`group w-full rounded-[20px] border px-4 py-3 text-left transition ${
                                                                             active
                                                                                 ? 'border-slate-900 bg-slate-950 text-white shadow-[0_24px_48px_-30px_rgba(15,23,42,0.8)]'
                                                                                 : 'border-white/80 bg-white/90 text-slate-950 shadow-sm hover:-translate-y-0.5 hover:border-slate-200 hover:bg-white'
                                                                         }`}
                                                                     >
-                                                                        <div className="flex items-start justify-between gap-3">
-                                                                            <div className="min-w-0">
-                                                                            <div className="flex items-center gap-2">
+                                                                        <div className="flex items-center justify-between gap-3">
+                                                                            <div className="flex min-w-0 items-center gap-2">
                                                                                 <p className="truncate text-sm font-semibold">{tool.label}</p>
                                                                                 <HelpTooltip
                                                                                     content={tool.description}
-                                                                                        label={`${tool.label} description`}
-                                                                                        triggerClassName={
-                                                                                            active
-                                                                                                ? 'border-white/15 bg-white/10 text-white/75 hover:border-white/25 hover:text-white'
-                                                                                                : 'border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-700'
+                                                                                    label={`${tool.label} description`}
+                                                                                    triggerClassName={
+                                                                                        active
+                                                                                            ? 'border-white/15 bg-white/10 text-white/75 hover:border-white/25 hover:text-white'
+                                                                                            : 'border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-700'
                                                                                     }
                                                                                     focusable={false}
                                                                                 />
                                                                             </div>
-                                                                        </div>
-                                                                            <div className="shrink-0 text-right">
-                                                                                <div className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${active ? 'border-white/15 bg-white/10 text-white/80' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
-                                                                                    {tool.parameters.filter((parameter) => parameter.required === 'mandatory').length} req
-                                                                                </div>
-                                                                            </div>
-                                                                        </div>
-                                                                        <div className="mt-3 flex items-center justify-between gap-3">
-                                                                            <p className={`text-[11px] uppercase tracking-[0.18em] ${active ? 'text-white/55' : theme.eyebrow}`}>
-                                                                                {tool.categoryLabel}
-                                                                            </p>
-                                                                            <span className={`text-xs font-medium ${active ? 'text-white/80' : 'text-slate-500 group-hover:text-slate-700'}`}>
-                                                                                Open tool
-                                                                            </span>
+                                                                            <ChevronRight
+                                                                                className={`h-4 w-4 shrink-0 transition ${
+                                                                                    active ? 'text-white/70' : 'text-slate-400 group-hover:text-slate-700'
+                                                                                }`}
+                                                                            />
                                                                         </div>
                                                                     </button>
                                                                 )

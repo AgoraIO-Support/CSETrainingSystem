@@ -58,12 +58,6 @@ export default function HomePage() {
                     return
                 }
 
-                if (userRes.data.role === 'SME') {
-                    setRedirecting(true)
-                    router.replace('/sme')
-                    return
-                }
-
                 const [progressOverviewRes, rewardsRes, trainingRes] = await Promise.allSettled([
                     ApiClient.getProgressOverview(),
                     ApiClient.getLearnerRewardsOverview(),
