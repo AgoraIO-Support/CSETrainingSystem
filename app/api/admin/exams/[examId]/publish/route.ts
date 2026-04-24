@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withSmeOrAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
 import { TrainingOpsService } from '@/lib/services/training-ops.service'
+import { TrainingOpsRewardService } from '@/lib/services/training-ops-reward.service'
 import { publishExamSchema } from '@/lib/validations'
 import { ExamStatus } from '@prisma/client'
 import { z } from 'zod'
@@ -144,7 +145,7 @@ export const POST = withSmeOrAdminAuth(async (req: NextRequest, user, context: R
         const existingSet = new Set(existingInvites.map((i) => i.userId))
         const toCreate = userIds.filter((id) => !existingSet.has(id))
 
-        await prisma.$transaction(async (tx) => {
+        const rewardBackfill = await prisma.$transaction(async (tx) => {
             if (toCreate.length > 0) {
                 await tx.examInvitation.createMany({
                     data: toCreate.map((userId) => ({ examId, userId })),
@@ -159,6 +160,8 @@ export const POST = withSmeOrAdminAuth(async (req: NextRequest, user, context: R
                     publishedAt: new Date(),
                 },
             })
+
+            return TrainingOpsRewardService.issueMissingRewardsForPublishedExam(examId, tx)
         })
 
         const notificationResults = { sent: 0, failed: 0 }
@@ -189,6 +192,9 @@ export const POST = withSmeOrAdminAuth(async (req: NextRequest, user, context: R
                 existingInvitations: existingInvitationCount,
                 notificationsSent: notificationResults.sent,
                 notificationsFailed: notificationResults.failed,
+                retroactiveStarAwardsIssued: rewardBackfill.starAwardsIssued,
+                retroactiveStarsGranted: rewardBackfill.starsGranted,
+                retroactiveBadgesUnlocked: rewardBackfill.newBadges,
                 // backward compatibility for older clients
                 emailsSent: notificationResults.sent,
                 emailsFailed: notificationResults.failed,

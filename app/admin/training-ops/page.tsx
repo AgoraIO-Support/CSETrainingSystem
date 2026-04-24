@@ -55,24 +55,24 @@ export default function TrainingOpsDashboardPage() {
                     <Card className="overflow-hidden border border-slate-200 bg-white shadow-sm">
                         <CardContent className="space-y-5 p-7 md:p-8">
                             <Badge className="w-fit rounded-full border border-[#b8ecff] bg-[#effbff] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#006688]">
-                                Training Operations
+                                Training Ops
                             </Badge>
                             <div className="space-y-3">
                                 <h1 className="text-3xl font-semibold tracking-[-0.04em] text-slate-950 md:text-4xl">
-                                    SME-led training, assessment, and reward operations
+                                    Govern domain ownership, training operations, and cross-domain outcomes
                                 </h1>
                                 <p className="max-w-3xl text-sm leading-7 text-slate-600 md:text-base">
-                                    Manage product domains, learning series, weekly events, linked exams, pass-rate improvement,
-                                    and badge or star incentives from one operating dashboard.
+                                    Use this control tower to assign SME ownership, set KPI guardrails, bootstrap training structures,
+                                    and compare event, effectiveness, and recognition signals across all domains.
                                 </p>
                             </div>
                             <div className="flex flex-wrap gap-3">
-                                <Link href="/admin/training-ops/domains"><Button variant="outline">Domains</Button></Link>
-                                <Link href="/admin/training-ops/series"><Button variant="outline">Series</Button></Link>
-                                <Link href="/admin/training-ops/events"><Button variant="outline">Events</Button></Link>
-                                <Link href="/admin/training-ops/badges"><Button variant="outline">Badges</Button></Link>
+                                <Link href="/admin/training-ops/domains"><Button variant="outline">All Domains</Button></Link>
+                                <Link href="/admin/training-ops/series"><Button variant="outline">All Series</Button></Link>
+                                <Link href="/admin/training-ops/events"><Button variant="outline">All Events</Button></Link>
+                                <Link href="/admin/training-ops/badges"><Button variant="outline">All Badges</Button></Link>
                                 <Link href="/admin/training-ops/import"><Button variant="outline">Bootstrap Import</Button></Link>
-                                <Link href="/admin/training-ops/effectiveness"><Button variant="outline">Effectiveness</Button></Link>
+                                <Link href="/admin/training-ops/effectiveness"><Button variant="outline">Cross-Domain Effectiveness</Button></Link>
                                 <Link href="/admin/training-ops/leaderboard">
                                     <Button className="bg-[#006688] text-white hover:bg-[#0a7696]">
                                         Leaderboard
@@ -85,23 +85,23 @@ export default function TrainingOpsDashboardPage() {
 
                     <Card className="border border-slate-200 bg-white shadow-sm">
                         <CardHeader>
-                            <CardTitle className="text-xl text-slate-950">Operating Focus</CardTitle>
+                            <CardTitle className="text-xl text-slate-950">Governance Focus</CardTitle>
                             <CardDescription className="text-slate-500">
-                                The three signals this dashboard keeps visible every week
+                                The three system-level signals this dashboard keeps visible every week
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3 text-sm text-slate-600">
                             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                <p className="font-semibold text-slate-900">Execution cadence</p>
-                                <p className="mt-1">Are SMEs scheduling enough domain-relevant events and keeping the calendar full?</p>
+                                <p className="font-semibold text-slate-900">Ownership coverage</p>
+                                <p className="mt-1">Are the right SMEs assigned to the right domains, with enough active series to sustain execution?</p>
                             </div>
                             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                <p className="font-semibold text-slate-900">Training effectiveness</p>
-                                <p className="mt-1">Are pass rates moving from baseline toward target, especially in fast-changing AI tracks?</p>
+                                <p className="font-semibold text-slate-900">Cross-domain effectiveness</p>
+                                <p className="mt-1">Are pass rates moving from baseline toward target, and which domains need governance attention?</p>
                             </div>
                             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                <p className="font-semibold text-slate-900">Learner recognition</p>
-                                <p className="mt-1">Are stars and badges being earned through consistent event and exam participation?</p>
+                                <p className="font-semibold text-slate-900">Recognition coverage</p>
+                                <p className="mt-1">Are stars, badges, and formal certifications appearing where training activity is actually happening?</p>
                             </div>
                         </CardContent>
                     </Card>

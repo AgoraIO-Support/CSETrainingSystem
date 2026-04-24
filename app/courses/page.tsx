@@ -307,7 +307,7 @@ export default function CoursesPage() {
                         </button>
                     </div>
                 ) : filteredCourses.length > 0 ? (
-                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
                         {filteredCourses.map(course => (
                             <CourseCard
                                 key={course.id}

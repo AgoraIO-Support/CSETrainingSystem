@@ -221,7 +221,7 @@ export function Sidebar({ user, className }: SidebarProps) {
         <div className={cn('hidden h-full min-w-0 flex-col border-r border-slate-200/30 bg-slate-50 pt-20 lg:flex', className)}>
             <div className="mb-8 px-4">
                 <h2 className="mb-4 px-2 text-[11px] font-bold uppercase tracking-[0.22em] text-muted-foreground/70">
-                    {isAdmin ? 'Admin Workspace' : 'Learning Workspace'}
+                    Learning Workspace
                 </h2>
                 <Link href="/" className="flex items-center gap-3">
                     <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#006688_0%,#00c2ff_100%)] text-primary-foreground shadow-lg shadow-[#006688]/15">

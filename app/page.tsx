@@ -31,7 +31,6 @@ export default function HomePage() {
     const [rewardsOverview, setRewardsOverview] = useState<LearnerRewardsOverview | null>(null)
     const [trainingOverview, setTrainingOverview] = useState<LearnerTrainingOverview | null>(null)
     const [loading, setLoading] = useState(true)
-    const [redirecting, setRedirecting] = useState(false)
     const [continueLoading, setContinueLoading] = useState(false)
     const [continueCard, setContinueCard] = useState<null | {
         courseId: string
@@ -52,11 +51,6 @@ export default function HomePage() {
                 ])
                 setUser(userRes.data)
                 setCourses(coursesRes.data.courses)
-                if (userRes.data.role === 'ADMIN') {
-                    setRedirecting(true)
-                    router.replace('/admin')
-                    return
-                }
 
                 const [progressOverviewRes, rewardsRes, trainingRes] = await Promise.allSettled([
                     ApiClient.getProgressOverview(),
@@ -159,7 +153,7 @@ export default function HomePage() {
         loadContinueCard()
     }, [user])
 
-    if (loading || redirecting) {
+    if (loading) {
         return (
             <div className="flex h-screen items-center justify-center">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />

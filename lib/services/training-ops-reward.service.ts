@@ -1,5 +1,7 @@
 import prisma from '@/lib/prisma'
-import { AssessmentKind, LearningEventFormat, StarAwardSourceType } from '@prisma/client'
+import { AssessmentKind, LearningEventFormat, Prisma, StarAwardSourceType } from '@prisma/client'
+
+type RewardDbClient = typeof prisma | Prisma.TransactionClient
 
 export class TrainingOpsRewardService {
     private static resolveStarSourceType(input: {
@@ -21,8 +23,8 @@ export class TrainingOpsRewardService {
         return 'WEEKLY_QUIZ'
     }
 
-    static async issueRewardsForPassedExamAttempt(attemptId: string) {
-        const attempt = await prisma.examAttempt.findUnique({
+    static async issueRewardsForPassedExamAttempt(attemptId: string, db: RewardDbClient = prisma) {
+        const attempt = await db.examAttempt.findUnique({
             where: { id: attemptId },
             include: {
                 exam: {
@@ -58,7 +60,7 @@ export class TrainingOpsRewardService {
             }
         }
 
-        const existingStarAward = await prisma.starAward.findFirst({
+        const existingStarAward = await db.starAward.findFirst({
             where: {
                 userId: attempt.userId,
                 examId: attempt.examId,
@@ -66,33 +68,30 @@ export class TrainingOpsRewardService {
             select: { id: true },
         })
 
-        if (existingStarAward) {
-            return {
-                starAwarded: false,
-                stars: 0,
-                newBadges: 0,
-            }
+        let starsAwarded = 0
+        if (!existingStarAward) {
+            const sourceType = this.resolveStarSourceType({
+                assessmentKind: attempt.exam.assessmentKind,
+                eventFormat: attempt.exam.learningEvent?.format,
+            })
+
+            const starAward = await db.starAward.create({
+                data: {
+                    userId: attempt.userId,
+                    domainId: attempt.exam.productDomainId ?? null,
+                    eventId: attempt.exam.learningEventId ?? null,
+                    examId: attempt.examId,
+                    sourceType,
+                    stars: attempt.exam.starValue,
+                    reason: `Passed exam: ${attempt.exam.title}`,
+                },
+            })
+
+            starsAwarded = starAward.stars
         }
 
-        const sourceType = this.resolveStarSourceType({
-            assessmentKind: attempt.exam.assessmentKind,
-            eventFormat: attempt.exam.learningEvent?.format,
-        })
-
-        const starAward = await prisma.starAward.create({
-            data: {
-                userId: attempt.userId,
-                domainId: attempt.exam.productDomainId ?? null,
-                eventId: attempt.exam.learningEventId ?? null,
-                examId: attempt.examId,
-                sourceType,
-                stars: attempt.exam.starValue,
-                reason: `Passed exam: ${attempt.exam.title}`,
-            },
-        })
-
         const eligibleBadges = attempt.exam.productDomainId
-            ? await prisma.badgeMilestone.findMany({
+            ? await db.badgeMilestone.findMany({
                   where: {
                       active: true,
                       domainId: attempt.exam.productDomainId,
@@ -104,7 +103,7 @@ export class TrainingOpsRewardService {
         let newBadges = 0
 
         for (const badge of eligibleBadges) {
-            const existingBadge = await prisma.badgeAward.findUnique({
+            const existingBadge = await db.badgeAward.findUnique({
                 where: {
                     badgeId_userId: {
                         badgeId: badge.id,
@@ -118,7 +117,7 @@ export class TrainingOpsRewardService {
                 continue
             }
 
-            const aggregate = await prisma.starAward.aggregate({
+            const aggregate = await db.starAward.aggregate({
                 where: {
                     userId: attempt.userId,
                     domainId: badge.domainId ?? undefined,
@@ -131,7 +130,7 @@ export class TrainingOpsRewardService {
                 continue
             }
 
-            await prisma.badgeAward.create({
+            await db.badgeAward.create({
                 data: {
                     badgeId: badge.id,
                     userId: attempt.userId,
@@ -145,8 +144,73 @@ export class TrainingOpsRewardService {
         }
 
         return {
-            starAwarded: true,
-            stars: starAward.stars,
+            starAwarded: starsAwarded > 0,
+            stars: starsAwarded,
+            newBadges,
+        }
+    }
+
+    static async issueMissingRewardsForPublishedExam(examId: string, db: RewardDbClient = prisma) {
+        const exam = await db.exam.findUnique({
+            where: { id: examId },
+            select: {
+                id: true,
+                awardsStars: true,
+                starValue: true,
+            },
+        })
+
+        if (!exam) {
+            throw new Error('EXAM_NOT_FOUND')
+        }
+
+        if (!exam.awardsStars || !exam.starValue || exam.starValue <= 0) {
+            return {
+                processedAttempts: 0,
+                starAwardsIssued: 0,
+                starsGranted: 0,
+                newBadges: 0,
+            }
+        }
+
+        const passedAttempts = await db.examAttempt.findMany({
+            where: {
+                examId,
+                passed: true,
+            },
+            select: {
+                id: true,
+                userId: true,
+            },
+            orderBy: [{ submittedAt: 'asc' }, { createdAt: 'asc' }],
+        })
+
+        const processedUsers = new Set<string>()
+        let processedAttempts = 0
+        let starAwardsIssued = 0
+        let starsGranted = 0
+        let newBadges = 0
+
+        for (const attempt of passedAttempts) {
+            if (processedUsers.has(attempt.userId)) {
+                continue
+            }
+
+            processedUsers.add(attempt.userId)
+            processedAttempts += 1
+
+            const rewardResult = await this.issueRewardsForPassedExamAttempt(attempt.id, db)
+            if (rewardResult.starAwarded) {
+                starAwardsIssued += 1
+                starsGranted += rewardResult.stars
+            }
+            newBadges += rewardResult.newBadges
+        }
+
+        return {
+            processedAttempts,
+            starAwardsIssued,
+            starsGranted,
             newBadges,
         }
     }

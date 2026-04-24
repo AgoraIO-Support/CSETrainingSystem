@@ -9,6 +9,7 @@ import { FileService } from '@/lib/services/file.service'
 import { KnowledgeContextJobService } from '@/lib/services/knowledge-context-job.service'
 import { TranscriptJobService } from '@/lib/services/transcript-job.service'
 import { WecomWebhookService } from '@/lib/services/wecom-webhook.service'
+import { TrainingOpsRewardService } from '@/lib/services/training-ops-reward.service'
 import { AuthUser } from '@/lib/auth-middleware'
 import { DEFAULT_EXAM_TIMEZONE } from '@/lib/exam-timezone'
 import {
@@ -1927,6 +1928,9 @@ export class SmeMcpService {
         invitationsSkipped: number
         notificationsSent: number
         notificationsFailed: number
+        retroactiveStarAwardsIssued: number
+        retroactiveStarsGranted: number
+        retroactiveBadgesUnlocked: number
     }>> {
         await TrainingOpsService.assertScopedExamAccess(user, input.examId)
 
@@ -1999,7 +2003,7 @@ export class SmeMcpService {
         const existingSet = new Set(existingInvites.map((item) => item.userId))
         const toCreate = input.userIds.filter((id) => !existingSet.has(id))
 
-        await prisma.$transaction(async (tx) => {
+        const rewardBackfill = await prisma.$transaction(async (tx) => {
             if (toCreate.length > 0) {
                 await tx.examInvitation.createMany({
                     data: toCreate.map((userId) => ({ examId: input.examId, userId })),
@@ -2014,6 +2018,8 @@ export class SmeMcpService {
                     publishedAt: new Date(),
                 },
             })
+
+            return TrainingOpsRewardService.issueMissingRewardsForPublishedExam(input.examId, tx)
         })
 
         const notificationResults = { sent: 0, failed: 0 }
@@ -2044,7 +2050,7 @@ export class SmeMcpService {
         return {
             success: true,
             tool: 'publish_exam_with_invitations',
-            summary: `Published "${updatedExam?.title ?? exam.title}" and created ${toCreate.length} invitations.`,
+            summary: `Published "${updatedExam?.title ?? exam.title}" and created ${toCreate.length} invitations. Retroactive stars issued: ${rewardBackfill.starAwardsIssued}.`,
             data: {
                 exam: {
                     id: updatedExam?.id ?? exam.id,
@@ -2057,6 +2063,9 @@ export class SmeMcpService {
                 invitationsSkipped: input.userIds.length - toCreate.length,
                 notificationsSent: notificationResults.sent,
                 notificationsFailed: notificationResults.failed,
+                retroactiveStarAwardsIssued: rewardBackfill.starAwardsIssued,
+                retroactiveStarsGranted: rewardBackfill.starsGranted,
+                retroactiveBadgesUnlocked: rewardBackfill.newBadges,
             },
             nextActions: updatedExam?.learningEventId ? ['review_event_status', 'list_my_workspace'] : ['list_my_workspace'],
             recommendedNextInputs: updatedExam?.learningEventId
