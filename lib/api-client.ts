@@ -1900,6 +1900,21 @@ export class ApiClient {
         return response.blob()
     }
 
+    static async exportExamContent(examId: string): Promise<Blob> {
+        const token = this.getToken()
+        const response = await fetch(`/api/admin/exams/${examId}/content-export`, {
+            headers: {
+                Authorization: token ? `Bearer ${token}` : '',
+            },
+        })
+
+        if (!response.ok) {
+            throw new Error('Failed to export exam content')
+        }
+
+        return response.blob()
+    }
+
     static async getExamLeaderboard(examId: string, limit?: number): Promise<{
         success: boolean
         data: {

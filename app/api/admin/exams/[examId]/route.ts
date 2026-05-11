@@ -236,6 +236,45 @@ export const PATCH = withSmeOrAdminAuth(
             { status: 400 }
           );
         }
+
+        if (error.message === 'PUBLISHED_EXAM_REWARD_POLICY_ONLY') {
+          return NextResponse.json(
+            {
+              success: false,
+              error: {
+                code: 'EXAM_004',
+                message: 'Published exams only allow admin star reward updates for passed learners.',
+              },
+            },
+            { status: 400 }
+          );
+        }
+
+        if (error.message === 'PUBLISHED_EXAM_REWARD_DOWNGRADE_FORBIDDEN') {
+          return NextResponse.json(
+            {
+              success: false,
+              error: {
+                code: 'EXAM_004',
+                message: 'Published exam rewards can only be enabled or increased. Downgrades are not allowed.',
+              },
+            },
+            { status: 400 }
+          );
+        }
+
+        if (error.message === 'PUBLISHED_EXAM_STAR_VALUE_REQUIRED') {
+          return NextResponse.json(
+            {
+              success: false,
+              error: {
+                code: 'VALIDATION_ERROR',
+                message: 'Set a positive star value before enabling published exam reward backfill.',
+              },
+            },
+            { status: 400 }
+          );
+        }
       }
 
       return NextResponse.json(

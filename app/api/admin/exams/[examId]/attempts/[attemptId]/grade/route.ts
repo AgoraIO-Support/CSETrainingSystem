@@ -4,18 +4,45 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { withAdminAuth } from '@/lib/auth-middleware';
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware';
 import { ExamGradingService } from '@/lib/services/exam-grading.service';
+import prisma from '@/lib/prisma';
+import { TrainingOpsService } from '@/lib/services/training-ops.service';
 
 type RouteContext = {
   params: Promise<{ examId: string; attemptId: string }>;
 };
 
 // POST /api/admin/exams/[examId]/attempts/[attemptId]/grade - Auto-grade attempt
-export const POST = withAdminAuth(
+export const POST = withSmeOrAdminAuth(
   async (req: NextRequest, user, context: RouteContext) => {
     try {
-      const { attemptId } = await context.params;
+      const { examId, attemptId } = await context.params;
+
+      if (user.role === 'SME') {
+        await TrainingOpsService.assertScopedExamAccess(user, examId);
+      }
+
+      const attempt = await prisma.examAttempt.findFirst({
+        where: {
+          id: attemptId,
+          examId,
+        },
+        select: { id: true },
+      });
+
+      if (!attempt) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'ATTEMPT_NOT_FOUND',
+              message: 'Attempt not found',
+            },
+          },
+          { status: 404 }
+        );
+      }
 
       const gradingService = new ExamGradingService();
       const result = await gradingService.gradeAttempt(attemptId);
@@ -40,6 +67,19 @@ export const POST = withAdminAuth(
       console.error('Grade attempt error:', error);
 
       if (error instanceof Error) {
+        if (error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+          return NextResponse.json(
+            {
+              success: false,
+              error: {
+                code: 'FORBIDDEN',
+                message: 'Insufficient permissions',
+              },
+            },
+            { status: 403 }
+          );
+        }
+
         if (error.message === 'ATTEMPT_NOT_FOUND') {
           return NextResponse.json(
             {

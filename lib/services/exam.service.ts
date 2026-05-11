@@ -16,6 +16,7 @@ import {
   UserRole,
 } from '@prisma/client';
 import { FileService } from '@/lib/services/file.service';
+import { TrainingOpsRewardService } from '@/lib/services/training-ops-reward.service';
 import { ASSET_S3_BUCKET_NAME, S3_BUCKET_NAME } from '@/lib/aws-s3';
 import { resolveRichTextAssetUrls } from '@/lib/rich-text';
 import type { EssayGradingCriterion } from '@/lib/essay-grading';
@@ -158,6 +159,11 @@ export interface ExamWithDetails {
 }
 
 export class ExamService {
+  private static isPublishedRewardOnlyUpdate(data: UpdateExamInput): boolean {
+    const editableKeys = new Set(['awardsStars', 'starValue'])
+    return Object.entries(data).every(([key, value]) => value === undefined || editableKeys.has(key))
+  }
+
   private static isFormalSeriesType(seriesType?: LearningSeriesType | null): boolean {
     return seriesType === 'QUARTERLY_FINAL' || seriesType === 'YEAR_END_FINAL'
   }
@@ -590,6 +596,8 @@ export class ExamService {
         learningEventId: true,
         learningSeriesId: true,
         assessmentKind: true,
+        awardsStars: true,
+        starValue: true,
         countsTowardPerformance: true,
       },
     });
@@ -597,12 +605,23 @@ export class ExamService {
     if (!existing) {
       throw new Error('EXAM_NOT_FOUND');
     }
-    if (existing.status !== ExamStatus.DRAFT) {
+
+    const isPublishedRewardOnlyUpdate =
+      existing.status === ExamStatus.PUBLISHED &&
+      options?.actorRole === UserRole.ADMIN &&
+      this.isPublishedRewardOnlyUpdate(data)
+
+    if (existing.status !== ExamStatus.DRAFT && !isPublishedRewardOnlyUpdate) {
+      if (existing.status === ExamStatus.PUBLISHED && options?.actorRole === UserRole.ADMIN) {
+        throw new Error('PUBLISHED_EXAM_REWARD_POLICY_ONLY')
+      }
       throw new Error('EXAM_NOT_DRAFT');
     }
 
     const nextAssessmentKind = data.assessmentKind ?? existing.assessmentKind
     const nextCountsTowardPerformance = data.countsTowardPerformance ?? existing.countsTowardPerformance
+    const nextAwardsStars = data.awardsStars ?? existing.awardsStars
+    const nextStarValue = data.starValue ?? existing.starValue
 
     if (data.courseId !== undefined && data.courseId !== null) {
       const course = await prisma.course.findUnique({
@@ -622,6 +641,25 @@ export class ExamService {
         nextAssessmentKind,
         nextCountsTowardPerformance,
       })
+    }
+
+    if (isPublishedRewardOnlyUpdate) {
+      if (nextAwardsStars && (!nextStarValue || nextStarValue <= 0)) {
+        throw new Error('PUBLISHED_EXAM_STAR_VALUE_REQUIRED')
+      }
+
+      if (existing.awardsStars && nextAwardsStars === false) {
+        throw new Error('PUBLISHED_EXAM_REWARD_DOWNGRADE_FORBIDDEN')
+      }
+
+      if (
+        existing.awardsStars &&
+        typeof existing.starValue === 'number' &&
+        typeof nextStarValue === 'number' &&
+        nextStarValue < existing.starValue
+      ) {
+        throw new Error('PUBLISHED_EXAM_REWARD_DOWNGRADE_FORBIDDEN')
+      }
     }
 
     const hasAnyChange = Object.values(data).some((v) => v !== undefined);
@@ -685,6 +723,10 @@ export class ExamService {
         },
       },
     });
+
+    if (isPublishedRewardOnlyUpdate && nextAwardsStars && nextStarValue && nextStarValue > 0) {
+      await TrainingOpsRewardService.syncRewardsForPublishedExam(id)
+    }
 
     return exam as ExamWithDetails;
   }

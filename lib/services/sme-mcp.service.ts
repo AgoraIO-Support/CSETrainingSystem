@@ -34,6 +34,15 @@ import {
     inferTranscriptLanguageFromFilename,
     normalizeTranscriptLanguage,
 } from '@/lib/transcript-tracks'
+import {
+    buildEssayGradingCriteria,
+    buildEssayRubricFromCriteria,
+    buildEssaySampleAnswerGuidance,
+    parseEssayGradingCriteria,
+    sumEssayGradingCriteriaPoints,
+    type EssayGradingCriterion,
+    type EssayScoringStyle,
+} from '@/lib/essay-grading'
 import { v4 as uuidv4 } from 'uuid'
 
 type MappableUser = Pick<AuthUser, 'id' | 'role'>
@@ -72,6 +81,56 @@ const optionalText = (value?: string | null) => {
 
 const isUuid = (value: string) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+
+const buildEssayQuestionSupport = (input: {
+    question: string
+    points: number
+    rubric?: string | null
+    sampleAnswer?: string | null
+    gradingCriteria?: Array<{
+        id?: string
+        title: string
+        description?: string | null
+        maxPoints: number
+        guidance?: string | null
+        required?: boolean
+    }> | null
+    essayScoringStyle?: EssayScoringStyle
+    generateEssayScoringCriteria?: boolean
+}) => {
+    const existingCriteria = parseEssayGradingCriteria(input.gradingCriteria)
+    const criteria =
+        existingCriteria.length > 0
+            ? existingCriteria
+            : input.generateEssayScoringCriteria === false
+                ? []
+                : buildEssayGradingCriteria({
+                    maxPoints: input.points,
+                    style: input.essayScoringStyle,
+                    question: input.question,
+                    rubric: input.rubric,
+                })
+
+    const rubric =
+        optionalText(input.rubric) ??
+        (criteria.length > 0 ? buildEssayRubricFromCriteria(criteria) : null)
+    const sampleAnswer =
+        optionalText(input.sampleAnswer) ??
+        (criteria.length > 0
+            ? buildEssaySampleAnswerGuidance({
+                question: input.question,
+                rubric,
+                criteria,
+            })
+            : null)
+
+    return {
+        rubric,
+        sampleAnswer,
+        gradingCriteria: criteria.length > 0 ? criteria : null,
+        criteriaPointsTotal: sumEssayGradingCriteriaPoints(criteria),
+    }
+}
 
 type DomainReference = Awaited<ReturnType<typeof TrainingOpsService.getScopedDomains>>[number]
 type SeriesReference = Awaited<ReturnType<typeof TrainingOpsService.getScopedSeries>>[number]
@@ -1076,6 +1135,9 @@ export class SmeMcpService {
             difficultyMix?: DifficultyLevel | 'mixed'
             questionTypes?: Array<ExamQuestionType>
             coverageNotes?: string | null
+            generateEssayScoringCriteria?: boolean
+            essayScoringStyle?: EssayScoringStyle
+            requireEssayAiReady?: boolean
             questions?: Array<{
                 type: ExamQuestionType
                 difficulty?: DifficultyLevel
@@ -1084,6 +1146,14 @@ export class SmeMcpService {
                 correctAnswer?: string
                 rubric?: string
                 sampleAnswer?: string
+                gradingCriteria?: Array<{
+                    id?: string
+                    title: string
+                    description?: string | null
+                    maxPoints: number
+                    guidance?: string | null
+                    required?: boolean
+                }> | null
                 maxWords?: number
                 points?: number
                 explanation?: string
@@ -1109,6 +1179,14 @@ export class SmeMcpService {
             createdThisRun: number
             byType: Record<string, number>
         }
+        essayReadiness: {
+            totalEssayQuestions: number
+            aiReadyEssayQuestions: number
+            missingCriteriaCount: number
+            missingSampleAnswerCount: number
+            criteriaPointMismatchCount: number
+            status: 'NOT_APPLICABLE' | 'READY' | 'PARTIAL' | 'NOT_READY'
+        }
         scoreSummary: {
             examTotalScore: number
             questionPointsTotal: number
@@ -1125,6 +1203,8 @@ export class SmeMcpService {
 
         let sourceCourse: CourseReference | null = null
         const warnings: string[] = []
+        const effectiveGenerateEssayScoringCriteria =
+            input.requireEssayAiReady ? true : input.generateEssayScoringCriteria
 
         if (input.mode === 'generate_from_course') {
             if (!input.sourceCourse) {
@@ -1180,16 +1260,48 @@ export class SmeMcpService {
 
         if (input.mode === 'manual_payload') {
             for (const question of input.questions ?? []) {
+                const points = question.points ?? 10
+                const essaySupport = question.type === ExamQuestionType.ESSAY
+                    ? buildEssayQuestionSupport({
+                        question: question.question,
+                        points,
+                        rubric: question.rubric,
+                        sampleAnswer: question.sampleAnswer,
+                        gradingCriteria: question.gradingCriteria,
+                        essayScoringStyle: input.essayScoringStyle,
+                        generateEssayScoringCriteria: effectiveGenerateEssayScoringCriteria,
+                    })
+                    : null
+
+                if (essaySupport && input.requireEssayAiReady) {
+                    if (!essaySupport.gradingCriteria || essaySupport.gradingCriteria.length === 0) {
+                        throw errorWithDetails('ESSAY_SCORING_CRITERIA_REQUIRED', {
+                            question: question.question,
+                        })
+                    }
+
+                    if (!essaySupport.sampleAnswer) {
+                        throw errorWithDetails('ESSAY_SAMPLE_ANSWER_REQUIRED', {
+                            question: question.question,
+                        })
+                    }
+                }
+
                 await ExamService.addQuestion(exam.id, {
                     type: question.type,
                     difficulty: question.difficulty ?? DifficultyLevel.MEDIUM,
                     question: question.question,
                     options: question.options,
                     correctAnswer: question.correctAnswer,
-                    rubric: question.rubric,
-                    sampleAnswer: question.sampleAnswer,
+                    rubric: essaySupport?.rubric ?? question.rubric,
+                    sampleAnswer: essaySupport?.sampleAnswer ?? question.sampleAnswer,
+                    gradingCriteria:
+                        essaySupport?.gradingCriteria ??
+                        (question.gradingCriteria
+                            ? parseEssayGradingCriteria(question.gradingCriteria)
+                            : undefined),
                     maxWords: question.maxWords,
-                    points: question.points,
+                    points,
                     explanation: question.explanation,
                     topic: question.topic,
                     tags: question.tags,
@@ -1250,6 +1362,8 @@ export class SmeMcpService {
                 difficulty: input.difficultyMix ?? 'mixed',
                 focusAreas,
                 topics: focusAreas,
+                generateEssayScoringCriteria: effectiveGenerateEssayScoringCriteria,
+                essayScoringStyle: input.essayScoringStyle,
             })
 
             warnings.push(...generationResult.warnings)
@@ -1263,11 +1377,68 @@ export class SmeMcpService {
             return acc
         }, {})
         const questionPointsTotal = questions.reduce((sum, question) => sum + (Number(question.points) || 0), 0)
+        const essayQuestions = questions.filter((question) => question.type === ExamQuestionType.ESSAY)
+        const essayReadiness = essayQuestions.reduce(
+            (acc, question) => {
+                const criteria = parseEssayGradingCriteria(question.gradingCriteria)
+                const hasCriteria = criteria.length > 0
+                const hasSampleAnswer = Boolean(optionalText(question.sampleAnswer))
+                const criteriaPointMismatch =
+                    hasCriteria && sumEssayGradingCriteriaPoints(criteria) !== (Number(question.points) || 0)
+
+                acc.totalEssayQuestions += 1
+                if (hasCriteria && hasSampleAnswer && !criteriaPointMismatch) {
+                    acc.aiReadyEssayQuestions += 1
+                }
+                if (!hasCriteria) acc.missingCriteriaCount += 1
+                if (!hasSampleAnswer) acc.missingSampleAnswerCount += 1
+                if (criteriaPointMismatch) acc.criteriaPointMismatchCount += 1
+                return acc
+            },
+            {
+                totalEssayQuestions: 0,
+                aiReadyEssayQuestions: 0,
+                missingCriteriaCount: 0,
+                missingSampleAnswerCount: 0,
+                criteriaPointMismatchCount: 0,
+            }
+        )
+
+        const essayReadinessStatus =
+            essayReadiness.totalEssayQuestions === 0
+                ? 'NOT_APPLICABLE'
+                : essayReadiness.aiReadyEssayQuestions === essayReadiness.totalEssayQuestions
+                    ? 'READY'
+                    : essayReadiness.aiReadyEssayQuestions === 0
+                        ? 'NOT_READY'
+                        : 'PARTIAL'
 
         if (questionPointsTotal !== examRecord.totalScore) {
             warnings.push(
                 `Question points total is ${questionPointsTotal}, while the exam totalScore is ${examRecord.totalScore}. Update the exam or question points before publishing.`
             )
+        }
+
+        if (essayReadiness.missingCriteriaCount > 0) {
+            warnings.push(
+                `${essayReadiness.missingCriteriaCount} essay question(s) are missing structured scoring points.`
+            )
+        }
+
+        if (essayReadiness.missingSampleAnswerCount > 0) {
+            warnings.push(
+                `${essayReadiness.missingSampleAnswerCount} essay question(s) are missing sample answers for AI-assisted grading.`
+            )
+        }
+
+        if (essayReadiness.criteriaPointMismatchCount > 0) {
+            warnings.push(
+                `${essayReadiness.criteriaPointMismatchCount} essay question(s) have scoring-point totals that do not match the question points.`
+            )
+        }
+
+        if (input.requireEssayAiReady && essayReadinessStatus !== 'READY' && essayReadinessStatus !== 'NOT_APPLICABLE') {
+            throw errorWithDetails('ESSAY_AI_GRADING_NOT_READY', essayReadiness)
         }
 
         return {
@@ -1293,6 +1464,10 @@ export class SmeMcpService {
                     totalQuestions: questions.length,
                     createdThisRun: createdThisRun.length,
                     byType,
+                },
+                essayReadiness: {
+                    ...essayReadiness,
+                    status: essayReadinessStatus,
                 },
                 scoreSummary: {
                     examTotalScore: examRecord.totalScore,
@@ -1431,6 +1606,12 @@ export class SmeMcpService {
             totalScore: number
             questionCount: number
             questionPoints: number
+            essayQuestionCount: number
+            essayQuestionsAiReadyCount: number
+            essayQuestionsMissingCriteriaCount: number
+            essayQuestionsMissingSampleAnswerCount: number
+            essayCriteriaPointMismatchCount: number
+            aiGradingReadiness: 'NOT_APPLICABLE' | 'READY' | 'PARTIAL' | 'NOT_READY'
             invitationCount: number
             attemptCount: number
             gradedAttemptCount: number
@@ -1532,7 +1713,7 @@ export class SmeMcpService {
         }
 
         const linkedExamIds = event.exams.map((exam) => exam.id)
-        const [examQuestionStats, examDetails, lessons] = await Promise.all([
+        const [examQuestionStats, essayQuestions, examDetails, lessons] = await Promise.all([
             linkedExamIds.length > 0
                 ? prisma.examQuestion.groupBy({
                     by: ['examId'],
@@ -1544,6 +1725,21 @@ export class SmeMcpService {
                         _all: true,
                     },
                     _sum: {
+                        points: true,
+                    },
+                })
+                : Promise.resolve([]),
+            linkedExamIds.length > 0
+                ? prisma.examQuestion.findMany({
+                    where: {
+                        examId: { in: linkedExamIds },
+                        archivedAt: null,
+                        type: ExamQuestionType.ESSAY,
+                    },
+                    select: {
+                        examId: true,
+                        sampleAnswer: true,
+                        gradingCriteria: true,
                         points: true,
                     },
                 })
@@ -1657,12 +1853,50 @@ export class SmeMcpService {
                 },
             ])
         )
+        const essayReadinessByExamId = new Map<string, {
+            essayQuestionCount: number
+            essayQuestionsAiReadyCount: number
+            essayQuestionsMissingCriteriaCount: number
+            essayQuestionsMissingSampleAnswerCount: number
+            essayCriteriaPointMismatchCount: number
+        }>()
+        for (const row of essayQuestions) {
+            const existing = essayReadinessByExamId.get(row.examId) ?? {
+                essayQuestionCount: 0,
+                essayQuestionsAiReadyCount: 0,
+                essayQuestionsMissingCriteriaCount: 0,
+                essayQuestionsMissingSampleAnswerCount: 0,
+                essayCriteriaPointMismatchCount: 0,
+            }
+            const criteria = parseEssayGradingCriteria(row.gradingCriteria)
+            const hasCriteria = criteria.length > 0
+            const hasSampleAnswer = Boolean(optionalText(row.sampleAnswer))
+            const criteriaPointMismatch =
+                hasCriteria && sumEssayGradingCriteriaPoints(criteria) !== (Number(row.points) || 0)
+
+            existing.essayQuestionCount += 1
+            if (hasCriteria && hasSampleAnswer && !criteriaPointMismatch) {
+                existing.essayQuestionsAiReadyCount += 1
+            }
+            if (!hasCriteria) existing.essayQuestionsMissingCriteriaCount += 1
+            if (!hasSampleAnswer) existing.essayQuestionsMissingSampleAnswerCount += 1
+            if (criteriaPointMismatch) existing.essayCriteriaPointMismatchCount += 1
+
+            essayReadinessByExamId.set(row.examId, existing)
+        }
         const eventExamStatsById = new Map(event.exams.map((exam) => [exam.id, exam]))
 
         const exams = examDetails.map((exam) => {
             const questionStats = examQuestionStatsByExamId.get(exam.id) ?? {
                 questionCount: 0,
                 questionPoints: 0,
+            }
+            const essayReadiness = essayReadinessByExamId.get(exam.id) ?? {
+                essayQuestionCount: 0,
+                essayQuestionsAiReadyCount: 0,
+                essayQuestionsMissingCriteriaCount: 0,
+                essayQuestionsMissingSampleAnswerCount: 0,
+                essayCriteriaPointMismatchCount: 0,
             }
             const operationalStats = eventExamStatsById.get(exam.id)
             const blockers: string[] = []
@@ -1679,6 +1913,15 @@ export class SmeMcpService {
                 blockers.push('Exam question points do not match the configured exam total score.')
             }
 
+            const aiGradingReadiness: 'NOT_APPLICABLE' | 'READY' | 'PARTIAL' | 'NOT_READY' =
+                essayReadiness.essayQuestionCount === 0
+                    ? 'NOT_APPLICABLE'
+                    : essayReadiness.essayQuestionsAiReadyCount === essayReadiness.essayQuestionCount
+                        ? 'READY'
+                        : essayReadiness.essayQuestionsAiReadyCount === 0
+                            ? 'NOT_READY'
+                            : 'PARTIAL'
+
             return {
                 id: exam.id,
                 title: exam.title,
@@ -1687,6 +1930,12 @@ export class SmeMcpService {
                 totalScore: exam.totalScore,
                 questionCount: questionStats.questionCount,
                 questionPoints: questionStats.questionPoints,
+                essayQuestionCount: essayReadiness.essayQuestionCount,
+                essayQuestionsAiReadyCount: essayReadiness.essayQuestionsAiReadyCount,
+                essayQuestionsMissingCriteriaCount: essayReadiness.essayQuestionsMissingCriteriaCount,
+                essayQuestionsMissingSampleAnswerCount: essayReadiness.essayQuestionsMissingSampleAnswerCount,
+                essayCriteriaPointMismatchCount: essayReadiness.essayCriteriaPointMismatchCount,
+                aiGradingReadiness,
                 invitationCount: operationalStats?.invitationCount ?? 0,
                 attemptCount: operationalStats?.attemptCount ?? 0,
                 gradedAttemptCount: operationalStats?.gradedAttemptCount ?? 0,
@@ -1697,6 +1946,26 @@ export class SmeMcpService {
                 blockers,
             }
         })
+
+        for (const exam of exams) {
+            if (exam.essayQuestionsMissingCriteriaCount > 0) {
+                warnings.push(
+                    `Exam "${exam.title}" has ${exam.essayQuestionsMissingCriteriaCount} essay question(s) missing structured scoring points for AI-assisted grading.`
+                )
+            }
+
+            if (exam.essayQuestionsMissingSampleAnswerCount > 0) {
+                warnings.push(
+                    `Exam "${exam.title}" has ${exam.essayQuestionsMissingSampleAnswerCount} essay question(s) missing sample answers for AI-assisted grading.`
+                )
+            }
+
+            if (exam.essayCriteriaPointMismatchCount > 0) {
+                warnings.push(
+                    `Exam "${exam.title}" has ${exam.essayCriteriaPointMismatchCount} essay question(s) whose scoring-point totals do not match the configured question points.`
+                )
+            }
+        }
 
         const lessonStates = lessons.map((lesson) => {
             const transcript = getPrimaryAiTranscriptTrack(lesson.transcripts)

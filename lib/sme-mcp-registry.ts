@@ -310,6 +310,16 @@ const manualQuestionSchema = z.object({
     correctAnswer: z.string().trim().optional(),
     rubric: z.string().trim().optional(),
     sampleAnswer: z.string().trim().optional(),
+    gradingCriteria: z.array(
+        z.object({
+            id: z.string().trim().min(1).optional(),
+            title: z.string().trim().min(1),
+            description: z.string().trim().optional().nullable(),
+            maxPoints: z.number().int().positive(),
+            guidance: z.string().trim().optional().nullable(),
+            required: z.boolean().optional(),
+        })
+    ).optional().nullable(),
     maxWords: z.number().int().positive().optional(),
     points: z.number().int().positive().optional(),
     explanation: z.string().trim().optional(),
@@ -327,6 +337,9 @@ const designExamQuestionsSchema = z
         difficultyMix: z.union([z.nativeEnum(DifficultyLevel), z.literal('mixed')]).optional(),
         questionTypes: z.array(z.nativeEnum(ExamQuestionType)).optional(),
         coverageNotes: z.string().trim().optional().nullable(),
+        generateEssayScoringCriteria: z.boolean().optional(),
+        essayScoringStyle: z.enum(['concise', 'standard', 'detailed']).optional(),
+        requireEssayAiReady: z.boolean().optional(),
         questions: z.array(manualQuestionSchema).optional(),
     })
     .superRefine((value, ctx) => {
@@ -835,6 +848,18 @@ export const smeMcpToolDefinitions = [
                     examples: typeof parameterExample('design_exam_questions', 'coverageNotes') === 'string' ? [parameterExample('design_exam_questions', 'coverageNotes')] : undefined,
                     nullable: true,
                 }),
+                generateEssayScoringCriteria: describedBooleanSchema(
+                    parameterDescription('design_exam_questions', 'generateEssayScoringCriteria', 'Optional essay scoring-point generation flag.'),
+                    true
+                ),
+                essayScoringStyle: describedStringSchema(parameterDescription('design_exam_questions', 'essayScoringStyle', 'Optional essay scoring style.'), {
+                    enum: parameterAcceptedValues('design_exam_questions', 'essayScoringStyle'),
+                    examples: typeof parameterExample('design_exam_questions', 'essayScoringStyle') === 'string' ? [parameterExample('design_exam_questions', 'essayScoringStyle')] : undefined,
+                }),
+                requireEssayAiReady: describedBooleanSchema(
+                    parameterDescription('design_exam_questions', 'requireEssayAiReady', 'Optional strict essay AI-readiness flag.'),
+                    false
+                ),
                 questions: {
                     type: 'array',
                     description: parameterDescription('design_exam_questions', 'questions', 'Optional manual question payload.'),
@@ -848,6 +873,22 @@ export const smeMcpToolDefinitions = [
                             correctAnswer: { type: 'string' },
                             rubric: { type: 'string' },
                             sampleAnswer: { type: 'string' },
+                            gradingCriteria: {
+                                type: 'array',
+                                items: {
+                                    type: 'object',
+                                    properties: {
+                                        id: { type: 'string' },
+                                        title: { type: 'string' },
+                                        description: { type: ['string', 'null'] },
+                                        maxPoints: { type: 'integer' },
+                                        guidance: { type: ['string', 'null'] },
+                                        required: { type: 'boolean' },
+                                    },
+                                    required: ['title', 'maxPoints'],
+                                    additionalProperties: false,
+                                },
+                            },
                             maxWords: { type: 'integer' },
                             points: { type: 'integer' },
                             explanation: { type: 'string' },

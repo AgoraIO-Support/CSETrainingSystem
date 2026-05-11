@@ -3,6 +3,7 @@ import {
     ExamQuestionType,
     DifficultyLevel,
     ExamStatus,
+    AssessmentKind,
 } from '@prisma/client'
 import { z } from 'zod'
 import { LessonCompletionRule, LessonType } from '@prisma/client'
@@ -353,7 +354,7 @@ export const createExamSchema = z.object({
 
 export const updateExamSchema = z.object({
     courseId: z.string().uuid().optional().nullable(),
-    title: z.string().min(1).max(200).optional(),
+    title: z.string().min(1, 'Title is required').max(200, 'Title is too long').optional(),
     description: z.string().optional().nullable(),
     instructions: z.string().optional().nullable(),
     timeLimit: z.number().int().positive().optional().nullable(),
@@ -367,7 +368,17 @@ export const updateExamSchema = z.object({
     showResultsImmediately: z.boolean().optional(),
     allowReview: z.boolean().optional(),
     maxAttempts: z.number().int().positive().optional(),
-})
+    assessmentKind: z.nativeEnum(AssessmentKind).optional(),
+    awardsStars: z.boolean().optional(),
+    starValue: z.number().int().min(0).max(20).optional().nullable(),
+    countsTowardPerformance: z.boolean().optional(),
+}).refine(
+    (data) => Object.keys(data).length > 0,
+    {
+        message: 'At least one field must be provided',
+        path: ['title'],
+    }
+)
 
 export const changeExamStatusSchema = z.object({
     status: z.nativeEnum(ExamStatus),

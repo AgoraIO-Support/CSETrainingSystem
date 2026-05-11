@@ -4,8 +4,10 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { withAdminAuth } from '@/lib/auth-middleware';
+import { withSmeOrAdminAuth } from '@/lib/auth-middleware';
 import { ExamGradingService } from '@/lib/services/exam-grading.service';
+import prisma from '@/lib/prisma';
+import { TrainingOpsService } from '@/lib/services/training-ops.service';
 import { z } from 'zod';
 
 type RouteContext = {
@@ -19,17 +21,46 @@ const gradeEssaySchema = z.object({
 });
 
 // POST /api/admin/exams/[examId]/attempts/[attemptId]/grade-essay - Finalize/override answer grade
-export const POST = withAdminAuth(
+export const POST = withSmeOrAdminAuth(
   async (req: NextRequest, user, context: RouteContext) => {
     try {
+      const { examId, attemptId } = await context.params;
+
+      if (user.role === 'SME') {
+        await TrainingOpsService.assertScopedExamAccess(user, examId);
+      }
+
       const body = await req.json();
       const { answerId, score, feedback } = gradeEssaySchema.parse(body);
+
+      const answer = await prisma.examAnswer.findFirst({
+        where: {
+          id: answerId,
+          attemptId,
+          attempt: {
+            examId,
+          },
+        },
+        select: { id: true },
+      });
+
+      if (!answer) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'ANSWER_NOT_FOUND',
+              message: 'Answer not found',
+            },
+          },
+          { status: 404 }
+        );
+      }
 
       const gradingService = new ExamGradingService();
       await gradingService.finalizeAnswerGrade(answerId, user.id, score, feedback);
 
       // Get updated grading summary
-      const { attemptId } = await context.params;
       const summary = await gradingService.getGradingSummary(attemptId);
 
       return NextResponse.json({
@@ -57,6 +88,19 @@ export const POST = withAdminAuth(
       }
 
       if (error instanceof Error) {
+        if (error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
+          return NextResponse.json(
+            {
+              success: false,
+              error: {
+                code: 'FORBIDDEN',
+                message: 'Insufficient permissions',
+              },
+            },
+            { status: 403 }
+          );
+        }
+
         if (error.message === 'ANSWER_NOT_FOUND') {
           return NextResponse.json(
             {

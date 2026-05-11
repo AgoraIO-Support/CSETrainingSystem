@@ -105,6 +105,29 @@ export const POST = withSmeOrAdminAuth(
         );
       }
 
+      const users =
+        userIds.length > 0
+          ? await prisma.user.findMany({
+              where: { id: { in: userIds }, status: 'ACTIVE' },
+              select: { id: true },
+            })
+          : []
+      const activeUserIds = new Set(users.map((u) => u.id))
+      const invalidUserIds = userIds.filter((id) => !activeUserIds.has(id))
+      if (invalidUserIds.length > 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'EXAM_013',
+              message: 'Some selected users are invalid or inactive.',
+              details: invalidUserIds,
+            },
+          },
+          { status: 400 }
+        )
+      }
+
       // Create invitations (skip duplicates)
       const results = {
         created: 0,

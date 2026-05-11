@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useState, useEffect, use, useRef, useCallback } from 'react'
+import { Suspense, useState, useEffect, use, useRef, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -28,6 +28,7 @@ import {
     CheckCircle,
     XCircle,
     Copy,
+    Download,
     Paperclip,
     ExternalLink,
 } from 'lucide-react'
@@ -107,6 +108,77 @@ const createEmptyCriterion = (): EssayGradingCriterion => ({
     required: false,
 })
 
+type EssayReadinessStatus = 'READY' | 'PARTIAL' | 'NOT_READY' | 'NOT_APPLICABLE'
+
+type EssayQuestionHealthStatus = 'ready' | 'missing_criteria' | 'missing_sample' | 'points_mismatch' | 'needs_setup'
+
+const getEssayQuestionHealth = (question: ExamQuestion) => {
+    const criteria = question.gradingCriteria ?? []
+    const criteriaPoints = criteria.reduce((sum, criterion) => sum + criterion.maxPoints, 0)
+    const hasCriteria = criteria.length > 0
+    const hasSampleAnswer = Boolean(question.sampleAnswer?.trim())
+
+    let status: EssayQuestionHealthStatus = 'ready'
+    if (!hasCriteria && !hasSampleAnswer) {
+        status = 'needs_setup'
+    } else if (!hasCriteria) {
+        status = 'missing_criteria'
+    } else if (!hasSampleAnswer) {
+        status = 'missing_sample'
+    } else if (criteriaPoints !== question.points) {
+        status = 'points_mismatch'
+    }
+
+    return {
+        status,
+        criteriaCount: criteria.length,
+        criteriaPoints,
+        hasSampleAnswer,
+        isReady: status === 'ready',
+        readiness: status === 'ready'
+            ? 'READY'
+            : status === 'needs_setup'
+                ? 'NOT_READY'
+                : 'PARTIAL' as EssayReadinessStatus,
+        detailLabel:
+            status === 'ready'
+                ? 'AI-ready'
+                : status === 'missing_criteria'
+                    ? 'Missing scoring points'
+                    : status === 'missing_sample'
+                        ? 'Missing sample answer'
+                        : status === 'points_mismatch'
+                            ? 'Point mismatch'
+                            : 'Needs setup',
+    }
+}
+
+const essayHealthTheme: Record<
+    EssayReadinessStatus,
+    { badge: string; shell: string; text: string }
+> = {
+    READY: {
+        badge: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+        shell: 'border-emerald-200 bg-emerald-50/70',
+        text: 'text-emerald-700',
+    },
+    PARTIAL: {
+        badge: 'border-amber-200 bg-amber-50 text-amber-700',
+        shell: 'border-amber-200 bg-amber-50/70',
+        text: 'text-amber-700',
+    },
+    NOT_READY: {
+        badge: 'border-rose-200 bg-rose-50 text-rose-700',
+        shell: 'border-rose-200 bg-rose-50/70',
+        text: 'text-rose-700',
+    },
+    NOT_APPLICABLE: {
+        badge: 'border-slate-200 bg-slate-50 text-slate-700',
+        shell: 'border-slate-200 bg-slate-50/80',
+        text: 'text-slate-700',
+    },
+}
+
 function ExamQuestionsPageContent({ params }: PageProps) {
     const { id: examId } = use(params)
     const searchParams = useSearchParams()
@@ -129,6 +201,7 @@ function ExamQuestionsPageContent({ params }: PageProps) {
     const [form, setForm] = useState<QuestionForm>(defaultQuestionForm)
     const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
     const [saving, setSaving] = useState(false)
+    const [exportingContent, setExportingContent] = useState(false)
 
     // AI generation state
     const [showGenerateDialog, setShowGenerateDialog] = useState(false)
@@ -208,6 +281,40 @@ function ExamQuestionsPageContent({ params }: PageProps) {
             cancelled = true
         }
     }, [showGenerateDialog, examId])
+
+    const essayQuestions = useMemo(
+        () => questions.filter((question) => question.type === 'ESSAY'),
+        [questions]
+    )
+
+    const essayScoringOverview = useMemo(() => {
+        const details = essayQuestions.map((question) => ({
+            question,
+            ...getEssayQuestionHealth(question),
+        }))
+
+        const totalEssayQuestions = details.length
+        const readyCount = details.filter((detail) => detail.readiness === 'READY').length
+        const readiness: EssayReadinessStatus =
+            totalEssayQuestions === 0
+                ? 'NOT_APPLICABLE'
+                : readyCount === totalEssayQuestions
+                    ? 'READY'
+                    : readyCount === 0
+                        ? 'NOT_READY'
+                        : 'PARTIAL'
+
+        return {
+            totalEssayQuestions,
+            readyCount,
+            missingCriteriaCount: details.filter((detail) => detail.status === 'missing_criteria').length,
+            missingSampleCount: details.filter((detail) => detail.status === 'missing_sample').length,
+            pointsMismatchCount: details.filter((detail) => detail.status === 'points_mismatch').length,
+            needsSetupCount: details.filter((detail) => detail.status === 'needs_setup').length,
+            readiness,
+            details,
+        }
+    }, [essayQuestions])
 
     const closeQuestionForm = () => {
         setShowForm(false)
@@ -723,6 +830,24 @@ function ExamQuestionsPageContent({ params }: PageProps) {
         }
     }
 
+    const handleExportExamContent = async () => {
+        try {
+            setExportingContent(true)
+            const blob = await ApiClient.exportExamContent(examId)
+            const url = URL.createObjectURL(blob)
+            const anchor = document.createElement('a')
+            anchor.href = url
+            anchor.download = `${exam?.title || 'exam-content'}.md`
+            anchor.click()
+            URL.revokeObjectURL(url)
+            showSuccess('Exam content exported')
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to export exam content')
+        } finally {
+            setExportingContent(false)
+        }
+    }
+
     return (
         <DashboardLayout>
             <div className="space-y-6">
@@ -739,6 +864,20 @@ function ExamQuestionsPageContent({ params }: PageProps) {
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
+                        {!isSmeMode ? (
+                            <Button
+                                variant="outline"
+                                onClick={handleExportExamContent}
+                                disabled={exportingContent || questions.length === 0}
+                            >
+                                {exportingContent ? (
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                ) : (
+                                    <Download className="h-4 w-4 mr-2" />
+                                )}
+                                Export Exam Content
+                            </Button>
+                        ) : null}
                         <Button
                             variant="destructive"
                             disabled={!canEditQuestions || !hasSelection || bulkDeleting}
@@ -1445,6 +1584,92 @@ function ExamQuestionsPageContent({ params }: PageProps) {
                     </Card>
                 )}
 
+                {essayScoringOverview.totalEssayQuestions > 0 && (
+                    <Card className="border-slate-200 bg-[linear-gradient(180deg,#fcfdfd_0%,#f6f9fb_100%)] shadow-sm">
+                        <CardHeader>
+                            <div className="flex items-start justify-between gap-3">
+                                <div>
+                                    <CardTitle>Essay Scoring Health</CardTitle>
+                                    <CardDescription>
+                                        Visual check for structured scoring points, sample answers, and point balance before AI-assisted grading.
+                                    </CardDescription>
+                                </div>
+                                <Badge
+                                    variant="outline"
+                                    className={`rounded-full ${essayHealthTheme[essayScoringOverview.readiness].badge}`}
+                                >
+                                    {essayScoringOverview.readiness}
+                                </Badge>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className={`rounded-2xl border p-4 ${essayHealthTheme[essayScoringOverview.readiness].shell}`}>
+                                <p className="text-sm font-semibold text-slate-950">
+                                    {essayScoringOverview.readiness === 'READY'
+                                        ? 'All essay questions are aligned for AI-assisted grading.'
+                                        : essayScoringOverview.readiness === 'PARTIAL'
+                                            ? `${essayScoringOverview.readyCount} of ${essayScoringOverview.totalEssayQuestions} essay questions are fully AI-ready.`
+                                            : `${essayScoringOverview.readyCount} of ${essayScoringOverview.totalEssayQuestions} essay questions are AI-ready.`}
+                                </p>
+                                <p className="mt-2 text-sm leading-6 text-slate-600">
+                                    READY means the question has structured scoring points, a sample answer, and matching point totals.
+                                </p>
+                            </div>
+                            <div className="grid gap-3 md:grid-cols-5">
+                                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Essay Questions</p>
+                                    <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-slate-950">{essayScoringOverview.totalEssayQuestions}</p>
+                                </div>
+                                <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">AI-ready</p>
+                                    <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-emerald-900">{essayScoringOverview.readyCount}</p>
+                                </div>
+                                <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700">Missing points</p>
+                                    <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-amber-900">
+                                        {essayScoringOverview.missingCriteriaCount + essayScoringOverview.needsSetupCount}
+                                    </p>
+                                </div>
+                                <div className="rounded-2xl border border-orange-200 bg-orange-50/80 p-4">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-orange-700">Missing sample</p>
+                                    <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-orange-900">
+                                        {essayScoringOverview.missingSampleCount + essayScoringOverview.needsSetupCount}
+                                    </p>
+                                </div>
+                                <div className="rounded-2xl border border-rose-200 bg-rose-50/80 p-4">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-700">Point mismatches</p>
+                                    <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-rose-900">{essayScoringOverview.pointsMismatchCount}</p>
+                                </div>
+                            </div>
+                            <div className="grid gap-3 lg:grid-cols-2">
+                                {essayScoringOverview.details.map(({ question, readiness, detailLabel, criteriaCount, criteriaPoints, hasSampleAnswer }) => {
+                                    const theme = essayHealthTheme[readiness]
+                                    return (
+                                        <div key={`essay-health-${question.id}`} className={`rounded-2xl border p-4 ${theme.shell}`}>
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <p className="text-sm font-semibold text-slate-950">
+                                                        {stripRichTextToPlainText(question.question) || 'Untitled essay question'}
+                                                    </p>
+                                                    <p className="mt-1 text-xs text-slate-500">
+                                                        {criteriaCount} scoring point{criteriaCount === 1 ? '' : 's'} · {criteriaPoints}/{question.points} pts · {hasSampleAnswer ? 'sample answer ready' : 'sample answer missing'}
+                                                    </p>
+                                                    <p className={`mt-2 text-xs font-medium ${theme.text}`}>
+                                                        {detailLabel}
+                                                    </p>
+                                                </div>
+                                                <Badge variant="outline" className={`rounded-full ${theme.badge}`}>
+                                                    {readiness}
+                                                </Badge>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
                 {/* Questions List */}
                 <Card>
                     <CardHeader>
@@ -1489,7 +1714,11 @@ function ExamQuestionsPageContent({ params }: PageProps) {
                                 {questions.map((question, index) => (
                                     <div
                                         key={question.id}
-                                        className="flex items-start gap-4 p-4 border rounded-lg hover:bg-accent/50 transition-colors"
+                                        className={`flex items-start gap-4 rounded-2xl border p-4 transition-colors hover:bg-accent/50 ${
+                                            question.type === 'ESSAY'
+                                                ? essayHealthTheme[getEssayQuestionHealth(question).readiness].shell
+                                                : ''
+                                        }`}
                                     >
                                         <input
                                             type="checkbox"
@@ -1510,6 +1739,20 @@ function ExamQuestionsPageContent({ params }: PageProps) {
                                                 <Badge variant="secondary">
                                                     {question.points} pts
                                                 </Badge>
+                                                {question.type === 'ESSAY' && (() => {
+                                                    const essayHealth = getEssayQuestionHealth(question)
+                                                    const theme = essayHealthTheme[essayHealth.readiness]
+                                                    return (
+                                                        <div className="flex items-center gap-2">
+                                                            <Badge variant="outline" className={`rounded-full ${theme.badge}`}>
+                                                                {essayHealth.readiness}
+                                                            </Badge>
+                                                            <span className={`text-xs font-medium ${theme.text}`}>
+                                                                {essayHealth.detailLabel}
+                                                            </span>
+                                                        </div>
+                                                    )
+                                                })()}
                                                 {question.difficulty && (
                                                     <span className={`px-2 py-0.5 rounded text-xs ${difficultyColors[question.difficulty]}`}>
                                                         {question.difficulty}

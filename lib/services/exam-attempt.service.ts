@@ -120,6 +120,55 @@ export interface AttemptWithAnswers {
 }
 
 export class ExamAttemptService {
+  private static shuffleArray<T>(array: T[]): T[] {
+    const result = [...array];
+    for (let i = result.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [result[i], result[j]] = [result[j], result[i]];
+    }
+    return result;
+  }
+
+  private static randomizeMultipleChoiceSnapshot(input: {
+    options: string[] | null;
+    correctAnswer: string | null;
+  }): {
+    options: string[] | null;
+    correctAnswer: string | null;
+  } {
+    const options = input.options ? [...input.options] : null;
+    if (!options || options.length <= 1 || !input.correctAnswer) {
+      return {
+        options: input.options,
+        correctAnswer: input.correctAnswer,
+      };
+    }
+
+    const originalIndexes = input.correctAnswer
+      .split(',')
+      .map((part) => Number.parseInt(part.trim(), 10))
+      .filter((idx) => Number.isFinite(idx) && idx >= 0 && idx < options.length);
+
+    if (originalIndexes.length === 0) {
+      return {
+        options: input.options,
+        correctAnswer: input.correctAnswer,
+      };
+    }
+
+    const indexedOptions = options.map((value, index) => ({ value, originalIndex: index }));
+    const shuffled = this.shuffleArray(indexedOptions);
+    const remappedCorrect = shuffled
+      .map((item, newIndex) => (originalIndexes.includes(item.originalIndex) ? newIndex : null))
+      .filter((idx): idx is number => idx !== null)
+      .sort((a, b) => a - b);
+
+    return {
+      options: shuffled.map((item) => item.value),
+      correctAnswer: remappedCorrect.join(','),
+    };
+  }
+
   private static async getAttemptQuestionSet(
     attemptId: string,
     examId: string
@@ -346,8 +395,39 @@ export class ExamAttemptService {
       },
     });
 
-    await prisma.examAttemptQuestionSnapshot.createMany({
-      data: exam.questions.map((q) => ({
+    const questionSnapshots = exam.questions.map((q) => {
+      if (exam.randomizeOptions && q.type === ExamQuestionType.MULTIPLE_CHOICE) {
+        const randomized = this.randomizeMultipleChoiceSnapshot({
+          options: (q.options as string[] | null) ?? null,
+          correctAnswer: q.correctAnswer,
+        });
+
+        return {
+          attemptId: attempt.id,
+          examId: exam.id,
+          examVersion: exam.version,
+          questionId: q.id,
+          type: q.type,
+          difficulty: q.difficulty,
+          question: q.question,
+          options: randomized.options ?? Prisma.JsonNull,
+          correctAnswer: randomized.correctAnswer,
+          rubric: q.rubric,
+          sampleAnswer: q.sampleAnswer,
+          gradingCriteria: q.gradingCriteria ?? Prisma.JsonNull,
+          maxWords: q.maxWords,
+          attachmentS3Key: q.attachmentS3Key,
+          attachmentFilename: q.attachmentFilename,
+          attachmentMimeType: q.attachmentMimeType,
+          points: q.points,
+          explanation: q.explanation,
+          topic: q.topic,
+          tags: q.tags,
+          order: q.order,
+        };
+      }
+
+      return {
         attemptId: attempt.id,
         examId: exam.id,
         examVersion: exam.version,
@@ -369,7 +449,11 @@ export class ExamAttemptService {
         topic: q.topic,
         tags: q.tags,
         order: q.order,
-      })),
+      };
+    });
+
+    await prisma.examAttemptQuestionSnapshot.createMany({
+      data: questionSnapshots,
       skipDuplicates: true,
     });
 
@@ -396,8 +480,19 @@ export class ExamAttemptService {
    * Build attempt result with questions
    */
   private static buildAttemptResult(
-    attempt: any,
-    exam: any,
+    attempt: {
+      id: string;
+      examVersion: number | null;
+      attemptNumber: number;
+      startedAt: Date;
+      expiresAt: Date | null;
+    },
+    exam: {
+      id: string;
+      version?: number | null;
+      timeLimit: number | null;
+      randomizeQuestions: boolean;
+    },
     baseQuestions: Array<{
       id: string;
       type: ExamQuestionType;
@@ -426,43 +521,19 @@ export class ExamAttemptService {
       expiresAt: attempt.expiresAt,
       timeLimit: exam.timeLimit,
       totalQuestions: questions.length,
-      questions: questions.map(q => {
-        let options = q.options as string[] | null;
-        // Optionally randomize options for MC questions
-        if (
-          exam.randomizeOptions &&
-          options &&
-          q.type === ExamQuestionType.MULTIPLE_CHOICE
-        ) {
-          options = this.shuffleArray([...options]);
-        }
-
-        return {
-          id: q.id,
-          type: q.type,
-          question: q.question,
-          options,
-          points: q.points,
-          order: q.order,
-          maxWords: q.maxWords || undefined,
-          attachmentFilename: q.attachmentFilename || undefined,
-          attachmentMimeType: q.attachmentMimeType || undefined,
-          attachmentUrl: q.attachmentUrl || undefined,
-        };
-      }),
+      questions: questions.map(q => ({
+        id: q.id,
+        type: q.type,
+        question: q.question,
+        options: q.options as string[] | null,
+        points: q.points,
+        order: q.order,
+        maxWords: q.maxWords || undefined,
+        attachmentFilename: q.attachmentFilename || undefined,
+        attachmentMimeType: q.attachmentMimeType || undefined,
+        attachmentUrl: q.attachmentUrl || undefined,
+      })),
     };
-  }
-
-  /**
-   * Shuffle array (Fisher-Yates algorithm)
-   */
-  private static shuffleArray<T>(array: T[]): T[] {
-    const result = [...array];
-    for (let i = result.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [result[i], result[j]] = [result[j], result[i]];
-    }
-    return result;
   }
 
   /**

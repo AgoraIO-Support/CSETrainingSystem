@@ -51,7 +51,7 @@ function ExamInvitationsPageContent({ params }: PageProps) {
             const [examRes, invitationsRes, usersRes] = await Promise.all([
                 ApiClient.getAdminExam(examId),
                 ApiClient.getExamInvitations(examId),
-                ApiClient.getUsers({ limit: 200 }),
+                ApiClient.getUsers({ limit: 200, status: 'ACTIVE' }),
             ])
             setExam(examRes.data)
             setInvitations(invitationsRes.data)
@@ -70,6 +70,7 @@ function ExamInvitationsPageContent({ params }: PageProps) {
     const invitedUserIds = new Set(invitations.map(inv => inv.userId))
 
     const filteredUsers = users.filter(user => {
+        if (user.status !== 'ACTIVE') return false
         if (invitedUserIds.has(user.id)) return false
         const query = searchQuery.toLowerCase()
         return !query ||

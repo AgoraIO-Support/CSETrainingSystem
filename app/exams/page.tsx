@@ -18,6 +18,8 @@ import {
     Play,
     AlertCircle,
     Calendar,
+    ChevronDown,
+    ChevronUp,
     Eye,
 } from 'lucide-react'
 import Link from 'next/link'
@@ -76,6 +78,7 @@ export default function ExamsPage() {
     const [exams, setExams] = useState<ExamListItem[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
+    const [expandedExamIds, setExpandedExamIds] = useState<string[]>([])
 
     useEffect(() => {
         loadExams()
@@ -134,6 +137,12 @@ export default function ExamsPage() {
             hour: 'numeric',
             minute: '2-digit',
         })
+    }
+
+    const toggleExpanded = (examId: string) => {
+        setExpandedExamIds((prev) =>
+            prev.includes(examId) ? prev.filter((id) => id !== examId) : [...prev, examId]
+        )
     }
 
     if (loading) {
@@ -249,98 +258,136 @@ export default function ExamsPage() {
                                 {exams.map(exam => (
                                     <div
                                         key={exam.id}
-                                        className="flex flex-col gap-4 rounded-[1.35rem] border border-slate-200/70 bg-white p-5 transition-all duration-200 hover:border-[#00c2ff]/10 hover:shadow-lg hover:shadow-[#006688]/5 md:flex-row md:items-start md:justify-between"
+                                        className="rounded-[1.35rem] border border-slate-200/70 bg-white p-4 transition-all duration-200 hover:border-[#00c2ff]/10 hover:shadow-lg hover:shadow-[#006688]/5"
                                     >
-                                        <div className="flex-1">
-                                            <div className="flex items-center gap-3 mb-2">
-                                                <h3 className="text-lg font-semibold tracking-[-0.03em]">{exam.title}</h3>
-                                                {exam.assessmentKind ? (
-                                                    <Badge variant="outline">
-                                                        {exam.assessmentKind}
-                                                    </Badge>
-                                                ) : null}
-                                                {exam.hasPassed && (
-                                                    <Badge className="border-emerald-200 bg-emerald-100 text-emerald-800 dark:bg-green-900/20 dark:text-green-200">
-                                                        <CheckCircle className="h-3 w-3 mr-1" />
-                                                        Passed
-                                                    </Badge>
-                                                )}
-                                                {isDeadlineSoon(exam.deadline) && !exam.hasPassed && (
-                                                    <Badge variant="destructive">
-                                                        <AlertCircle className="h-3 w-3 mr-1" />
-                                                        Deadline Soon
-                                                    </Badge>
-                                                )}
-                                                {isDeadlinePassed(exam.deadline) && (
-                                                    <Badge variant="outline">
-                                                        Expired
-                                                    </Badge>
-                                                )}
-                                                {exam.awardsStars && exam.starValue ? (
-                                                    <Badge variant="secondary">
-                                                        +{exam.starValue} stars on pass
-                                                    </Badge>
-                                                ) : null}
-                                                {exam.certificateEligible ? (
-                                                    <Badge variant="outline">
-                                                        Certificate on pass
-                                                    </Badge>
-                                                ) : null}
-                                                {exam.countsTowardPerformance ? (
-                                                    <Badge>
-                                                        Performance
-                                                    </Badge>
+                                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                            <div className="min-w-0 flex-1 space-y-3">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <h3 className="text-lg font-semibold tracking-[-0.03em]">{exam.title}</h3>
+                                                    {exam.assessmentKind ? <Badge variant="outline">{exam.assessmentKind}</Badge> : null}
+                                                    {exam.hasPassed ? (
+                                                        <Badge className="border-emerald-200 bg-emerald-100 text-emerald-800 dark:bg-green-900/20 dark:text-green-200">
+                                                            <CheckCircle className="mr-1 h-3 w-3" />
+                                                            Passed
+                                                        </Badge>
+                                                    ) : null}
+                                                    {isDeadlineSoon(exam.deadline) && !exam.hasPassed ? (
+                                                        <Badge variant="destructive">
+                                                            <AlertCircle className="mr-1 h-3 w-3" />
+                                                            Deadline Soon
+                                                        </Badge>
+                                                    ) : null}
+                                                    {isDeadlinePassed(exam.deadline) ? <Badge variant="outline">Expired</Badge> : null}
+                                                    {exam.certificateEligible ? <Badge variant="outline">Certificate on pass</Badge> : null}
+                                                    {exam.countsTowardPerformance ? <Badge>Performance</Badge> : null}
+                                                </div>
+
+                                                <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
+                                                    <span className="flex items-center gap-1">
+                                                        <FileQuestion className="h-4 w-4" />
+                                                        {exam._count?.questions ?? 0} questions
+                                                    </span>
+                                                    {exam.timeLimit ? (
+                                                        <span className="flex items-center gap-1">
+                                                            <Clock className="h-4 w-4" />
+                                                            {exam.timeLimit} min
+                                                        </span>
+                                                    ) : null}
+                                                    <span>Pass {exam.passingScore}/{exam.totalScore}</span>
+                                                    <span>Attempts {(exam.userAttempts ?? 0)}/{exam.maxAttempts}</span>
+                                                    {exam.deadline ? (
+                                                        <span className="flex items-center gap-1">
+                                                            <Calendar className="h-4 w-4" />
+                                                            {buildExamScheduleDisplay(exam.deadline, exam.timezone)?.localLabel}
+                                                        </span>
+                                                    ) : null}
+                                                    {exam.bestScore !== null ? (
+                                                        <span className="font-medium text-slate-700">Best {exam.bestScore}%</span>
+                                                    ) : null}
+                                                </div>
+
+                                                {exam.course ? (
+                                                    <div className="flex flex-wrap gap-2">
+                                                        <Badge variant="secondary" className="text-xs">
+                                                            Course: {exam.course.title}
+                                                        </Badge>
+                                                        {exam.awardsStars && exam.starValue ? (
+                                                            <Badge variant="secondary" className="text-xs">
+                                                                +{exam.starValue} stars
+                                                            </Badge>
+                                                        ) : null}
+                                                    </div>
+                                                ) : exam.awardsStars && exam.starValue ? (
+                                                    <div className="flex flex-wrap gap-2">
+                                                        <Badge variant="secondary" className="text-xs">
+                                                            +{exam.starValue} stars
+                                                        </Badge>
+                                                    </div>
                                                 ) : null}
                                             </div>
 
-                                            {exam.description && (
-                                                <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
-                                                    {exam.description}
-                                                </p>
-                                            )}
-
-                                            <div className="flex items-center gap-6 text-sm text-muted-foreground">
-                                                <span className="flex items-center gap-1">
-                                                    <FileQuestion className="h-4 w-4" />
-                                                    {exam._count?.questions ?? 0} questions
-                                                </span>
-                                                {exam.timeLimit && (
-                                                    <span className="flex items-center gap-1">
-                                                        <Clock className="h-4 w-4" />
-                                                        {exam.timeLimit} min
-                                                    </span>
-                                                )}
-                                                <span>
-                                                    Pass: {exam.passingScore}/{exam.totalScore}
-                                                </span>
-                                                <span>
-                                                    Attempts: {(exam.userAttempts ?? 0)}/{exam.maxAttempts}
-                                                </span>
-                                                {exam.assessmentKind === 'FORMAL' ? (
-                                                    <span>
-                                                        Formal assessment
-                                                    </span>
-                                                ) : exam.assessmentKind === 'READINESS' ? (
-                                                    <span>
-                                                        Release readiness
-                                                    </span>
-                                                ) : (
-                                                    <span>
-                                                        Practice assessment
-                                                    </span>
-                                                )}
-                                                {exam.deadline && (
-                                                    <span className="flex items-center gap-1">
-                                                        <Calendar className="h-4 w-4" />
-                                                        Due (your local time): {buildExamScheduleDisplay(exam.deadline, exam.timezone)?.localLabel}
-                                                    </span>
-                                                )}
+                                            <div className="flex flex-col gap-2 sm:flex-row lg:flex-col lg:items-end">
+                                                <Link href={`/exams/${exam.id}`}>
+                                                    <Button
+                                                        className="w-full sm:w-auto"
+                                                        disabled={isDeadlinePassed(exam.deadline) || ((exam.userAttempts ?? 0) >= exam.maxAttempts && !exam.hasPassed)}
+                                                    >
+                                                        {isDeadlinePassed(exam.deadline) ? (
+                                                            'Deadline Passed'
+                                                        ) : (exam.userAttempts ?? 0) === 0 ? (
+                                                            <>
+                                                                <Play className="mr-2 h-4 w-4" />
+                                                                Start Exam
+                                                            </>
+                                                        ) : (exam.userAttempts ?? 0) >= exam.maxAttempts ? (
+                                                            'View Results'
+                                                        ) : (
+                                                            <>
+                                                                <Play className="mr-2 h-4 w-4" />
+                                                                Retry
+                                                            </>
+                                                        )}
+                                                    </Button>
+                                                </Link>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    className="w-full justify-between px-3 sm:w-auto"
+                                                    onClick={() => toggleExpanded(exam.id)}
+                                                >
+                                                    <span>{expandedExamIds.includes(exam.id) ? 'Hide details' : 'Show details'}</span>
+                                                    {expandedExamIds.includes(exam.id) ? (
+                                                        <ChevronUp className="ml-2 h-4 w-4" />
+                                                    ) : (
+                                                        <ChevronDown className="ml-2 h-4 w-4" />
+                                                    )}
+                                                </Button>
                                             </div>
+                                        </div>
 
-                                            {exam.bestScore !== null && (
-                                            <div className="mt-3">
+                                        {expandedExamIds.includes(exam.id) ? (
+                                            <div className="mt-4 border-t border-slate-200/70 pt-4">
+                                                {exam.description ? (
+                                                    <p className="mb-4 text-sm leading-6 text-muted-foreground">
+                                                        {exam.description}
+                                                    </p>
+                                                ) : null}
+
+                                                {exam.bestScore !== null ? (
+                                                    <div className="mb-4">
+                                                        <div className="mb-2 flex items-center justify-between text-sm">
+                                                            <span>Best Score</span>
+                                                            <span className="font-medium">{exam.bestScore}%</span>
+                                                        </div>
+                                                        <Progress
+                                                            value={exam.bestScore}
+                                                            className={exam.hasPassed ? '[&>div]:bg-green-500' : ''}
+                                                        />
+                                                    </div>
+                                                ) : null}
+
                                                 {(exam.awardsStars && exam.starValue) || exam.certificateEligible ? (
-                                                    <div className="mb-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                                                    <div className="mb-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
                                                         {exam.awardsStars && exam.starValue ? (
                                                             <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
                                                                 Passing awards {exam.starValue} star{exam.starValue === 1 ? '' : 's'} and contributes to badge progression.
@@ -353,99 +400,57 @@ export default function ExamsPage() {
                                                         ) : null}
                                                     </div>
                                                 ) : null}
-                                                <div className="flex items-center justify-between text-sm mb-1">
-                                                    <span>Best Score</span>
-                                                    <span className="font-medium">{exam.bestScore}%</span>
-                                                    </div>
-                                                    <Progress
-                                                        value={exam.bestScore}
-                                                        className={exam.hasPassed ? '[&>div]:bg-green-500' : ''}
-                                                    />
-                                                </div>
-                                            )}
 
-                                            {exam.course && (
-                                                <div className="mt-2">
-                                                    <Badge variant="secondary" className="text-xs">
-                                                        Course: {exam.course.title}
-                                                    </Badge>
-                                                </div>
-                                            )}
-
-                                            {exam.attemptResults && exam.attemptResults.length > 0 && (
-                                                <div className="mt-4 rounded-2xl border border-slate-200/70 bg-slate-50 p-4">
-                                                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                                                        Attempt Results
-                                                    </p>
-                                                    <div className="mt-3 space-y-2">
-                                                        {exam.attemptResults.map((attempt) => (
-                                                            <div
-                                                                key={attempt.id}
-                                                                className="flex flex-col gap-2 rounded-2xl border border-border/70 bg-white/80 px-4 py-3 md:flex-row md:items-center md:justify-between"
-                                                            >
-                                                                <div className="flex flex-wrap items-center gap-2 text-sm">
-                                                                    <span className="font-medium">
-                                                                        Attempt #{attempt.attemptNumber}
-                                                                    </span>
-                                                                    {attempt.passed === true ? (
-                                                                        <Badge className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-200">
-                                                                            Passed
-                                                                        </Badge>
-                                                                    ) : attempt.passed === false ? (
-                                                                        <Badge variant="secondary">
-                                                                            Not Passed
-                                                                        </Badge>
-                                                                    ) : (
-                                                                        <Badge variant="outline">
-                                                                            {attempt.status === 'GRADED' ? 'Graded' : 'Submitted'}
-                                                                        </Badge>
-                                                                    )}
-                                                                    {attempt.percentageScore !== null && (
-                                                                        <span className="text-muted-foreground">
-                                                                            Score: {attempt.percentageScore}%
+                                                {exam.attemptResults && exam.attemptResults.length > 0 ? (
+                                                    <div className="rounded-2xl border border-slate-200/70 bg-slate-50 p-4">
+                                                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                                            Attempt Results
+                                                        </p>
+                                                        <div className="mt-3 space-y-2">
+                                                            {exam.attemptResults.map((attempt) => (
+                                                                <div
+                                                                    key={attempt.id}
+                                                                    className="flex flex-col gap-2 rounded-2xl border border-border/70 bg-white/80 px-4 py-3 md:flex-row md:items-center md:justify-between"
+                                                                >
+                                                                    <div className="flex flex-wrap items-center gap-2 text-sm">
+                                                                        <span className="font-medium">
+                                                                            Attempt #{attempt.attemptNumber}
                                                                         </span>
-                                                                    )}
-                                                                    <span className="text-muted-foreground">
-                                                                        Submitted: {formatAttemptSubmittedAt(attempt.submittedAt)}
-                                                                    </span>
+                                                                        {attempt.passed === true ? (
+                                                                            <Badge className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-200">
+                                                                                Passed
+                                                                            </Badge>
+                                                                        ) : attempt.passed === false ? (
+                                                                            <Badge variant="secondary">
+                                                                                Not Passed
+                                                                            </Badge>
+                                                                        ) : (
+                                                                            <Badge variant="outline">
+                                                                                {attempt.status === 'GRADED' ? 'Graded' : 'Submitted'}
+                                                                            </Badge>
+                                                                        )}
+                                                                        {attempt.percentageScore !== null ? (
+                                                                            <span className="text-muted-foreground">
+                                                                                Score: {attempt.percentageScore}%
+                                                                            </span>
+                                                                        ) : null}
+                                                                        <span className="text-muted-foreground">
+                                                                            Submitted: {formatAttemptSubmittedAt(attempt.submittedAt)}
+                                                                        </span>
+                                                                    </div>
+                                                                    <Link href={`/exams/${exam.id}/result?attemptId=${attempt.id}`}>
+                                                                        <Button variant="outline" size="sm">
+                                                                            <Eye className="mr-2 h-4 w-4" />
+                                                                            Answer Review
+                                                                        </Button>
+                                                                    </Link>
                                                                 </div>
-                                                                <Link href={`/exams/${exam.id}/result?attemptId=${attempt.id}`}>
-                                                                    <Button variant="outline" size="sm">
-                                                                        <Eye className="h-4 w-4 mr-2" />
-                                                                        Answer Review
-                                                                    </Button>
-                                                                </Link>
-                                                            </div>
-                                                        ))}
+                                                            ))}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div className="pt-1 md:ml-4">
-                                            <Link href={`/exams/${exam.id}`}>
-                                                <Button
-                                                    className="w-full md:w-auto"
-                                                    disabled={isDeadlinePassed(exam.deadline) || (exam.userAttempts ?? 0) >= exam.maxAttempts && !exam.hasPassed}
-                                                >
-                                                    {isDeadlinePassed(exam.deadline) ? (
-                                                        'Deadline Passed'
-                                                    ) : (exam.userAttempts ?? 0) === 0 ? (
-                                                        <>
-                                                            <Play className="h-4 w-4 mr-2" />
-                                                            Start Exam
-                                                        </>
-                                                    ) : (exam.userAttempts ?? 0) >= exam.maxAttempts ? (
-                                                        'View Results'
-                                                    ) : (
-                                                        <>
-                                                            <Play className="h-4 w-4 mr-2" />
-                                                            Retry
-                                                        </>
-                                                    )}
-                                                </Button>
-                                            </Link>
-                                        </div>
+                                                ) : null}
+                                            </div>
+                                        ) : null}
                                     </div>
                                 ))}
                             </div>

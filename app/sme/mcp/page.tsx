@@ -53,6 +53,19 @@ type SmeMcpResult = {
     warnings?: string[]
 }
 
+type EssayReadinessStatus = 'NOT_APPLICABLE' | 'READY' | 'PARTIAL' | 'NOT_READY'
+
+type EssayReadinessHighlight = {
+    key: string
+    title: string
+    status: EssayReadinessStatus
+    summary: string
+    stats: Array<{
+        label: string
+        value: number
+    }>
+}
+
 const TOOL_DEFINITIONS = smeMcpToolMetadata
 const CATEGORY_ORDER = ['workspace', 'authoring', 'operations', 'advanced', 'insights'] as const
 type ToolCategoryKey = (typeof CATEGORY_ORDER)[number]
@@ -115,6 +128,121 @@ const isValueMissing = (value: unknown) => {
     if (typeof value === 'string') return value.trim().length === 0
     if (Array.isArray(value)) return value.length === 0
     return false
+}
+
+const asObject = (value: unknown): Record<string, unknown> | null =>
+    value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null
+
+const toNumber = (value: unknown) => {
+    const normalized = Number(value)
+    return Number.isFinite(normalized) ? normalized : 0
+}
+
+const toEssayReadinessStatus = (value: unknown): EssayReadinessStatus | null => {
+    if (
+        value === 'NOT_APPLICABLE' ||
+        value === 'READY' ||
+        value === 'PARTIAL' ||
+        value === 'NOT_READY'
+    ) {
+        return value
+    }
+    return null
+}
+
+const buildEssayReadinessHighlights = (data: unknown): EssayReadinessHighlight[] => {
+    const payload = asObject(data)
+    if (!payload) return []
+
+    const highlights: EssayReadinessHighlight[] = []
+    const directReadiness = asObject(payload.essayReadiness)
+    if (directReadiness) {
+        const totalEssayQuestions = toNumber(directReadiness.totalEssayQuestions)
+        if (totalEssayQuestions > 0) {
+            const aiReadyEssayQuestions = toNumber(directReadiness.aiReadyEssayQuestions)
+            const missingCriteriaCount = toNumber(directReadiness.missingCriteriaCount)
+            const missingSampleAnswerCount = toNumber(directReadiness.missingSampleAnswerCount)
+            const criteriaPointMismatchCount = toNumber(directReadiness.criteriaPointMismatchCount)
+            const status = toEssayReadinessStatus(directReadiness.status) ?? 'PARTIAL'
+
+            highlights.push({
+                key: 'direct',
+                title: 'Essay AI Grading Readiness',
+                status,
+                summary:
+                    status === 'READY'
+                        ? `All ${totalEssayQuestions} essay questions are ready for later AI-assisted grading.`
+                        : `${aiReadyEssayQuestions} of ${totalEssayQuestions} essay questions are AI-ready.`,
+                stats: [
+                    { label: 'Essay Questions', value: totalEssayQuestions },
+                    { label: 'AI-ready', value: aiReadyEssayQuestions },
+                    { label: 'Missing scoring points', value: missingCriteriaCount },
+                    { label: 'Missing sample answers', value: missingSampleAnswerCount },
+                    { label: 'Point mismatches', value: criteriaPointMismatchCount },
+                ],
+            })
+        }
+    }
+
+    const exams = Array.isArray(payload.exams) ? payload.exams : []
+    for (const examValue of exams) {
+        const exam = asObject(examValue)
+        if (!exam) continue
+        const totalEssayQuestions = toNumber(exam.essayQuestionCount)
+        if (totalEssayQuestions <= 0) continue
+
+        const aiReadyEssayQuestions = toNumber(exam.essayQuestionsAiReadyCount)
+        const missingCriteriaCount = toNumber(exam.essayQuestionsMissingCriteriaCount)
+        const missingSampleAnswerCount = toNumber(exam.essayQuestionsMissingSampleAnswerCount)
+        const criteriaPointMismatchCount = toNumber(exam.essayCriteriaPointMismatchCount)
+        const status = toEssayReadinessStatus(exam.aiGradingReadiness) ?? 'PARTIAL'
+        const title = typeof exam.title === 'string' && exam.title.trim() ? exam.title : 'Linked exam'
+
+        highlights.push({
+            key: `exam-${String(exam.id ?? title)}`,
+            title,
+            status,
+            summary:
+                status === 'READY'
+                    ? `All ${totalEssayQuestions} essay questions are AI-ready.`
+                    : `${aiReadyEssayQuestions} of ${totalEssayQuestions} essay questions are AI-ready.`,
+            stats: [
+                { label: 'Essay Questions', value: totalEssayQuestions },
+                { label: 'AI-ready', value: aiReadyEssayQuestions },
+                { label: 'Missing scoring points', value: missingCriteriaCount },
+                { label: 'Missing sample answers', value: missingSampleAnswerCount },
+                { label: 'Point mismatches', value: criteriaPointMismatchCount },
+            ],
+        })
+    }
+
+    return highlights
+}
+
+const essayReadinessTheme: Record<
+    EssayReadinessStatus,
+    { shell: string; badge: string; icon: string }
+> = {
+    READY: {
+        shell: 'border-emerald-200 bg-emerald-50/80',
+        badge: 'border-emerald-200 bg-white text-emerald-700',
+        icon: 'text-emerald-600',
+    },
+    PARTIAL: {
+        shell: 'border-amber-200 bg-amber-50/80',
+        badge: 'border-amber-200 bg-white text-amber-700',
+        icon: 'text-amber-600',
+    },
+    NOT_READY: {
+        shell: 'border-rose-200 bg-rose-50/80',
+        badge: 'border-rose-200 bg-white text-rose-700',
+        icon: 'text-rose-600',
+    },
+    NOT_APPLICABLE: {
+        shell: 'border-slate-200 bg-slate-50/80',
+        badge: 'border-slate-200 bg-white text-slate-600',
+        icon: 'text-slate-500',
+    },
 }
 
 const clampToolLibraryWidth = (width: number, containerWidth?: number) => {
@@ -615,6 +743,7 @@ export default function SmeMcpLabPage() {
     )
     const referenceParameters = selectedToolDef.parameters.filter((parameter) => parameter.inputKind === 'reference')
     const resultJson = result ? JSON.stringify(result, null, 2) : ''
+    const essayReadinessHighlights = useMemo(() => buildEssayReadinessHighlights(result?.data), [result?.data])
     const visibleToolCount = filteredToolDefinitions.length
     const visibleAdvancedCount = filteredToolDefinitions.filter((tool) => tool.category === 'advanced').length
     const visibleRequiredCount = filteredToolDefinitions.reduce(
@@ -1309,6 +1438,71 @@ export default function SmeMcpLabPage() {
                                                 {result?.summary ?? 'Run a tool to view the execution summary.'}
                                             </p>
                                         </div>
+                                        {essayReadinessHighlights.length ? (
+                                            <div className="rounded-[28px] border border-[#dbe7f3] bg-[linear-gradient(180deg,#fbfdff_0%,#f4f8fc_100%)] p-4 shadow-sm">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div>
+                                                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                                            Essay AI Readiness
+                                                        </p>
+                                                        <p className="mt-1 text-sm text-slate-600">
+                                                            Scoring points, sample answers, and point-balance checks extracted from the latest result.
+                                                        </p>
+                                                    </div>
+                                                    <Badge variant="outline" className="rounded-full border-[#d7e4ee] bg-white text-slate-700">
+                                                        {essayReadinessHighlights.length} block{essayReadinessHighlights.length > 1 ? 's' : ''}
+                                                    </Badge>
+                                                </div>
+                                                <div className="mt-4 grid gap-3">
+                                                    {essayReadinessHighlights.map((highlight) => {
+                                                        const theme = essayReadinessTheme[highlight.status]
+                                                        const statusLabel =
+                                                            highlight.status === 'NOT_READY'
+                                                                ? 'Needs setup'
+                                                                : highlight.status === 'NOT_APPLICABLE'
+                                                                    ? 'No essay questions'
+                                                                    : highlight.status
+                                                        return (
+                                                            <div
+                                                                key={highlight.key}
+                                                                className={`rounded-3xl border p-4 shadow-sm ${theme.shell}`}
+                                                            >
+                                                                <div className="flex items-start justify-between gap-3">
+                                                                    <div className="space-y-1">
+                                                                        <div className="flex items-center gap-2">
+                                                                            {highlight.status === 'READY' ? (
+                                                                                <CheckCircle2 className={`h-4 w-4 ${theme.icon}`} />
+                                                                            ) : (
+                                                                                <AlertCircle className={`h-4 w-4 ${theme.icon}`} />
+                                                                            )}
+                                                                            <p className="text-sm font-semibold text-slate-950">
+                                                                                {highlight.title}
+                                                                            </p>
+                                                                        </div>
+                                                                        <p className="text-sm leading-6 text-slate-600">{highlight.summary}</p>
+                                                                    </div>
+                                                                    <Badge variant="outline" className={`rounded-full ${theme.badge}`}>
+                                                                        {statusLabel}
+                                                                    </Badge>
+                                                                </div>
+                                                                <div className="mt-4 grid gap-3 md:grid-cols-5">
+                                                                    {highlight.stats.map((stat) => (
+                                                                        <div key={`${highlight.key}-${stat.label}`} className="rounded-2xl border border-white/80 bg-white/80 p-3">
+                                                                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                                                                {stat.label}
+                                                                            </p>
+                                                                            <p className="mt-2 text-xl font-semibold tracking-[-0.04em] text-slate-950">
+                                                                                {stat.value}
+                                                                            </p>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )
+                                                    })}
+                                                </div>
+                                            </div>
+                                        ) : null}
                                         {result?.warnings?.length ? (
                                             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
                                                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">Warnings</p>

@@ -33,6 +33,7 @@
         "cleanup:test-data:apply": "bash scripts/podman/cleanup-test-data.sh --scope=all --apply --confirm=WIPE_LOCAL_TEST_DATA",
         "cleanup:test-data:direct": "tsx scripts/cleanup-test-data.ts",
         "cleanup:test-data:direct:apply": "tsx scripts/cleanup-test-data.ts --scope=all --apply --confirm=WIPE_LOCAL_TEST_DATA",
+        "audit:randomized-mc-attempts": "tsx scripts/audit-randomized-multiple-choice-attempts.ts",
         "test:podman": "bash scripts/podman/test.sh"
     },
     "dependencies": {

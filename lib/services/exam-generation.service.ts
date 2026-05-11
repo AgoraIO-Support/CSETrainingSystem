@@ -20,6 +20,13 @@ import { createHash } from 'crypto';
 import { AIPromptResolverService, type ResolvedAIPrompt } from '@/lib/services/ai-prompt-resolver.service';
 import { getChatCompletionsTokenBudget } from '@/lib/services/openai-models';
 import { getPrimaryAiTranscriptTrack } from '@/lib/transcript-tracks';
+import {
+  buildEssayGradingCriteria,
+  buildEssayRubricFromCriteria,
+  buildEssaySampleAnswerGuidance,
+  type EssayGradingCriterion,
+  type EssayScoringStyle,
+} from '@/lib/essay-grading';
 
 export interface GenerationConfig {
   questionCounts: {
@@ -33,6 +40,8 @@ export interface GenerationConfig {
   lessonIds?: string[];
   topics?: string[];
   focusAreas?: string[];
+  generateEssayScoringCriteria?: boolean;
+  essayScoringStyle?: EssayScoringStyle;
 }
 
 export interface GeneratedQuestion {
@@ -43,6 +52,7 @@ export interface GeneratedQuestion {
   correctAnswer?: string;
   rubric?: string;
   sampleAnswer?: string;
+  gradingCriteria?: EssayGradingCriterion[];
   explanation?: string;
   topic?: string;
   sourceChunkIds: string[];
@@ -81,6 +91,42 @@ export class ExamGenerationService {
       apiKey: process.env.OPENAI_API_KEY,
     });
     this.knowledgeService = new KnowledgeContextService(process.env.OPENAI_API_KEY);
+  }
+
+  private augmentEssayQuestion(question: GeneratedQuestion, config: GenerationConfig): GeneratedQuestion {
+    if (question.type !== ExamQuestionType.ESSAY) return question;
+    if (config.generateEssayScoringCriteria === false && question.gradingCriteria?.length) {
+      return question;
+    }
+
+    const criteria =
+      question.gradingCriteria && question.gradingCriteria.length > 0
+        ? question.gradingCriteria
+        : config.generateEssayScoringCriteria === false
+          ? []
+          : buildEssayGradingCriteria({
+              maxPoints: 10,
+              style: config.essayScoringStyle,
+              question: question.question,
+              rubric: question.rubric,
+            });
+
+    return {
+      ...question,
+      rubric:
+        question.rubric?.trim() ||
+        (criteria.length > 0 ? buildEssayRubricFromCriteria(criteria) : question.rubric),
+      sampleAnswer:
+        question.sampleAnswer?.trim() ||
+        (criteria.length > 0
+          ? buildEssaySampleAnswerGuidance({
+              question: question.question,
+              rubric: question.rubric,
+              criteria,
+            })
+          : question.sampleAnswer),
+      gradingCriteria: criteria.length > 0 ? criteria : question.gradingCriteria,
+    };
   }
 
   /**
@@ -238,7 +284,8 @@ export class ExamGenerationService {
           coverageHints
         );
 
-        questions.push(result.question);
+        const resolvedQuestion = this.augmentEssayQuestion(result.question, config);
+        questions.push(resolvedQuestion);
         totalTokensUsed += result.tokensUsed;
 
         this.trackCoveredTopic(
@@ -251,14 +298,15 @@ export class ExamGenerationService {
 
         const created = await ExamService.addQuestion(examId, {
           type: job.type,
-          difficulty: result.question.difficulty,
-          question: result.question.question,
-          options: result.question.options,
-          correctAnswer: result.question.correctAnswer,
-          rubric: result.question.rubric,
-          sampleAnswer: result.question.sampleAnswer,
-          explanation: result.question.explanation,
-          topic: result.question.topic,
+          difficulty: resolvedQuestion.difficulty,
+          question: resolvedQuestion.question,
+          options: resolvedQuestion.options,
+          correctAnswer: resolvedQuestion.correctAnswer,
+          rubric: resolvedQuestion.rubric,
+          sampleAnswer: resolvedQuestion.sampleAnswer,
+          gradingCriteria: resolvedQuestion.gradingCriteria,
+          explanation: resolvedQuestion.explanation,
+          topic: resolvedQuestion.topic,
           isAIGenerated: true,
           aiModel: 'gpt-4o-mini',
           generationPrompt: result.generationPrompt,
@@ -277,7 +325,7 @@ export class ExamGenerationService {
         );
 
         // Fallback: generate a placeholder question so the request still yields output.
-        const fallback = this.buildFallbackQuestion(job.type, difficulty);
+        const fallback = this.augmentEssayQuestion(this.buildFallbackQuestion(job.type, difficulty), config);
         const created = await ExamService.addQuestion(examId, {
           type: job.type,
           difficulty: fallback.difficulty,
@@ -286,6 +334,7 @@ export class ExamGenerationService {
           correctAnswer: fallback.correctAnswer,
           rubric: fallback.rubric,
           sampleAnswer: fallback.sampleAnswer,
+          gradingCriteria: fallback.gradingCriteria,
           explanation: fallback.explanation,
           topic: fallback.topic,
           isAIGenerated: true,
@@ -333,7 +382,7 @@ export class ExamGenerationService {
         const difficulty = config.difficulty === 'mixed'
           ? this.getRandomDifficulty()
           : config.difficulty as DifficultyLevel;
-        const fallback = this.buildFallbackQuestion(questionType, difficulty);
+        const fallback = this.augmentEssayQuestion(this.buildFallbackQuestion(questionType, difficulty), config);
         try {
           const created = await ExamService.addQuestion(examId, {
             type: fallback.type,
@@ -343,6 +392,7 @@ export class ExamGenerationService {
             correctAnswer: fallback.correctAnswer,
             rubric: fallback.rubric,
             sampleAnswer: fallback.sampleAnswer,
+            gradingCriteria: fallback.gradingCriteria,
             explanation: fallback.explanation,
             topic: fallback.topic,
             isAIGenerated: true,

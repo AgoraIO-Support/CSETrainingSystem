@@ -262,31 +262,41 @@ function EditExamPageContent({ params }: PageProps) {
         setSuccessMessage(null)
 
         try {
-            const payload = {
-                title: form.title,
-                description: form.description || null,
-                instructions: form.instructions || null,
-                courseId: form.courseId || null,
-                timeLimit: form.timeLimit ? parseInt(form.timeLimit) : null,
-                totalScore: parseInt(form.totalScore) || 100,
-                passingScore: parseInt(form.passingScore) || 60,
-                maxAttempts: parseInt(form.maxAttempts) || 3,
-                randomizeQuestions: form.randomizeQuestions,
-                randomizeOptions: form.randomizeOptions,
-                showResultsImmediately: form.showResultsImmediately,
-                allowReview: form.allowReview,
-                timezone: form.timezone,
-                availableFrom: form.availableFrom || null,
-                deadline: form.deadline || null,
-                assessmentKind: isSmeMode ? undefined : form.assessmentKind,
-                awardsStars: form.awardsStars,
-                starValue: form.awardsStars ? (parseInt(form.starValue) || 0) : 0,
-                countsTowardPerformance: isSmeMode ? undefined : form.countsTowardPerformance,
-            }
+            const rewardPolicyOnlyMode = !isSmeMode && exam?.status === 'PUBLISHED'
+            const payload = rewardPolicyOnlyMode
+                ? {
+                    awardsStars: form.awardsStars,
+                    starValue: form.awardsStars ? (parseInt(form.starValue) || 0) : 0,
+                }
+                : {
+                    title: form.title,
+                    description: form.description || null,
+                    instructions: form.instructions || null,
+                    courseId: form.courseId || null,
+                    timeLimit: form.timeLimit ? parseInt(form.timeLimit) : null,
+                    totalScore: parseInt(form.totalScore) || 100,
+                    passingScore: parseInt(form.passingScore) || 60,
+                    maxAttempts: parseInt(form.maxAttempts) || 3,
+                    randomizeQuestions: form.randomizeQuestions,
+                    randomizeOptions: form.randomizeOptions,
+                    showResultsImmediately: form.showResultsImmediately,
+                    allowReview: form.allowReview,
+                    timezone: form.timezone,
+                    availableFrom: form.availableFrom || null,
+                    deadline: form.deadline || null,
+                    assessmentKind: isSmeMode ? undefined : form.assessmentKind,
+                    awardsStars: form.awardsStars,
+                    starValue: form.awardsStars ? (parseInt(form.starValue) || 0) : 0,
+                    countsTowardPerformance: isSmeMode ? undefined : form.countsTowardPerformance,
+                }
 
             const response = await ApiClient.updateExam(examId, payload)
             setExam(response.data)
-            setSuccessMessage('Exam updated successfully!')
+            setSuccessMessage(
+                rewardPolicyOnlyMode
+                    ? 'Reward policy updated. Passed learners have been synced for missing stars.'
+                    : 'Exam updated successfully!'
+            )
             setTimeout(() => setSuccessMessage(null), 3000)
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to update exam')
@@ -403,6 +413,10 @@ function EditExamPageContent({ params }: PageProps) {
     }
 
     const canEditExam = exam.status === 'DRAFT'
+    const canEditRewardPolicy =
+        !isSmeMode && (canEditExam || exam.status === 'PUBLISHED')
+    const rewardPolicyOnlyMode = canEditRewardPolicy && !canEditExam
+    const canSaveExam = canEditExam || canEditRewardPolicy
     const canPublish = exam.status === 'APPROVED' && (exam._count?.questions ?? 0) > 0
     const canSubmitForReview =
         exam.status === 'DRAFT' &&
@@ -681,7 +695,11 @@ function EditExamPageContent({ params }: PageProps) {
                     <Card>
                         <CardHeader>
                             <CardTitle>Reward Policy</CardTitle>
-                            <CardDescription>Configure how this assessment contributes to rewards and certification.</CardDescription>
+                            <CardDescription>
+                                {rewardPolicyOnlyMode
+                                    ? 'Published exams only allow admin star backfill. Passed learners will receive any newly enabled or increased stars.'
+                                    : 'Configure how this assessment contributes to rewards and certification.'}
+                            </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className={`grid gap-4 ${isSmeMode ? 'xl:grid-cols-1' : 'xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)]'}`}>
@@ -711,7 +729,7 @@ function EditExamPageContent({ params }: PageProps) {
                                             <Switch
                                                 checked={form.awardsStars}
                                                 onCheckedChange={(checked: boolean) => updateForm('awardsStars', checked)}
-                                                disabled={!canEditExam}
+                                                disabled={!canEditRewardPolicy}
                                             />
                                         </div>
                                         <div className="space-y-2">
@@ -723,8 +741,13 @@ function EditExamPageContent({ params }: PageProps) {
                                                 max={20}
                                                 value={form.starValue}
                                                 onChange={(e) => updateForm('starValue', e.target.value)}
-                                                disabled={!canEditExam || !form.awardsStars}
+                                                disabled={!canEditRewardPolicy || !form.awardsStars}
                                             />
+                                            {rewardPolicyOnlyMode ? (
+                                                <p className="text-xs text-muted-foreground">
+                                                    Existing passed learners will be backfilled when you save.
+                                                </p>
+                                            ) : null}
                                         </div>
                                     </div>
                                     {!isSmeMode ? (
@@ -998,7 +1021,7 @@ function EditExamPageContent({ params }: PageProps) {
                                 Cancel
                             </Button>
                         </Link>
-                        <Button type="submit" disabled={saving || !canEditExam}>
+                        <Button type="submit" disabled={saving || !canSaveExam}>
                             {saving ? (
                                 <>
                                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
