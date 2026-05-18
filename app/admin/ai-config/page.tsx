@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Loader2, Plus, Save, Trash2, Pencil } from 'lucide-react'
-import { SUPPORTED_OPENAI_MODELS, isSupportedOpenAIModel } from '@/lib/services/openai-models'
+import { getFallbackOpenAIModelOptions, isSupportedOpenAIModel, type OpenAIModelOption } from '@/lib/services/openai-models'
 
 type AIPromptUseCase =
     | 'VTT_TO_XML_ENRICHMENT'
@@ -79,6 +79,14 @@ type ExamAssignment = {
     template: PromptTemplate
 }
 
+type AIModelsResponse = {
+    data: OpenAIModelOption[]
+    meta?: {
+        source?: 'openai' | 'fallback'
+        cached?: boolean
+    }
+}
+
 const USE_CASES: { value: Exclude<AIPromptUseCase, 'MISC'>; label: string; scope: 'course' | 'exam' | 'global' }[] = [
     { value: 'VTT_TO_XML_ENRICHMENT', label: 'VTT → XML enrichment', scope: 'course' },
     { value: 'KNOWLEDGE_ANCHORS_GENERATION', label: 'Key Moments (anchors)', scope: 'course' },
@@ -133,6 +141,22 @@ function numberOrNull(value: string): number | null {
     return Number.isFinite(n) ? n : null
 }
 
+function errorMessage(error: unknown, fallback: string): string {
+    return error instanceof Error ? error.message : fallback
+}
+
+function isPromptUseCase(value: string): value is AIPromptUseCase {
+    return [...USE_CASES.map((u) => u.value), 'MISC'].includes(value as AIPromptUseCase)
+}
+
+function isCreatePromptUseCase(value: string): value is Exclude<AIPromptUseCase, 'MISC'> {
+    return USE_CASES.some((u) => u.value === value)
+}
+
+function isAIResponseFormat(value: string): value is AIResponseFormat {
+    return value === 'TEXT' || value === 'JSON_OBJECT'
+}
+
 export default function AdminAIConfigPage() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
@@ -141,6 +165,8 @@ export default function AdminAIConfigPage() {
     const [defaults, setDefaults] = useState<PromptDefault[]>([])
     const [courses, setCourses] = useState<CourseRow[]>([])
     const [exams, setExams] = useState<ExamRow[]>([])
+    const [modelOptions, setModelOptions] = useState<OpenAIModelOption[]>(getFallbackOpenAIModelOptions())
+    const [modelCatalogSource, setModelCatalogSource] = useState<'openai' | 'fallback'>('fallback')
 
     const [templateSearch, setTemplateSearch] = useState('')
     const [templateUseCaseFilter, setTemplateUseCaseFilter] = useState<AIPromptUseCase | 'ALL'>('ALL')
@@ -208,6 +234,19 @@ export default function AdminAIConfigPage() {
         return !isSupportedOpenAIModel(editForm.model)
     }, [editForm])
 
+    const modelIds = useMemo(() => {
+        const ids = new Set(modelOptions.map((option) => option.id))
+        if (createForm.model) ids.add(createForm.model)
+        if (editForm?.model) ids.add(editForm.model)
+        for (const assignment of courseAssignments) {
+            if (assignment.modelOverride) ids.add(assignment.modelOverride)
+        }
+        for (const assignment of examAssignments) {
+            if (assignment.modelOverride) ids.add(assignment.modelOverride)
+        }
+        return Array.from(ids).sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))
+    }, [courseAssignments, createForm.model, editForm?.model, examAssignments, modelOptions])
+
     const filteredTemplates = useMemo(() => {
         const q = templateSearch.trim().toLowerCase()
         return templates.filter((t) => {
@@ -243,18 +282,26 @@ export default function AdminAIConfigPage() {
         setLoading(true)
         setError(null)
         try {
-            const [t, d, c, e] = await Promise.all([
+            const [t, d, c, e, models] = await Promise.all([
                 api<PromptTemplate[]>('/api/admin/ai/prompt-templates', { headers: getAuthHeaders() }),
                 api<PromptDefault[]>('/api/admin/ai/defaults', { headers: getAuthHeaders() }),
                 api<CourseRow[]>('/api/admin/courses?limit=50', { headers: getAuthHeaders() }),
                 api<ExamRow[]>('/api/admin/exams?limit=50', { headers: getAuthHeaders() }),
+                api<OpenAIModelOption[]>('/api/admin/ai/models', { headers: getAuthHeaders() })
+                    .then((data) => ({ data, meta: undefined } satisfies AIModelsResponse))
+                    .catch(() => ({
+                        data: getFallbackOpenAIModelOptions(),
+                        meta: { source: 'fallback', cached: false },
+                    } satisfies AIModelsResponse)),
             ])
             setTemplates(t)
             setDefaults(d)
             setCourses(c)
             setExams(e)
-        } catch (e: any) {
-            setError(e?.message || 'Failed to load AI configuration')
+            setModelOptions(models.data)
+            setModelCatalogSource(models.meta?.source ?? (models.data.some((model) => model.source === 'openai') ? 'openai' : 'fallback'))
+        } catch (e: unknown) {
+            setError(errorMessage(e, 'Failed to load AI configuration'))
         } finally {
             setLoading(false)
         }
@@ -262,7 +309,6 @@ export default function AdminAIConfigPage() {
 
     useEffect(() => {
         reloadAll()
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
     const loadCourseAssignments = async (courseId: string) => {
@@ -409,8 +455,8 @@ export default function AdminAIConfigPage() {
             setCreateOpen(false)
             setCreateForm((p) => ({ ...p, name: '', description: '', systemPrompt: '', userPrompt: '', variables: '' }))
             await reloadAll()
-        } catch (e: any) {
-            setError(e?.message || 'Failed to create template')
+        } catch (e: unknown) {
+            setError(errorMessage(e, 'Failed to create template'))
         } finally {
             setCreating(false)
         }
@@ -463,8 +509,8 @@ export default function AdminAIConfigPage() {
             setEditOpen(false)
             setEditForm(null)
             await reloadAll()
-        } catch (e: any) {
-            setError(e?.message || 'Failed to update template')
+        } catch (e: unknown) {
+            setError(errorMessage(e, 'Failed to update template'))
         } finally {
             setEditing(false)
         }
@@ -534,7 +580,10 @@ export default function AdminAIConfigPage() {
                 <div className="flex items-center justify-between flex-wrap gap-4">
                     <div>
                         <h1 className="text-3xl font-bold">AI Configuration</h1>
-                        <p className="text-muted-foreground mt-1">Manage prompt templates, defaults, and per course/exam overrides.</p>
+                        <p className="text-muted-foreground mt-1">
+                            Manage prompt templates, defaults, and per course/exam overrides. Models loaded from{' '}
+                            {modelCatalogSource === 'openai' ? 'OpenAI' : 'local fallback'}.
+                        </p>
                     </div>
                     <div className="flex items-center gap-2">
                         <Button variant="outline" onClick={reloadAll}>
@@ -566,7 +615,12 @@ export default function AdminAIConfigPage() {
                                     value={templateSearch}
                                     onChange={(e) => setTemplateSearch(e.target.value)}
                                 />
-                                <Select value={templateUseCaseFilter} onValueChange={(v) => setTemplateUseCaseFilter(v as any)}>
+                                <Select
+                                    value={templateUseCaseFilter}
+                                    onValueChange={(v) => {
+                                        if (isPromptUseCase(v) || v === 'ALL') setTemplateUseCaseFilter(v)
+                                    }}
+                                >
                                     <SelectTrigger className="w-[260px]">
                                         <SelectValue placeholder="Filter by use-case" />
                                     </SelectTrigger>
@@ -605,7 +659,9 @@ export default function AdminAIConfigPage() {
                                             <Label>Use-case</Label>
                                             <Select
                                                 value={createForm.useCase}
-                                                onValueChange={(v) => setCreateForm((p) => ({ ...p, useCase: v as any }))}
+                                                onValueChange={(v) => {
+                                                    if (isCreatePromptUseCase(v)) setCreateForm((p) => ({ ...p, useCase: v }))
+                                                }}
                                             >
                                                 <SelectTrigger>
                                                     <SelectValue />
@@ -657,7 +713,7 @@ export default function AdminAIConfigPage() {
                                                     <SelectValue />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    {SUPPORTED_OPENAI_MODELS.map((m) => (
+                                                    {modelIds.map((m) => (
                                                         <SelectItem key={m} value={m}>
                                                             {m}
                                                         </SelectItem>
@@ -669,7 +725,9 @@ export default function AdminAIConfigPage() {
                                             <Label>Response format</Label>
                                             <Select
                                                 value={createForm.responseFormat}
-                                                onValueChange={(v) => setCreateForm((p) => ({ ...p, responseFormat: v as any }))}
+                                                onValueChange={(v) => {
+                                                    if (isAIResponseFormat(v)) setCreateForm((p) => ({ ...p, responseFormat: v }))
+                                                }}
                                             >
                                                 <SelectTrigger>
                                                     <SelectValue />
@@ -771,7 +829,9 @@ export default function AdminAIConfigPage() {
                                             <Label>Use-case</Label>
                                             <Select
                                                 value={editForm.useCase}
-                                                onValueChange={(v) => setEditForm((p) => (p ? { ...p, useCase: v as any } : p))}
+                                                onValueChange={(v) => {
+                                                    if (isPromptUseCase(v)) setEditForm((p) => (p ? { ...p, useCase: v } : p))
+                                                }}
                                             >
                                                 <SelectTrigger>
                                                     <SelectValue />
@@ -832,7 +892,7 @@ export default function AdminAIConfigPage() {
                                                             (unsupported) {editForm.model}
                                                         </SelectItem>
                                                     )}
-                                                    {SUPPORTED_OPENAI_MODELS.map((m) => (
+                                                    {modelIds.map((m) => (
                                                         <SelectItem key={m} value={m}>
                                                             {m}
                                                         </SelectItem>
@@ -852,7 +912,9 @@ export default function AdminAIConfigPage() {
                                             <Label>Response format</Label>
                                             <Select
                                                 value={editForm.responseFormat}
-                                                onValueChange={(v) => setEditForm((p) => (p ? { ...p, responseFormat: v as any } : p))}
+                                                onValueChange={(v) => {
+                                                    if (isAIResponseFormat(v)) setEditForm((p) => (p ? { ...p, responseFormat: v } : p))
+                                                }}
                                             >
                                                 <SelectTrigger>
                                                     <SelectValue />
@@ -981,6 +1043,7 @@ export default function AdminAIConfigPage() {
                                                     title={u.label}
                                                     useCase={u.value}
                                                     options={options}
+                                                    modelOptions={modelIds}
                                                     initial={{
                                                         templateId: row?.templateId || defaultsByUseCase.get(u.value)?.templateId || 'none',
                                                         isEnabled: row?.isEnabled ?? true,
@@ -1048,6 +1111,7 @@ export default function AdminAIConfigPage() {
                                                     title={u.label}
                                                     useCase={u.value}
                                                     options={options}
+                                                    modelOptions={modelIds}
                                                     initial={{
                                                         templateId: row?.templateId || defaultsByUseCase.get(u.value)?.templateId || 'none',
                                                         isEnabled: row?.isEnabled ?? true,
@@ -1096,6 +1160,7 @@ function AssignmentRow(props: {
     title: string
     useCase: string
     options: { id: string; name: string; isActive: boolean }[]
+    modelOptions: string[]
     initial: {
         templateId: string
         isEnabled: boolean
@@ -1199,7 +1264,7 @@ function AssignmentRow(props: {
                                         (unsupported) {modelOverride}
                                     </SelectItem>
                                 )}
-                                {SUPPORTED_OPENAI_MODELS.map((m) => (
+                                {props.modelOptions.map((m) => (
                                     <SelectItem key={m} value={m}>
                                         {m}
                                     </SelectItem>

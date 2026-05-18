@@ -37,6 +37,13 @@ export const GET = withAuth(async (req: NextRequest, user) => {
             title: true,
           },
         },
+        productDomain: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+          },
+        },
         certificateTemplate: {
           select: {
             isEnabled: true,
@@ -85,6 +92,8 @@ export const GET = withAuth(async (req: NextRequest, user) => {
         starValue: exam.starValue,
         countsTowardPerformance: exam.countsTowardPerformance,
         certificateEligible: exam.assessmentKind === 'FORMAL' && Boolean(exam.certificateTemplate?.isEnabled),
+        productDomainId: exam.productDomainId,
+        productDomain: exam.productDomain,
         courseId: exam.courseId,
         course: exam.course,
         timeLimit: exam.timeLimit,
@@ -94,6 +103,8 @@ export const GET = withAuth(async (req: NextRequest, user) => {
         timezone: exam.timezone,
         availableFrom: exam.availableFrom,
         deadline: exam.deadline,
+        createdAt: exam.createdAt,
+        updatedAt: exam.updatedAt,
         questionCount: exam._count.questions,
         attemptResults: exam.attempts
           .filter(a => a.status === 'SUBMITTED' || a.status === 'GRADED')

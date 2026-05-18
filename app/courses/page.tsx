@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { CourseCard } from '@/components/course/course-card'
-import { CourseFilter } from '@/components/course/course-filter'
+import { CourseFilter, type CourseCreatedFilter } from '@/components/course/course-filter'
 import { BookOpen, BarChart3, Loader2 } from 'lucide-react'
 import { ApiClient } from '@/lib/api-client'
 import type { Course } from '@/types'
@@ -17,7 +17,13 @@ export default function CoursesPage() {
     const [courses, setCourses] = useState<Course[]>([])
     const [searchQuery, setSearchQuery] = useState('')
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+    const [selectedLabel, setSelectedLabel] = useState<string | null>(null)
+    const [selectedInstructorId, setSelectedInstructorId] = useState<string | null>(null)
     const [selectedLevel, setSelectedLevel] = useState<CourseLevel | null>(null)
+    const [createdFilter, setCreatedFilter] = useState<CourseCreatedFilter>('ALL')
+    const [createdFromFilter, setCreatedFromFilter] = useState('')
+    const [createdToFilter, setCreatedToFilter] = useState('')
+    const [createdMenuOpen, setCreatedMenuOpen] = useState(false)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
@@ -117,7 +123,27 @@ export default function CoursesPage() {
     const availableCategories = useMemo(() => {
         const set = new Set<string>()
         courses.forEach(course => course.category && set.add(course.category))
-        return ['All', ...Array.from(set)]
+        return Array.from(set)
+    }, [courses])
+
+    const availableLabels = useMemo(() => {
+        const set = new Set<string>()
+        courses.forEach(course => course.tags?.forEach(tag => tag && set.add(tag)))
+        return Array.from(set)
+    }, [courses])
+
+    const availableInstructors = useMemo(() => {
+        const map = new Map<string, { id: string; name: string; title?: string }>()
+        courses.forEach((course) => {
+            if (course.instructor?.id && course.instructor?.name) {
+                map.set(course.instructor.id, {
+                    id: course.instructor.id,
+                    name: course.instructor.name,
+                    title: course.instructor.title,
+                })
+            }
+        })
+        return Array.from(map.values())
     }, [courses])
 
     const handleSearch = (query: string) => {
@@ -132,8 +158,48 @@ export default function CoursesPage() {
         setSelectedLevel(level)
     }
 
+    const hasActiveFilters =
+        Boolean(searchQuery.trim()) ||
+        Boolean(selectedCategory) ||
+        Boolean(selectedLabel) ||
+        Boolean(selectedInstructorId) ||
+        Boolean(selectedLevel) ||
+        createdFilter !== 'ALL' ||
+        Boolean(createdFromFilter) ||
+        Boolean(createdToFilter)
+
+    const clearFilters = () => {
+        setSearchQuery('')
+        setSelectedCategory(null)
+        setSelectedLabel(null)
+        setSelectedInstructorId(null)
+        setSelectedLevel(null)
+        setCreatedFilter('ALL')
+        setCreatedFromFilter('')
+        setCreatedToFilter('')
+        setCreatedMenuOpen(false)
+    }
+
     const filteredCourses = useMemo(() => {
         const query = searchQuery.toLowerCase().trim()
+        const isCreatedWithinCustomRange = (createdAt: string | Date | null | undefined) => {
+            if (!createdAt) return false
+            const createdDate = new Date(createdAt)
+            const from = createdFromFilter ? new Date(`${createdFromFilter}T00:00:00`) : null
+            const to = createdToFilter ? new Date(`${createdToFilter}T23:59:59.999`) : null
+
+            if (from && createdDate < from) return false
+            if (to && createdDate > to) return false
+            return true
+        }
+        const isCreatedWithinDays = (createdAt: string | Date | null | undefined, days: number) => {
+            if (!createdAt) return false
+            const createdDate = new Date(createdAt)
+            const start = new Date()
+            start.setDate(start.getDate() - days)
+            start.setHours(0, 0, 0, 0)
+            return createdDate >= start
+        }
 
         return courses.filter(course => {
             const matchesSearch =
@@ -145,11 +211,18 @@ export default function CoursesPage() {
                 course.tags?.some(tag => tag.toLowerCase().includes(query))
 
             const matchesCategory = !selectedCategory || course.category === selectedCategory
+            const matchesLabel = !selectedLabel || course.tags?.includes(selectedLabel)
+            const matchesInstructor = !selectedInstructorId || course.instructor?.id === selectedInstructorId
             const matchesLevel = !selectedLevel || course.level === selectedLevel
+            const matchesCreated =
+                createdFilter === 'ALL' ||
+                (createdFilter === 'LAST_7_DAYS' && isCreatedWithinDays(course.createdAt, 7)) ||
+                (createdFilter === 'LAST_30_DAYS' && isCreatedWithinDays(course.createdAt, 30)) ||
+                (createdFilter === 'CUSTOM_CREATED' && isCreatedWithinCustomRange(course.createdAt))
 
-            return matchesSearch && matchesCategory && matchesLevel
+            return matchesSearch && matchesCategory && matchesLabel && matchesInstructor && matchesLevel && matchesCreated
         })
-    }, [courses, searchQuery, selectedCategory, selectedLevel])
+    }, [courses, searchQuery, selectedCategory, selectedLabel, selectedInstructorId, selectedLevel, createdFilter, createdFromFilter, createdToFilter])
 
     return (
         <DashboardLayout>
@@ -173,8 +246,24 @@ export default function CoursesPage() {
                     onFilterCategory={handleFilterCategory}
                     selectedCategory={selectedCategory}
                     categories={availableCategories}
+                    selectedLabel={selectedLabel}
+                    onFilterLabel={setSelectedLabel}
+                    labels={availableLabels}
+                    selectedInstructorId={selectedInstructorId}
+                    onFilterInstructor={setSelectedInstructorId}
+                    instructors={availableInstructors}
                     selectedLevel={selectedLevel}
                     onFilterLevel={handleFilterLevel}
+                    createdFilter={createdFilter}
+                    onFilterCreated={setCreatedFilter}
+                    createdFrom={createdFromFilter}
+                    createdTo={createdToFilter}
+                    onCreatedFromChange={setCreatedFromFilter}
+                    onCreatedToChange={setCreatedToFilter}
+                    dateMenuOpen={createdMenuOpen}
+                    onDateMenuOpenChange={setCreatedMenuOpen}
+                    hasActiveFilters={hasActiveFilters}
+                    onClearFilters={clearFilters}
                 />
 
                 <div className="flex items-center justify-between">
@@ -282,6 +371,12 @@ export default function CoursesPage() {
                             onClick={() => {
                                 setSearchQuery('')
                                 setSelectedCategory(null)
+                                setSelectedLabel(null)
+                                setSelectedInstructorId(null)
+                                setSelectedLevel(null)
+                                setCreatedFilter('ALL')
+                                setCreatedFromFilter('')
+                                setCreatedToFilter('')
                                 setError(null)
                                 setLoading(true)
 

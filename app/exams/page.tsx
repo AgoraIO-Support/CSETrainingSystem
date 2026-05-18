@@ -6,6 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ApiClient } from '@/lib/api-client'
 import { buildExamScheduleDisplay } from '@/lib/exam-timezone'
 import {
@@ -21,6 +23,8 @@ import {
     ChevronDown,
     ChevronUp,
     Eye,
+    Search,
+    Filter,
 } from 'lucide-react'
 import Link from 'next/link'
 import type { Exam } from '@/types'
@@ -49,6 +53,8 @@ type ExamListItem = Exam & {
         submittedAt: string | null
     }>
 }
+
+type DateFilter = 'ACTIVE' | 'ALL' | 'UPCOMING' | 'DUE_7_DAYS' | 'EXPIRED' | 'NO_DEADLINE' | 'CUSTOM_CREATED'
 
 type RawExamListItem = Exam & {
     questionCount?: number
@@ -79,6 +85,13 @@ export default function ExamsPage() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [expandedExamIds, setExpandedExamIds] = useState<string[]>([])
+    const [keywordFilter, setKeywordFilter] = useState('')
+    const [labelFilter, setLabelFilter] = useState('ALL')
+    const [domainFilter, setDomainFilter] = useState('ALL')
+    const [dateFilter, setDateFilter] = useState<DateFilter>('ACTIVE')
+    const [createdFromFilter, setCreatedFromFilter] = useState('')
+    const [createdToFilter, setCreatedToFilter] = useState('')
+    const [dateMenuOpen, setDateMenuOpen] = useState(false)
 
     useEffect(() => {
         loadExams()
@@ -128,6 +141,66 @@ export default function ExamsPage() {
         return new Date(deadline) < new Date()
     }
 
+    const isNotYetAvailable = (availableFrom: string | Date | null | undefined) => {
+        if (!availableFrom) return false
+        return new Date(availableFrom) > new Date()
+    }
+
+    const isActiveExam = (exam: ExamListItem) => {
+        return !isDeadlinePassed(exam.deadline) && !isNotYetAvailable(exam.availableFrom)
+    }
+
+    const isDueWithinDays = (deadline: string | Date | null | undefined, days: number) => {
+        if (!deadline) return false
+        const deadlineDate = new Date(deadline)
+        const now = new Date()
+        const daysLeft = Math.ceil((deadlineDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+        return daysLeft >= 0 && daysLeft <= days
+    }
+
+    const isCreatedWithinCustomRange = (createdAt: string | Date | null | undefined) => {
+        if (!createdAt) return false
+        const createdDate = new Date(createdAt)
+        const from = createdFromFilter ? new Date(`${createdFromFilter}T00:00:00`) : null
+        const to = createdToFilter ? new Date(`${createdToFilter}T23:59:59.999`) : null
+
+        if (from && createdDate < from) return false
+        if (to && createdDate > to) return false
+        return true
+    }
+
+    const dateFilterLabel: Record<DateFilter, string> = {
+        ACTIVE: 'Active exams',
+        ALL: 'All dates',
+        UPCOMING: 'Not yet available',
+        DUE_7_DAYS: 'Due in 7 days',
+        EXPIRED: 'Expired',
+        NO_DEADLINE: 'No deadline',
+        CUSTOM_CREATED: 'Created range',
+    }
+
+    const applyDateFilter = (value: DateFilter) => {
+        setDateFilter(value)
+        if (value !== 'CUSTOM_CREATED') {
+            setDateMenuOpen(false)
+        }
+    }
+
+    const getExamLabels = (exam: ExamListItem) => {
+        const labels = new Set<string>()
+        if (exam.assessmentKind) labels.add(exam.assessmentKind)
+        if (exam.hasPassed) labels.add('Passed')
+        if (isActiveExam(exam)) labels.add('Active')
+        if (isDeadlineSoon(exam.deadline) && !exam.hasPassed) labels.add('Deadline Soon')
+        if (isDeadlinePassed(exam.deadline)) labels.add('Expired')
+        if (isNotYetAvailable(exam.availableFrom)) labels.add('Upcoming')
+        if (exam.certificateEligible) labels.add('Certificate on pass')
+        if (exam.countsTowardPerformance) labels.add('Performance')
+        if (exam.awardsStars && exam.starValue) labels.add('Awards Stars')
+        if (exam.course) labels.add('Course linked')
+        return Array.from(labels)
+    }
+
     const formatAttemptSubmittedAt = (date: string | Date | null | undefined) => {
         if (!date) return 'Pending grading'
         return new Date(date).toLocaleString('en-US', {
@@ -145,6 +218,49 @@ export default function ExamsPage() {
         )
     }
 
+    const labelSet = new Set<string>()
+    exams.forEach((exam) => getExamLabels(exam).forEach((label) => labelSet.add(label)))
+    const labelOptions = Array.from(labelSet).sort((a, b) => a.localeCompare(b))
+
+    const domainMap = new Map<string, string>()
+    exams.forEach((exam) => {
+        if (exam.productDomain?.id) {
+            domainMap.set(exam.productDomain.id, exam.productDomain.name)
+        }
+    })
+    const domainOptions = Array.from(domainMap, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
+
+    const query = keywordFilter.trim().toLowerCase()
+    const filteredExams = exams.filter((exam) => {
+        if (dateFilter === 'ACTIVE' && !isActiveExam(exam)) return false
+        if (dateFilter === 'UPCOMING' && !isNotYetAvailable(exam.availableFrom)) return false
+        if (dateFilter === 'DUE_7_DAYS' && !isDueWithinDays(exam.deadline, 7)) return false
+        if (dateFilter === 'EXPIRED' && !isDeadlinePassed(exam.deadline)) return false
+        if (dateFilter === 'NO_DEADLINE' && exam.deadline) return false
+        if (dateFilter === 'CUSTOM_CREATED' && !isCreatedWithinCustomRange(exam.createdAt)) return false
+
+        if (domainFilter !== 'ALL' && exam.productDomain?.id !== domainFilter) return false
+
+        const labels = getExamLabels(exam)
+        if (labelFilter !== 'ALL' && !labels.includes(labelFilter)) return false
+
+        if (!query) return true
+
+        const searchable = [
+            exam.title,
+            exam.description,
+            exam.assessmentKind,
+            exam.course?.title,
+            exam.productDomain?.name,
+            ...labels,
+        ]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase()
+
+        return searchable.includes(query)
+    })
+
     if (loading) {
         return (
             <DashboardLayout>
@@ -155,50 +271,58 @@ export default function ExamsPage() {
         )
     }
 
-    const availableExams = exams.filter(e => !isDeadlinePassed(e.deadline))
+    const availableExams = exams.filter(e => isActiveExam(e))
     const completedExams = exams.filter(e => e.hasPassed)
     const passedCount = completedExams.length
+    const totalAttempts = exams.reduce((sum, e) => sum + (e.userAttempts ?? 0), 0)
+    const expiredCount = exams.filter(e => isDeadlinePassed(e.deadline)).length
+    const hasActiveFilters =
+        keywordFilter.trim() ||
+        labelFilter !== 'ALL' ||
+        domainFilter !== 'ALL' ||
+        dateFilter !== 'ACTIVE' ||
+        createdFromFilter ||
+        createdToFilter
 
     return (
         <DashboardLayout>
-            <div className="space-y-8">
-                <div className="grid gap-6 xl:grid-cols-[1.75fr_1fr]">
-                    <Card className="overflow-hidden">
-                        <CardContent className="p-7 md:p-8">
-                            <div className="space-y-4">
-                                <Badge className="w-fit">Assessment Workspace</Badge>
-                                <div className="space-y-3">
-                                    <h1 className="text-3xl font-semibold tracking-[-0.04em] md:text-4xl">
-                                        My exams
-                                    </h1>
-                                    <p className="max-w-2xl text-sm leading-7 text-muted-foreground md:text-base">
-                                        Review assigned assessments, track attempts, and open graded results from one streamlined queue.
-                                    </p>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
+            <div className="space-y-5">
+                <div className="flex flex-col gap-4 border-b border-slate-200/70 pb-5 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                        <Badge variant="secondary" className="mb-3 w-fit">Assessment Workspace</Badge>
+                        <h1 className="text-2xl font-semibold tracking-[-0.03em] md:text-3xl">My exams</h1>
+                    </div>
 
-                    <Card>
-                        <CardHeader className="pb-3">
-                            <CardTitle className="text-lg">Current status</CardTitle>
-                            <CardDescription>Snapshot of your exam workload</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                            <div className="rounded-2xl border border-slate-200/70 bg-slate-50 p-4">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                                    Available now
-                                </p>
-                                <p className="mt-2 text-3xl font-semibold tracking-[-0.04em]">{availableExams.length}</p>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:min-w-[560px]">
+                        <div className="rounded-lg border border-slate-200/70 bg-white px-3 py-2">
+                            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                                <FileQuestion className="h-3.5 w-3.5 text-primary" />
+                                Available
                             </div>
-                            <div className="rounded-2xl border border-slate-200/70 bg-slate-50 p-4">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                                    Passed
-                                </p>
-                                <p className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-emerald-700">{passedCount}</p>
+                            <div className="mt-1 text-xl font-semibold tracking-[-0.03em]">{availableExams.length}</div>
+                        </div>
+                        <div className="rounded-lg border border-slate-200/70 bg-white px-3 py-2">
+                            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                                <Trophy className="h-3.5 w-3.5 text-primary" />
+                                Passed
                             </div>
-                        </CardContent>
-                    </Card>
+                            <div className="mt-1 text-xl font-semibold tracking-[-0.03em] text-emerald-700">{passedCount}</div>
+                        </div>
+                        <div className="rounded-lg border border-slate-200/70 bg-white px-3 py-2">
+                            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                                <Play className="h-3.5 w-3.5 text-primary" />
+                                Attempts
+                            </div>
+                            <div className="mt-1 text-xl font-semibold tracking-[-0.03em]">{totalAttempts}</div>
+                        </div>
+                        <div className="rounded-lg border border-slate-200/70 bg-white px-3 py-2">
+                            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                                <Clock className="h-3.5 w-3.5 text-primary" />
+                                Expired
+                            </div>
+                            <div className="mt-1 text-xl font-semibold tracking-[-0.03em]">{expiredCount}</div>
+                        </div>
+                    </div>
                 </div>
 
                 {error && (
@@ -208,44 +332,167 @@ export default function ExamsPage() {
                     </div>
                 )}
 
-                <div className="grid gap-4 md:grid-cols-3">
-                    <Card>
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-sm font-semibold">Available Exams</CardTitle>
-                            <FileQuestion className="h-4 w-4 text-primary" />
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-3xl font-semibold tracking-[-0.04em]">{availableExams.length}</div>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-sm font-semibold">Exams Passed</CardTitle>
-                            <Trophy className="h-4 w-4 text-primary" />
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-3xl font-semibold tracking-[-0.04em] text-emerald-700">{passedCount}</div>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-sm font-semibold">Total Attempts</CardTitle>
-                            <Play className="h-4 w-4 text-primary" />
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-3xl font-semibold tracking-[-0.04em]">
-                                {exams.reduce((sum, e) => sum + (e.userAttempts ?? 0), 0)}
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
-
                 <Card>
-                    <CardHeader>
-                        <CardTitle>Assigned exams</CardTitle>
-                        <CardDescription>All assigned assessments, including historical and expired items.</CardDescription>
+                    <CardHeader className="space-y-4">
+                        <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+                            <div>
+                                <CardTitle>Assigned exams</CardTitle>
+                                <CardDescription>
+                                    Showing {filteredExams.length} of {exams.length} assigned exams. Active exams are shown by default.
+                                </CardDescription>
+                            </div>
+                            {hasActiveFilters ? (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                        setKeywordFilter('')
+                                        setLabelFilter('ALL')
+                                        setDomainFilter('ALL')
+                                        setDateFilter('ACTIVE')
+                                        setCreatedFromFilter('')
+                                        setCreatedToFilter('')
+                                    }}
+                                >
+                                    Clear filters
+                                </Button>
+                            ) : null}
+                        </div>
+
+                        <div className="grid gap-3 rounded-lg border border-slate-200/70 bg-slate-50/70 p-3 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
+                            <div className="relative">
+                                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <Input
+                                    value={keywordFilter}
+                                    onChange={(e) => setKeywordFilter(e.target.value)}
+                                    placeholder="Search title, course, domain..."
+                                    className="bg-white pl-9"
+                                />
+                            </div>
+                            <Select value={labelFilter} onValueChange={setLabelFilter}>
+                                <SelectTrigger className="bg-white">
+                                    <div className="flex items-center gap-2">
+                                        <Filter className="h-4 w-4 text-muted-foreground" />
+                                        <SelectValue placeholder="Label" />
+                                    </div>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="ALL">All labels</SelectItem>
+                                    {labelOptions.map((label) => (
+                                        <SelectItem key={label} value={label}>
+                                            {label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <Select value={domainFilter} onValueChange={setDomainFilter}>
+                                <SelectTrigger className="bg-white">
+                                    <SelectValue placeholder="Domain" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="ALL">All domains</SelectItem>
+                                    {domainOptions.map((domain) => (
+                                        <SelectItem key={domain.id} value={domain.id}>
+                                            {domain.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <div className="relative">
+                                <button
+                                    type="button"
+                                    className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-white px-3 py-2 text-sm ring-offset-background transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                                    onClick={() => setDateMenuOpen((open) => !open)}
+                                >
+                                    <span>{dateFilterLabel[dateFilter]}</span>
+                                    <ChevronDown className="h-4 w-4 opacity-50" />
+                                </button>
+                                {dateMenuOpen ? (
+                                    <div className="absolute right-0 z-50 mt-2 w-[min(360px,calc(100vw-3rem))] rounded-lg border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/10">
+                                        <div className="grid gap-1">
+                                            {(['ACTIVE', 'ALL', 'UPCOMING', 'DUE_7_DAYS', 'EXPIRED', 'NO_DEADLINE'] as DateFilter[]).map((value) => (
+                                                <button
+                                                    key={value}
+                                                    type="button"
+                                                    className={`rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-slate-100 ${dateFilter === value ? 'bg-slate-100 font-medium text-[#006688]' : ''}`}
+                                                    onClick={() => applyDateFilter(value)}
+                                                >
+                                                    {dateFilterLabel[value]}
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        <div className="mt-2 border-t border-slate-200 pt-3">
+                                            <button
+                                                type="button"
+                                                className={`mb-3 w-full rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-slate-100 ${dateFilter === 'CUSTOM_CREATED' ? 'bg-slate-100 font-medium text-[#006688]' : ''}`}
+                                                onClick={() => applyDateFilter('CUSTOM_CREATED')}
+                                            >
+                                                Created range
+                                            </button>
+                                            <div className="grid gap-3 sm:grid-cols-2">
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-medium text-muted-foreground" htmlFor="createdFrom">
+                                                        Created from
+                                                    </label>
+                                                    <Input
+                                                        id="createdFrom"
+                                                        type="date"
+                                                        value={createdFromFilter}
+                                                        onChange={(e) => {
+                                                            setDateFilter('CUSTOM_CREATED')
+                                                            setCreatedFromFilter(e.target.value)
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-medium text-muted-foreground" htmlFor="createdTo">
+                                                        Created to
+                                                    </label>
+                                                    <Input
+                                                        id="createdTo"
+                                                        type="date"
+                                                        value={createdToFilter}
+                                                        onChange={(e) => {
+                                                            setDateFilter('CUSTOM_CREATED')
+                                                            setCreatedToFilter(e.target.value)
+                                                        }}
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="mt-3 flex justify-end gap-2">
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        setCreatedFromFilter('')
+                                                        setCreatedToFilter('')
+                                                        setDateFilter('ACTIVE')
+                                                        setDateMenuOpen(false)
+                                                    }}
+                                                >
+                                                    Reset
+                                                </Button>
+                                                <Button type="button" size="sm" onClick={() => setDateMenuOpen(false)}>
+                                                    Apply
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : null}
+                                {dateMenuOpen ? (
+                                    <button
+                                        type="button"
+                                        className="fixed inset-0 z-40 cursor-default"
+                                        aria-label="Close date filter"
+                                        tabIndex={-1}
+                                        onClick={() => setDateMenuOpen(false)}
+                                    />
+                                ) : null}
+                            </div>
+                        </div>
                     </CardHeader>
                     <CardContent>
                         {exams.length === 0 ? (
@@ -255,7 +502,13 @@ export default function ExamsPage() {
                             </div>
                         ) : (
                             <div className="space-y-4">
-                                {exams.map(exam => (
+                                {filteredExams.length === 0 ? (
+                                    <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/70 py-10 text-center">
+                                        <FileQuestion className="mx-auto mb-3 h-9 w-9 text-muted-foreground" />
+                                        <p className="text-sm text-muted-foreground">No exams match the current filters.</p>
+                                    </div>
+                                ) : null}
+                                {filteredExams.map(exam => (
                                     <div
                                         key={exam.id}
                                         className="rounded-[1.35rem] border border-slate-200/70 bg-white p-4 transition-all duration-200 hover:border-[#00c2ff]/10 hover:shadow-lg hover:shadow-[#006688]/5"
@@ -306,22 +559,23 @@ export default function ExamsPage() {
                                                     ) : null}
                                                 </div>
 
-                                                {exam.course ? (
+                                                {exam.course || exam.productDomain || (exam.awardsStars && exam.starValue) ? (
                                                     <div className="flex flex-wrap gap-2">
-                                                        <Badge variant="secondary" className="text-xs">
-                                                            Course: {exam.course.title}
-                                                        </Badge>
+                                                        {exam.productDomain ? (
+                                                            <Badge variant="secondary" className="text-xs">
+                                                                Domain: {exam.productDomain.name}
+                                                            </Badge>
+                                                        ) : null}
+                                                        {exam.course ? (
+                                                            <Badge variant="secondary" className="text-xs">
+                                                                Course: {exam.course.title}
+                                                            </Badge>
+                                                        ) : null}
                                                         {exam.awardsStars && exam.starValue ? (
                                                             <Badge variant="secondary" className="text-xs">
                                                                 +{exam.starValue} stars
                                                             </Badge>
                                                         ) : null}
-                                                    </div>
-                                                ) : exam.awardsStars && exam.starValue ? (
-                                                    <div className="flex flex-wrap gap-2">
-                                                        <Badge variant="secondary" className="text-xs">
-                                                            +{exam.starValue} stars
-                                                        </Badge>
                                                     </div>
                                                 ) : null}
                                             </div>

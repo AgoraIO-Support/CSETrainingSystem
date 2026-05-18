@@ -1022,6 +1022,8 @@ export interface Course {
     aiAssistantEnabled?: boolean
     status?: CourseStatus
     learningEventId?: string | null
+    createdAt?: string | Date
+    updatedAt?: string | Date
 }
 
 // Curriculum (new)
@@ -1180,6 +1182,7 @@ export interface Exam {
     allowReview: boolean
     assessmentKind?: 'PRACTICE' | 'READINESS' | 'FORMAL'
     productDomainId?: string | null
+    productDomain?: { id: string; name: string; slug?: string | null } | null
     learningSeriesId?: string | null
     learningEventId?: string | null
     awardsStars?: boolean

@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
+import { CourseCard } from '@/components/course/course-card'
 import { ArrowRight, BookOpen, Award, Loader2, Medal, Star } from 'lucide-react'
 import type { AuthUser } from '@/lib/auth-middleware'
 import type { Course, LearnerRewardsOverview, LearnerTrainingOverview } from '@/types'
@@ -442,44 +443,9 @@ export default function HomePage() {
                             </Button>
                         </Link>
                     </div>
-                    <div className="grid gap-4 xl:grid-cols-3">
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
                         {courses.map(course => (
-                            <Card key={course.id} className="overflow-hidden transition-transform duration-200 hover:translate-y-[-2px]">
-                                <div className="relative aspect-video overflow-hidden rounded-t-[1.25rem] bg-slate-100">
-                                    <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent,rgba(15,23,42,0.22))]" />
-                                    <img
-                                        src={
-                                            course.thumbnail ||
-                                            'https://placehold.co/800x450/0f172a/ffffff?text=Course'
-                                        }
-                                        alt={course.title}
-                                        className="h-full w-full object-cover"
-                                    />
-                                </div>
-                                <CardHeader className="space-y-3">
-                                    <Badge variant="outline" className="w-fit">
-                                        {course.category}
-                                    </Badge>
-                                    <CardTitle className="line-clamp-2 text-lg">{course.title}</CardTitle>
-                                    <CardDescription className="line-clamp-2">
-                                        {course.description}
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="flex items-center justify-between text-sm text-muted-foreground">
-                                        <span>
-                                            {Math.floor(course.duration / 3600)}h {Math.floor((course.duration % 3600) / 60)}m
-                                        </span>
-                                        <span className="font-semibold text-foreground">⭐ {course.rating}</span>
-                                    </div>
-                                    <Link href={`/courses/${course.slug || course.id}`}>
-                                        <Button variant="outline" className="w-full justify-between">
-                                            View course
-                                            <ArrowRight className="h-4 w-4" />
-                                        </Button>
-                                    </Link>
-                                </CardContent>
-                            </Card>
+                            <CourseCard key={course.id} course={course} />
                         ))}
                     </div>
                 </div>

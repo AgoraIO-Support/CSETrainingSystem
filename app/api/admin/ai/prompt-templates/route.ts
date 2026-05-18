@@ -3,7 +3,12 @@ import { withAdminAuth, withSmeOrAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
 import { AIResponseFormat, AIPromptUseCase } from '@prisma/client'
 import { z } from 'zod'
-import { SUPPORTED_OPENAI_MODELS } from '@/lib/services/openai-models'
+import { isAllowedOpenAIChatModelId } from '@/lib/services/openai-models'
+
+const openAIChatModelSchema = z
+    .string()
+    .trim()
+    .refine(isAllowedOpenAIChatModelId, 'Unsupported OpenAI chat model')
 
 const createTemplateSchema = z.object({
     name: z.string().min(1),
@@ -12,12 +17,18 @@ const createTemplateSchema = z.object({
     systemPrompt: z.string().min(1),
     userPrompt: z.string().optional().nullable(),
     variables: z.array(z.string()).optional().default([]),
-    model: z.enum(SUPPORTED_OPENAI_MODELS).optional().default('gpt-4o-mini'),
+    model: openAIChatModelSchema.optional().default('gpt-4o-mini'),
     temperature: z.number().min(0).max(2).optional().default(0.2),
     maxTokens: z.number().int().min(1).max(32768).optional().default(1024),
     responseFormat: z.nativeEnum(AIResponseFormat).optional().default(AIResponseFormat.TEXT),
     isActive: z.boolean().optional().default(true),
 })
+
+function getPrismaCode(error: unknown): string | undefined {
+    if (!error || typeof error !== 'object') return undefined
+    const maybeCode = (error as { code?: unknown }).code
+    return typeof maybeCode === 'string' ? maybeCode : undefined
+}
 
 // GET /api/admin/ai/prompt-templates
 export const GET = withSmeOrAdminAuth(async (req) => {
@@ -34,7 +45,7 @@ export const GET = withSmeOrAdminAuth(async (req) => {
     } catch (error) {
         console.error('List AI prompt templates error:', error)
         // Prisma: table missing (migrations not applied)
-        if ((error as any)?.code === 'P2021') {
+        if (getPrismaCode(error) === 'P2021') {
             return NextResponse.json(
                 {
                     success: false,
@@ -87,7 +98,7 @@ export const POST = withAdminAuth(async (req) => {
                 { status: 400 }
             )
         }
-        if ((error as any)?.code === 'P2021') {
+        if (getPrismaCode(error) === 'P2021') {
             return NextResponse.json(
                 {
                     success: false,

@@ -3,15 +3,20 @@ import { withSmeOrAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
 import { AIPromptUseCase } from '@prisma/client'
 import { z } from 'zod'
-import { SUPPORTED_OPENAI_MODELS } from '@/lib/services/openai-models'
+import { isAllowedOpenAIChatModelId } from '@/lib/services/openai-models'
 import { TrainingOpsService } from '@/lib/services/training-ops.service'
+
+const openAIChatModelOverrideSchema = z
+    .string()
+    .trim()
+    .refine(isAllowedOpenAIChatModelId, 'Unsupported OpenAI chat model')
 
 const upsertAssignmentSchema = z.object({
     courseId: z.string().uuid(),
     useCase: z.nativeEnum(AIPromptUseCase),
     templateId: z.string().uuid(),
     isEnabled: z.boolean().optional().default(true),
-    modelOverride: z.enum(SUPPORTED_OPENAI_MODELS).optional().nullable(),
+    modelOverride: openAIChatModelOverrideSchema.optional().nullable(),
     temperatureOverride: z.number().min(0).max(2).optional().nullable(),
     maxTokensOverride: z.number().int().min(1).max(32768).optional().nullable(),
 })
@@ -20,6 +25,12 @@ const deleteAssignmentSchema = z.object({
     courseId: z.string().uuid(),
     useCase: z.nativeEnum(AIPromptUseCase),
 })
+
+function getPrismaCode(error: unknown): string | undefined {
+    if (!error || typeof error !== 'object') return undefined
+    const maybeCode = (error as { code?: unknown }).code
+    return typeof maybeCode === 'string' ? maybeCode : undefined
+}
 
 // GET /api/admin/ai/assignments/course?courseId=...
 export const GET = withSmeOrAdminAuth(async (req, user) => {
@@ -58,7 +69,7 @@ export const GET = withSmeOrAdminAuth(async (req, user) => {
                 { status: 403 }
             )
         }
-        if ((error as any)?.code === 'P2021') {
+        if (getPrismaCode(error) === 'P2021') {
             return NextResponse.json(
                 {
                     success: false,
@@ -137,7 +148,7 @@ export const PUT = withSmeOrAdminAuth(async (req, user) => {
                 { status: 400 }
             )
         }
-        if ((error as any)?.code === 'P2021') {
+        if (getPrismaCode(error) === 'P2021') {
             return NextResponse.json(
                 {
                     success: false,
@@ -185,7 +196,7 @@ export const DELETE = withSmeOrAdminAuth(async (req, user) => {
                 { status: 400 }
             )
         }
-        if ((error as any)?.code === 'P2021') {
+        if (getPrismaCode(error) === 'P2021') {
             return NextResponse.json(
                 {
                     success: false,

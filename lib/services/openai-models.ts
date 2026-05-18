@@ -1,9 +1,69 @@
-export const SUPPORTED_OPENAI_MODELS = ['gpt-5.2', 'gpt-5.1', 'gpt-4o', 'gpt-4o-mini'] as const
+export const SUPPORTED_OPENAI_MODELS = [
+    'gpt-5.2',
+    'gpt-5.2-chat-latest',
+    'gpt-5.1',
+    'gpt-5',
+    'gpt-5-mini',
+    'gpt-4.1',
+    'gpt-4.1-mini',
+    'gpt-4o',
+    'gpt-4o-mini',
+] as const
 
 export type SupportedOpenAIModel = (typeof SUPPORTED_OPENAI_MODELS)[number]
 
-export function isSupportedOpenAIModel(model: string): model is SupportedOpenAIModel {
-    return (SUPPORTED_OPENAI_MODELS as readonly string[]).includes(model)
+const EXCLUDED_OPENAI_MODEL_ID_PARTS = [
+    'audio',
+    'codex',
+    'computer',
+    'dall-e',
+    'embedding',
+    'image',
+    'moderation',
+    'realtime',
+    'search',
+    'sora',
+    'transcribe',
+    'tts',
+    'whisper',
+]
+
+export type OpenAIModelOption = {
+    id: string
+    ownedBy?: string
+    source: 'openai' | 'fallback'
+}
+
+export function isAllowedOpenAIChatModelId(model: string): boolean {
+    const normalized = model.trim().toLowerCase()
+    if (!normalized || normalized.length > 100) return false
+    if (!/^[a-z0-9][a-z0-9._:-]*$/.test(normalized)) return false
+    if (!normalized.startsWith('gpt-')) return false
+    return !EXCLUDED_OPENAI_MODEL_ID_PARTS.some((part) => normalized.includes(part))
+}
+
+export function isSupportedOpenAIModel(model: string): boolean {
+    return isAllowedOpenAIChatModelId(model)
+}
+
+export function getFallbackOpenAIModelOptions(): OpenAIModelOption[] {
+    return SUPPORTED_OPENAI_MODELS.map((id) => ({ id, source: 'fallback' }))
+}
+
+export function normalizeOpenAIModelOptions(models: Array<{ id: string; owned_by?: string }>): OpenAIModelOption[] {
+    const seen = new Set<string>()
+    const options: OpenAIModelOption[] = []
+
+    for (const model of models) {
+        const id = model.id.trim()
+        if (!isAllowedOpenAIChatModelId(id) || seen.has(id)) {
+            continue
+        }
+        seen.add(id)
+        options.push({ id, ownedBy: model.owned_by, source: 'openai' })
+    }
+
+    return options.sort((a, b) => b.id.localeCompare(a.id, undefined, { numeric: true }))
 }
 
 export type ChatCompletionsTokenParamName = 'max_tokens' | 'max_completion_tokens'
@@ -58,9 +118,15 @@ export type ExtractedChatCompletionText =
     | { text: string; source: 'message.content' | 'message.content.parts' | 'message.refusal' | 'message.tool_calls.arguments' }
     | { text: null; source: 'missing' }
 
-export function extractChatCompletionsText(data: any): ExtractedChatCompletionText {
-    const choice = data?.choices?.[0]
-    const message = choice?.message
+function readObject(value: unknown): Record<string, unknown> | null {
+    return value && typeof value === 'object' ? value as Record<string, unknown> : null
+}
+
+export function extractChatCompletionsText(data: unknown): ExtractedChatCompletionText {
+    const root = readObject(data)
+    const choices = Array.isArray(root?.choices) ? root.choices : []
+    const choice = readObject(choices[0])
+    const message = readObject(choice?.message)
 
     const refusal = message?.refusal
     if (typeof refusal === 'string' && refusal.trim().length > 0) {
@@ -74,10 +140,11 @@ export function extractChatCompletionsText(data: any): ExtractedChatCompletionTe
         // empty string => treat as missing (try other fallbacks)
     } else if (Array.isArray(content)) {
         const parts = content
-            .map((p: any) => {
+            .map((p: unknown) => {
                 if (typeof p === 'string') return p
-                if (p && typeof p.text === 'string') return p.text
-                if (p && typeof p.content === 'string') return p.content
+                const part = readObject(p)
+                if (typeof part?.text === 'string') return part.text
+                if (typeof part?.content === 'string') return part.content
                 return ''
             })
             .join('')
@@ -89,7 +156,9 @@ export function extractChatCompletionsText(data: any): ExtractedChatCompletionTe
 
     const toolCalls = message?.tool_calls
     if (Array.isArray(toolCalls) && toolCalls.length > 0) {
-        const args = toolCalls?.[0]?.function?.arguments
+        const toolCall = readObject(toolCalls[0])
+        const fn = readObject(toolCall?.function)
+        const args = fn?.arguments
         if (typeof args === 'string' && args.trim().length > 0) {
             return { text: args.trim(), source: 'message.tool_calls.arguments' }
         }
@@ -130,10 +199,11 @@ function parsePricingEnv(): Record<string, ChatModelPricing> {
         const parsed = JSON.parse(raw)
         const normalized: Record<string, ChatModelPricing> = {}
         if (parsed && typeof parsed === 'object') {
-            for (const [k, v] of Object.entries(parsed as Record<string, any>)) {
-                const inputPer1M = Number(v?.inputPer1M)
-                const cachedInputPer1M = Number(v?.cachedInputPer1M)
-                const outputPer1M = Number(v?.outputPer1M)
+            for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+                const pricing = readObject(v)
+                const inputPer1M = Number(pricing?.inputPer1M)
+                const cachedInputPer1M = Number(pricing?.cachedInputPer1M)
+                const outputPer1M = Number(pricing?.outputPer1M)
                 if (
                     Number.isFinite(inputPer1M) &&
                     Number.isFinite(cachedInputPer1M) &&

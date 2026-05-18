@@ -3,7 +3,7 @@ import { withAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
 import { AIResponseFormat, AIPromptUseCase } from '@prisma/client'
 import { z } from 'zod'
-import { SUPPORTED_OPENAI_MODELS } from '@/lib/services/openai-models'
+import { isAllowedOpenAIChatModelId } from '@/lib/services/openai-models'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -20,7 +20,7 @@ const updateTemplateSchema = z.object({
     systemPrompt: z.string().min(1).optional(),
     userPrompt: z.string().optional().nullable(),
     variables: z.array(z.string()).optional(),
-    model: z.enum(SUPPORTED_OPENAI_MODELS).optional(),
+    model: z.string().trim().refine(isAllowedOpenAIChatModelId, 'Unsupported OpenAI chat model').optional(),
     temperature: z.number().min(0).max(2).optional(),
     maxTokens: z.number().int().min(1).max(32768).optional(),
     responseFormat: z.nativeEnum(AIResponseFormat).optional(),

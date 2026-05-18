@@ -86,6 +86,10 @@ function CreateExamPageContent() {
         certificateBadgeMode: 'AUTO' as 'AUTO' | 'UPLOADED',
     })
 
+    const preventNumberInputScroll = (e: React.WheelEvent<HTMLInputElement>) => {
+        e.currentTarget.blur()
+    }
+
     useEffect(() => {
         const loadCourses = async () => {
             try {
@@ -388,6 +392,7 @@ function CreateExamPageContent() {
                                         min={1}
                                         value={form.totalScore}
                                         onChange={(e) => updateForm('totalScore', e.target.value)}
+                                        onWheel={preventNumberInputScroll}
                                         required
                                     />
                                 </div>
@@ -400,6 +405,7 @@ function CreateExamPageContent() {
                                         min={0}
                                         value={form.passingScore}
                                         onChange={(e) => updateForm('passingScore', e.target.value)}
+                                        onWheel={preventNumberInputScroll}
                                         required
                                     />
                                 </div>
@@ -412,6 +418,7 @@ function CreateExamPageContent() {
                                         min={1}
                                         value={form.maxAttempts}
                                         onChange={(e) => updateForm('maxAttempts', e.target.value)}
+                                        onWheel={preventNumberInputScroll}
                                         required
                                     />
                                 </div>

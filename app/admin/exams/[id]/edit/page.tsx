@@ -116,6 +116,10 @@ function EditExamPageContent({ params }: PageProps) {
         countsTowardPerformance: false,
     })
 
+    const preventNumberInputScroll = (e: React.WheelEvent<HTMLInputElement>) => {
+        e.currentTarget.blur()
+    }
+
     useEffect(() => {
         const loadExam = async () => {
             try {
@@ -658,6 +662,7 @@ function EditExamPageContent({ params }: PageProps) {
                                         min={1}
                                         value={form.totalScore}
                                         onChange={(e) => updateForm('totalScore', e.target.value)}
+                                        onWheel={preventNumberInputScroll}
                                         disabled={!canEditExam}
                                         required
                                     />
@@ -671,6 +676,7 @@ function EditExamPageContent({ params }: PageProps) {
                                         min={0}
                                         value={form.passingScore}
                                         onChange={(e) => updateForm('passingScore', e.target.value)}
+                                        onWheel={preventNumberInputScroll}
                                         disabled={!canEditExam}
                                         required
                                     />
@@ -684,6 +690,7 @@ function EditExamPageContent({ params }: PageProps) {
                                         min={1}
                                         value={form.maxAttempts}
                                         onChange={(e) => updateForm('maxAttempts', e.target.value)}
+                                        onWheel={preventNumberInputScroll}
                                         disabled={!canEditExam}
                                         required
                                     />
@@ -741,6 +748,7 @@ function EditExamPageContent({ params }: PageProps) {
                                                 max={20}
                                                 value={form.starValue}
                                                 onChange={(e) => updateForm('starValue', e.target.value)}
+                                                onWheel={preventNumberInputScroll}
                                                 disabled={!canEditRewardPolicy || !form.awardsStars}
                                             />
                                             {rewardPolicyOnlyMode ? (
@@ -901,6 +909,7 @@ function EditExamPageContent({ params }: PageProps) {
                                         min={1}
                                         value={form.timeLimit}
                                         onChange={(e) => updateForm('timeLimit', e.target.value)}
+                                        onWheel={preventNumberInputScroll}
                                         placeholder="No limit"
                                         disabled={!canEditExam}
                                     />
