@@ -52,3 +52,4 @@ backend.log
 translation/
 .mindfs/
 .obsidian/
+.codegraph/

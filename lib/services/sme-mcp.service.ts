@@ -818,9 +818,10 @@ export class SmeMcpService {
                 allowReview,
                 assessmentKind: input.examType,
                 learningEventId: resolvedEvent?.id ?? null,
+                sourceLearningEventId: resolvedEvent?.id ?? null,
             },
             user.id,
-            { actorRole: user.role }
+            resolvedEvent ? undefined : { actorRole: user.role }
         )
 
         return {
@@ -862,6 +863,56 @@ export class SmeMcpService {
                     },
                 }
                 : undefined,
+        }
+    }
+
+    static async attachExamToEvent(
+        user: MappableUser,
+        input: {
+            exam: string
+            event: string
+        }
+    ): Promise<ToolResult<{
+        event: Awaited<ReturnType<typeof TrainingOpsService.attachScopedExamToEvent>>
+        exam: {
+            id: string
+            title: string
+        }
+        binding: {
+            eventId: string
+            examId: string
+        }
+    }>> {
+        const event = await this.resolveEventReference(user, input.event)
+        const exam = await this.resolveExamReference(user, input.exam)
+        const updatedEvent = await TrainingOpsService.attachScopedExamToEvent(user, event.id, exam.id)
+
+        return {
+            success: true,
+            tool: 'attach_exam_to_event',
+            summary: `Attached exam "${exam.title}" to event "${event.title}".`,
+            data: {
+                event: updatedEvent,
+                exam: {
+                    id: exam.id,
+                    title: exam.title,
+                },
+                binding: {
+                    eventId: event.id,
+                    examId: exam.id,
+                },
+            },
+            nextActions: ['review_event_status', 'publish_exam_for_learners'],
+            recommendedNextInputs: {
+                review_event_status: {
+                    event: event.id,
+                },
+                publish_exam_for_learners: {
+                    exam: exam.id,
+                    userIds: [],
+                    sendNotification: false,
+                },
+            },
         }
     }
 
@@ -1310,7 +1361,7 @@ export class SmeMcpService {
         } else {
             const questionTypes = input.questionTypes && input.questionTypes.length > 0
                 ? input.questionTypes
-                : [ExamQuestionType.MULTIPLE_CHOICE]
+                : [ExamQuestionType.SINGLE_CHOICE]
             const questionCount =
                 input.questionCount ??
                 Math.max(1, Math.round((examRecord.totalScore ?? 100) / 10))
@@ -1330,8 +1381,11 @@ export class SmeMcpService {
                 if (assignedCount <= 0) return
 
                 switch (type) {
-                    case ExamQuestionType.MULTIPLE_CHOICE:
+                    case ExamQuestionType.SINGLE_CHOICE:
                         questionCounts.singleChoice = (questionCounts.singleChoice ?? 0) + assignedCount
+                        break
+                    case ExamQuestionType.MULTIPLE_CHOICE:
+                        questionCounts.multipleChoice = (questionCounts.multipleChoice ?? 0) + assignedCount
                         break
                     case ExamQuestionType.TRUE_FALSE:
                         questionCounts.trueFalse = (questionCounts.trueFalse ?? 0) + assignedCount
@@ -1344,7 +1398,7 @@ export class SmeMcpService {
                         break
                     default:
                         questionCounts.singleChoice = (questionCounts.singleChoice ?? 0) + assignedCount
-                        warnings.push(`Question type "${type}" is not supported by the generator, so it was mapped to MULTIPLE_CHOICE.`)
+                        warnings.push(`Question type "${type}" is not supported by the generator, so it was mapped to SINGLE_CHOICE.`)
                         break
                 }
             })

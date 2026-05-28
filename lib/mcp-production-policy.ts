@@ -27,6 +27,7 @@ const PRIMARY_STANDARD_MCP_TOOL_NAMES = new Set([
     'create_course',
     'design_course',
     'create_exam',
+    'attach_exam_to_event',
     'design_exam_questions',
     'review_event_status',
     'share_course_with_learners',

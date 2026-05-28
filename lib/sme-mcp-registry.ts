@@ -238,6 +238,11 @@ const createExamSchema = z.object({
         }
     })
 
+const attachExamToEventSchema = z.object({
+    exam: z.string().trim().min(1).max(200),
+    event: z.string().trim().min(1).max(200),
+})
+
 const designCourseSchema = z
     .object({
         course: z.string().trim().min(1).max(200),
@@ -712,6 +717,32 @@ export const smeMcpToolDefinitions = [
         execute: (user, input) => SmeMcpService.createExam(user, input as z.infer<typeof createExamSchema>),
     },
     {
+        name: 'attach_exam_to_event',
+        description: smeMcpToolMetadataByName.attach_exam_to_event.description,
+        inputSchema: attachExamToEventSchema,
+        inputJsonSchema: {
+            type: 'object',
+            description: toolInputDescription('attach_exam_to_event'),
+            properties: {
+                exam: describedStringSchema(parameterDescription('attach_exam_to_event', 'exam', 'Required exam reference.'), {
+                    minLength: 1,
+                    maxLength: 200,
+                    examples: [String(parameterExample('attach_exam_to_event', 'exam') ?? '')],
+                }),
+                event: describedStringSchema(parameterDescription('attach_exam_to_event', 'event', 'Required event reference.'), {
+                    minLength: 1,
+                    maxLength: 200,
+                    examples: [String(parameterExample('attach_exam_to_event', 'event') ?? '')],
+                }),
+            },
+            required: ['exam', 'event'],
+            additionalProperties: false,
+            examples: [getSmeMcpToolMetadata('attach_exam_to_event').minimalExample.input],
+        },
+        execute: (user, input) =>
+            SmeMcpService.attachExamToEvent(user, input as z.infer<typeof attachExamToEventSchema>),
+    },
+    {
         name: 'design_course',
         description: smeMcpToolMetadataByName.design_course.description,
         inputSchema: designCourseSchema,
@@ -841,9 +872,15 @@ export const smeMcpToolDefinitions = [
                     enum: parameterAcceptedValues('design_exam_questions', 'difficultyMix'),
                     examples: typeof parameterExample('design_exam_questions', 'difficultyMix') === 'string' ? [parameterExample('design_exam_questions', 'difficultyMix')] : undefined,
                 }),
-                questionTypes: describedStringArraySchema(parameterDescription('design_exam_questions', 'questionTypes', 'Optional question type array.'), {
-                    example: parameterExample('design_exam_questions', 'questionTypes'),
-                }),
+                questionTypes: {
+                    type: 'array',
+                    description: parameterDescription('design_exam_questions', 'questionTypes', 'Optional question type array.'),
+                    items: {
+                        type: 'string',
+                        enum: ['SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'TRUE_FALSE', 'FILL_IN_BLANK', 'ESSAY', 'EXERCISE'],
+                    },
+                    ...(Array.isArray(parameterExample('design_exam_questions', 'questionTypes')) ? { examples: [parameterExample('design_exam_questions', 'questionTypes')] } : {}),
+                },
                 coverageNotes: describedStringSchema(parameterDescription('design_exam_questions', 'coverageNotes', 'Optional coverage notes.'), {
                     examples: typeof parameterExample('design_exam_questions', 'coverageNotes') === 'string' ? [parameterExample('design_exam_questions', 'coverageNotes')] : undefined,
                     nullable: true,
@@ -866,7 +903,7 @@ export const smeMcpToolDefinitions = [
                     items: {
                         type: 'object',
                         properties: {
-                            type: { type: 'string', enum: ['MULTIPLE_CHOICE', 'TRUE_FALSE', 'FILL_IN_BLANK', 'ESSAY', 'EXERCISE'] },
+                            type: { type: 'string', enum: ['SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'TRUE_FALSE', 'FILL_IN_BLANK', 'ESSAY', 'EXERCISE'] },
                             difficulty: { type: 'string', enum: ['EASY', 'MEDIUM', 'HARD'] },
                             question: { type: 'string' },
                             options: { type: 'array', items: { type: 'string' } },

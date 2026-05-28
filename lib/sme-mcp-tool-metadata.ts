@@ -884,6 +884,58 @@ export const smeMcpToolMetadata: SmeMcpToolMetadata[] = [
         recommendedNextActions: ['review_event_status', 'publish_exam_for_learners'],
     },
     {
+        key: 'attach_exam_to_event',
+        label: 'Attach Exam To Event',
+        description: 'Bind an existing scoped exam to an existing scoped event.',
+        category: 'authoring',
+        categoryLabel: 'Authoring',
+        productionVisible: true,
+        whenToUse: 'Use when an exam already exists and needs to appear under an event.',
+        inputSummary: 'Required: exam and event. Both accept an id or exact title from list_my_workspace.',
+        parameters: [
+            {
+                name: 'exam',
+                label: 'Exam',
+                inputKind: 'reference',
+                required: 'mandatory',
+                type: 'id | title',
+                description: 'Existing exam to attach.',
+                howToFill: 'Use an exam id or exact title from your workspace.',
+                referenceRule: {
+                    entity: 'exam',
+                    acceptedForms: ['id', 'title', 'name'],
+                    recommendedSourceTool: 'list_my_workspace',
+                    matchPriority: ['id', 'title'],
+                },
+                example: 'RTC Audio Basics Assessment',
+            },
+            {
+                name: 'event',
+                label: 'Event',
+                inputKind: 'reference',
+                required: 'mandatory',
+                type: 'id | title',
+                description: 'Event that should show the exam.',
+                howToFill: 'Use an event id or exact title from your workspace.',
+                referenceRule: {
+                    entity: 'event',
+                    acceptedForms: ['id', 'title', 'name'],
+                    recommendedSourceTool: 'list_my_workspace',
+                    matchPriority: ['id', 'title'],
+                },
+                example: 'RTC Audio Basics',
+            },
+        ],
+        minimalExample: {
+            title: 'Attach Existing Exam',
+            input: {
+                exam: 'RTC Audio Basics Assessment',
+                event: 'RTC Audio Basics',
+            },
+        },
+        recommendedNextActions: ['review_event_status', 'publish_exam_for_learners'],
+    },
+    {
         key: 'design_course',
         label: 'Design Course',
         description: 'Create chapters and lessons at a higher level, and return upload/transcript task planning.',
@@ -1180,9 +1232,9 @@ export const smeMcpToolMetadata: SmeMcpToolMetadata[] = [
                 required: 'optional',
                 type: 'ExamQuestionType[]',
                 description: 'Question types to create or generate.',
-                howToFill: 'Use one or more supported question types.',
-                example: ['MULTIPLE_CHOICE', 'TRUE_FALSE'],
-                defaultBehavior: 'Defaults to MULTIPLE_CHOICE for generation modes.',
+                howToFill: 'Use SINGLE_CHOICE for one-correct-answer questions, or MULTIPLE_CHOICE only when more than one answer may be correct.',
+                example: ['SINGLE_CHOICE'],
+                defaultBehavior: 'Defaults to SINGLE_CHOICE for generation modes.',
             },
             {
                 name: 'coverageNotes',
@@ -1242,7 +1294,7 @@ export const smeMcpToolMetadata: SmeMcpToolMetadata[] = [
                 howToFill: 'Required for manual_payload. Provide question objects compatible with the exam question model. For ESSAY questions, you can include rubric, sampleAnswer, gradingCriteria, and maxWords.',
                 example: [
                     {
-                        type: 'MULTIPLE_CHOICE',
+                        type: 'SINGLE_CHOICE',
                         question: 'Which step should you check first when there is no audio?',
                         options: ['ICE state', 'Audio device routing', 'Video bitrate', 'Resolution'],
                         correctAnswer: 'Audio device routing',
@@ -1259,7 +1311,7 @@ export const smeMcpToolMetadata: SmeMcpToolMetadata[] = [
                 mode: 'generate_from_course',
                 sourceCourse: 'RTC Audio Basics Course',
                 questionCount: 10,
-                questionTypes: ['MULTIPLE_CHOICE', 'ESSAY'],
+                questionTypes: ['SINGLE_CHOICE'],
                 generateEssayScoringCriteria: true,
                 essayScoringStyle: 'standard',
             },
@@ -1272,7 +1324,7 @@ export const smeMcpToolMetadata: SmeMcpToolMetadata[] = [
                 requireEssayAiReady: true,
                 questions: [
                     {
-                        type: 'MULTIPLE_CHOICE',
+                        type: 'SINGLE_CHOICE',
                         difficulty: 'MEDIUM',
                         question: 'Which step should you check first when there is no audio?',
                         options: ['ICE state', 'Audio device routing', 'Video bitrate', 'Resolution'],

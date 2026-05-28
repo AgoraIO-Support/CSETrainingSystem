@@ -45,6 +45,50 @@ export const POST = withSmeOrAdminAuth(async (req: NextRequest, user, context: R
             }, { status: 403 })
         }
 
+        if (error instanceof Error) {
+            if (error.message === 'EXAM_NOT_FOUND') {
+                return NextResponse.json({
+                    success: false,
+                    error: {
+                        code: 'EXAM_NOT_FOUND',
+                        message: 'Exam not found',
+                    },
+                }, { status: 404 })
+            }
+
+            if (error.message === 'EXAM_ARCHIVED') {
+                return NextResponse.json({
+                    success: false,
+                    error: {
+                        code: 'EXAM_ARCHIVED',
+                        message: 'Archived exams cannot be linked to an event',
+                    },
+                }, { status: 400 })
+            }
+
+            if (error.message === 'EXAM_ALREADY_LINKED_TO_OTHER_EVENT') {
+                return NextResponse.json({
+                    success: false,
+                    error: {
+                        code: 'EXAM_ALREADY_LINKED_TO_OTHER_EVENT',
+                        message: 'Exam is already linked to another event',
+                    },
+                }, { status: 409 })
+            }
+
+            if (error.message === 'EXAM_DOMAIN_MISMATCH' || error.message === 'EXAM_SERIES_MISMATCH') {
+                return NextResponse.json({
+                    success: false,
+                    error: {
+                        code: error.message,
+                        message: error.message === 'EXAM_DOMAIN_MISMATCH'
+                            ? 'Exam domain does not match the selected event scope'
+                            : 'Exam learning series does not match the selected event scope',
+                    },
+                }, { status: 400 })
+            }
+        }
+
         return NextResponse.json({
             success: false,
             error: {

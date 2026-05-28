@@ -456,7 +456,7 @@ function buildExampleInput(
                     mode: 'manual_payload',
                     questions: [
                         {
-                            type: 'MULTIPLE_CHOICE',
+                            type: 'SINGLE_CHOICE',
                             difficulty: 'MEDIUM',
                             question: 'Which step should you check first when there is no audio?',
                             options: ['ICE state', 'Audio device routing', 'Video bitrate', 'Resolution'],
@@ -471,6 +471,7 @@ function buildExampleInput(
                     mode: 'generate_from_course',
                     sourceCourse: course?.title ?? '',
                     questionCount: 10,
+                    questionTypes: ['SINGLE_CHOICE'],
                 }
         case 'review_event_status':
             return {

@@ -270,6 +270,14 @@ export const normalizeSmeMcpError = (error: unknown) => {
             )
         }
 
+        if (message === 'SME_REWARD_POLICY_RESTRICTED') {
+            return errorResponse(
+                403,
+                'SME_REWARD_POLICY_RESTRICTED',
+                'SME cannot configure formal or performance-tracked exams'
+            )
+        }
+
         if (message === 'LESSON_NOT_FOUND') {
             return errorResponse(404, 'LESSON_NOT_FOUND', 'Lesson not found')
         }

@@ -214,7 +214,7 @@ export class ExamGenerationService {
     const toQuestionType = (key: keyof typeof counts): ExamQuestionType => {
       switch (key) {
         case 'singleChoice':
-          return ExamQuestionType.MULTIPLE_CHOICE;
+          return ExamQuestionType.SINGLE_CHOICE;
         case 'multipleChoice':
           return ExamQuestionType.MULTIPLE_CHOICE;
         case 'trueFalse':
@@ -364,7 +364,7 @@ export class ExamGenerationService {
       if (!count || count <= 0) continue;
       const questionType =
         key === 'singleChoice'
-          ? ExamQuestionType.MULTIPLE_CHOICE
+          ? ExamQuestionType.SINGLE_CHOICE
           : key === 'multipleChoice'
             ? ExamQuestionType.MULTIPLE_CHOICE
             : key === 'trueFalse'
@@ -769,7 +769,8 @@ export class ExamGenerationService {
    * Normalize OpenAI output into the canonical DB format.
    *
    * Canonical formats (matches admin UI + schema comment):
-   * - MULTIPLE_CHOICE: `correctAnswer` is the option index as a string: "0".."3"
+   * - SINGLE_CHOICE: `correctAnswer` is the option index as a string: "0".."3"
+   * - MULTIPLE_CHOICE: `correctAnswer` is a comma-separated list of option indexes, e.g. "0,2"
    * - TRUE_FALSE: `correctAnswer` is "true" or "false"
    * - FILL_IN_BLANK: free-form string (not auto-graded)
    * - ESSAY: use rubric + sampleAnswer; `correctAnswer` is not required
@@ -783,7 +784,7 @@ export class ExamGenerationService {
         ? Math.max(0, Math.min(raw.confidence, 1))
         : 0.8;
 
-    if (type === ExamQuestionType.MULTIPLE_CHOICE) {
+    if (type === ExamQuestionType.SINGLE_CHOICE || type === ExamQuestionType.MULTIPLE_CHOICE) {
       let options = Array.isArray(raw?.options)
         ? raw.options
             .map((o: any) => String(o).trim())
@@ -801,9 +802,13 @@ export class ExamGenerationService {
         }
       }
 
-      const correctAnswer = this.normalizeMultipleChoiceMultiAnswer(raw, options);
+      const correctAnswer = type === ExamQuestionType.SINGLE_CHOICE
+        ? this.normalizeMultipleChoiceCorrectAnswer(raw, options)
+        : this.normalizeMultipleChoiceMultiAnswer(raw, options);
       if (correctAnswer == null) {
-        throw new Error('INVALID_MULTIPLE_CHOICE_CORRECT_ANSWER');
+        throw new Error(type === ExamQuestionType.SINGLE_CHOICE
+          ? 'INVALID_SINGLE_CHOICE_CORRECT_ANSWER'
+          : 'INVALID_MULTIPLE_CHOICE_CORRECT_ANSWER');
       }
       const rebalanced = this.rebalanceMultipleChoiceOptionOrder(options, correctAnswer);
       return {
@@ -1025,6 +1030,17 @@ export class ExamGenerationService {
     const options = ['Option A', 'Option B', 'Option C', 'Option D'];
 
     switch (type) {
+      case ExamQuestionType.SINGLE_CHOICE:
+        return {
+          type,
+          difficulty,
+          question: `${baseQuestion} (single choice)`,
+          options,
+          correctAnswer: '0',
+          explanation: 'Fallback generated question.',
+          sourceChunkIds: [],
+          confidence: 0.1,
+        };
       case ExamQuestionType.MULTIPLE_CHOICE:
         return {
           type,
@@ -1107,6 +1123,26 @@ Output format: JSON object with the following structure based on question type.`
     let typePrompt = '';
 
     switch (type) {
+      case ExamQuestionType.SINGLE_CHOICE:
+        typePrompt = `Generate a SINGLE CHOICE question with:
+- A clear question stem
+- Exactly 4 options labeled A, B, C, D
+- Exactly one correct answer
+- Return the single correct answer index as an integer from 0 to 3
+- An explanation of why the answer is correct
+- Do NOT systematically place the correct answer in A/B; distribute answer positions across 0,1,2,3 over multiple questions
+
+Output JSON:
+{
+  "question": "The question text",
+  "options": ["Option A", "Option B", "Option C", "Option D"],
+  "correctAnswerIndex": 2,
+  "explanation": "Why the answer is correct",
+  "topic": "Main topic tested",
+  "confidence": 0.9
+}`;
+        break;
+
       case ExamQuestionType.MULTIPLE_CHOICE:
         typePrompt = `Generate a MULTIPLE CHOICE question with:
 - A clear question stem
