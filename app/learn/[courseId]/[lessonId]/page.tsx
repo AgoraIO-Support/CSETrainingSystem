@@ -255,9 +255,10 @@ export default function LessonPage({
                     const videoAsset = (locatedLesson.assets || []).find(
                         (a: any) => a.type === 'VIDEO' || (a.mimeType?.startsWith?.('video/') ?? false)
                     )
-                    if (videoAsset) {
-                        setSelectedAsset(videoAsset as CourseAsset)
-                    }
+                    const webPackageAsset = (locatedLesson.assets || []).find(
+                        (a: any) => a.type === 'WEB_PACKAGE' || a.mimeType === 'text/html'
+                    )
+                    setSelectedAsset((videoAsset ?? webPackageAsset ?? null) as CourseAsset | null)
                 }
             } catch (err) {
                 if (!cancelled) {
@@ -523,6 +524,9 @@ export default function LessonPage({
         subtitleCandidates.find((a: any) => (videoBasename ? getAssetBasename(a) === videoBasename : false)) ??
         subtitleCandidates[0]
     const resolvedVideoUrl = videoAsset?.url || lesson.videoUrl || null
+    const webPackageAsset = (lesson.assets || []).find(
+        (a: any) => a.type === 'WEB_PACKAGE' || a.mimeType === 'text/html'
+    ) as CourseAsset | undefined
     const resolvedSubtitleTracks =
         lesson.subtitleTracks && lesson.subtitleTracks.length > 0
             ? lesson.subtitleTracks
@@ -577,6 +581,15 @@ export default function LessonPage({
                             setSelectedAsset(null)
                         }
                     }}
+                />
+            )
+        }
+
+        // Default: show video player or placeholder
+        if (!resolvedVideoUrl && webPackageAsset) {
+            return (
+                <AssetViewer
+                    asset={(selectedAsset?.type === 'WEB_PACKAGE' ? selectedAsset : webPackageAsset) as CourseAsset}
                 />
             )
         }

@@ -985,7 +985,7 @@ export interface Chapter {
     lessons: Lesson[]
 }
 
-export type CourseAssetType = 'VIDEO' | 'DOCUMENT' | 'PRESENTATION' | 'TEXT' | 'AUDIO' | 'OTHER'
+export type CourseAssetType = 'VIDEO' | 'DOCUMENT' | 'PRESENTATION' | 'TEXT' | 'AUDIO' | 'WEB_PACKAGE' | 'OTHER'
 
 export interface CourseAsset {
     id: string

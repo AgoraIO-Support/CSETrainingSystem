@@ -38,7 +38,7 @@ export class CourseAssetService {
     static async deleteAsset(assetId: string) {
         const asset = await prisma.courseAsset.findUnique({
             where: { id: assetId },
-            select: { s3Key: true },
+            select: { s3Key: true, type: true },
         })
 
         if (!asset) {
@@ -47,7 +47,14 @@ export class CourseAssetService {
 
         if (asset.s3Key) {
             try {
-                await FileService.deleteFile(asset.s3Key)
+                if (asset.type === 'WEB_PACKAGE') {
+                    const prefix = asset.s3Key.includes('/')
+                        ? asset.s3Key.slice(0, asset.s3Key.lastIndexOf('/'))
+                        : asset.s3Key
+                    await FileService.deletePrefix(prefix)
+                } else {
+                    await FileService.deleteFile(asset.s3Key)
+                }
             } catch (error) {
                 console.error('Failed to delete course asset file from S3:', error)
                 throw new Error('COURSE_ASSET_FILE_DELETE_FAILED')

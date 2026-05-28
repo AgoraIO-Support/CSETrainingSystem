@@ -5,6 +5,11 @@ import { FileService } from '@/lib/services/file.service'
 import { createCourseAssetSchema } from '@/lib/validations'
 import { z } from 'zod'
 
+const assetUrl = async (asset: { id: string; type: string; s3Key?: string | null; url: string }) =>
+    asset.type === 'WEB_PACKAGE'
+        ? `/api/assets/web-packages/${asset.id}/index.html`
+        : asset.s3Key ? await FileService.getAssetAccessUrl(asset.s3Key) : asset.url
+
 export const GET = withAdminAuth(async (req, user, { params }: { params: Promise<{ id: string }> }) => {
     try {
         const { id } = await params
@@ -15,7 +20,7 @@ export const GET = withAdminAuth(async (req, user, { params }: { params: Promise
             data: await Promise.all(
                 assets.map(async (asset) => ({
                     ...asset,
-                    url: asset.s3Key ? await FileService.getAssetAccessUrl(asset.s3Key) : asset.url,
+                    url: await assetUrl(asset),
                     cloudfrontUrl: null,
                 }))
             ),

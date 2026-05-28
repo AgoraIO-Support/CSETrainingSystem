@@ -12,6 +12,7 @@ import {
     File,
     Music,
     FileType,
+    MonitorPlay,
     X
 } from 'lucide-react'
 import { VideoJSPlayer } from '@/components/video/videojs-player'
@@ -56,6 +57,10 @@ function isAudio(type: string | undefined, mimeType: string | null | undefined):
     return type === 'AUDIO' || mimeType?.startsWith('audio/') || false
 }
 
+function isWebPackage(type: string | undefined, mimeType: string | null | undefined, url: string): boolean {
+    return type === 'WEB_PACKAGE' || mimeType === 'text/html' || url.toLowerCase().endsWith('.html')
+}
+
 function isText(type: string | undefined, mimeType: string | null | undefined, url: string): boolean {
     const textExtensions = ['.txt', '.md', '.json', '.xml', '.csv', '.log']
     return type === 'TEXT' ||
@@ -73,6 +78,8 @@ function getAssetIcon(type: string | undefined) {
             return <FileSpreadsheet className="h-5 w-5" />
         case 'AUDIO':
             return <Music className="h-5 w-5" />
+        case 'WEB_PACKAGE':
+            return <MonitorPlay className="h-5 w-5" />
         case 'TEXT':
             return <FileType className="h-5 w-5" />
         default:
@@ -89,6 +96,41 @@ export function AssetViewer({
 }: AssetViewerProps) {
     const assetUrl = asset.cloudfrontUrl || asset.url
     const mimeType = asset.mimeType || asset.contentType
+
+    if (isWebPackage(asset.type, mimeType, assetUrl)) {
+        return (
+            <div className="flex h-full min-h-[calc(100vh-160px)] flex-col overflow-hidden rounded-md border bg-white">
+                <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b bg-slate-50 px-3 py-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                        {getAssetIcon(asset.type)}
+                        <span className="truncate text-sm font-medium">{asset.title}</span>
+                        <Badge variant="secondary">WEB</Badge>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" asChild>
+                            <a href={assetUrl} target="_blank" rel="noopener noreferrer">
+                                <ExternalLink className="h-4 w-4 mr-2" />
+                                Open
+                            </a>
+                        </Button>
+                        {onClose && (
+                            <Button variant="ghost" size="sm" onClick={onClose}>
+                                <X className="h-4 w-4 mr-1" />
+                                Back
+                            </Button>
+                        )}
+                    </div>
+                </div>
+                <iframe
+                    src={assetUrl}
+                    title={asset.title}
+                    className="min-h-0 flex-1 border-0"
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                    allow="autoplay; fullscreen"
+                />
+            </div>
+        )
+    }
 
     // Render video content
     if (isVideo(asset.type, mimeType)) {

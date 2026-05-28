@@ -3,6 +3,14 @@ import { CourseStructureService } from '@/lib/services/course-structure.service'
 import { FileService } from '@/lib/services/file.service'
 import { withAuthOptional } from '@/lib/auth-middleware'
 
+const getCourseAssetUrl = async (asset: { id: string; type: string; s3Key?: string | null }) => {
+    if (asset.type === 'WEB_PACKAGE') {
+        return `/api/assets/web-packages/${asset.id}/index.html`
+    }
+
+    return await FileService.getAssetAccessUrl(asset.s3Key || '')
+}
+
 export const GET = withAuthOptional(async (req, user, { params }: { params: Promise<{ id: string }> }) => {
     try {
         const { id } = await params
@@ -31,7 +39,7 @@ export const GET = withAuthOptional(async (req, user, { params }: { params: Prom
                             id: asset.id,
                             title: asset.title,
                             type: asset.type,
-                            url: await FileService.getAssetAccessUrl(asset.s3Key),
+                            url: await getCourseAssetUrl(asset),
                             mimeType: asset.mimeType ?? asset.contentType ?? undefined,
                         }
                     })),

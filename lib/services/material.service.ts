@@ -6,6 +6,10 @@ import { v4 as uuidv4 } from 'uuid'
 import { log } from '@/lib/logger'
 
 export class MaterialService {
+    private static webPackageAccessUrl(assetId: string) {
+        return `/api/assets/web-packages/${assetId}/index.html`
+    }
+
     /**
      * Create a new course asset (material).
      */
@@ -71,8 +75,8 @@ export class MaterialService {
             id: a.courseAssetId,
             title: a.courseAsset?.title ?? 'Untitled',
             type: a.courseAsset?.type ?? 'DOCUMENT',
-            cloudfrontUrl: a.courseAsset?.cloudfrontUrl ?? a.courseAsset?.url ?? null,
-            url: a.courseAsset?.cloudfrontUrl ?? a.courseAsset?.url ?? null,
+            cloudfrontUrl: a.courseAsset?.type === 'WEB_PACKAGE' ? null : a.courseAsset?.cloudfrontUrl ?? a.courseAsset?.url ?? null,
+            url: a.courseAsset?.type === 'WEB_PACKAGE' ? this.webPackageAccessUrl(a.courseAssetId) : a.courseAsset?.cloudfrontUrl ?? a.courseAsset?.url ?? null,
             mimeType: a.courseAsset?.mimeType ?? a.courseAsset?.contentType ?? null,
             s3Key: a.courseAsset?.s3Key ?? null,
             sizeBytes: null,
@@ -88,7 +92,7 @@ export class MaterialService {
         // Find the asset to get its S3 key
         const asset = await prisma.courseAsset.findUnique({
             where: { id: assetId },
-            select: { id: true, s3Key: true, courseId: true },
+            select: { id: true, s3Key: true, courseId: true, type: true },
         })
 
         // Delete lesson asset binding and course asset in transaction
@@ -100,7 +104,14 @@ export class MaterialService {
         // Delete from S3 after transaction commits
         if (asset?.s3Key) {
             try {
-                await FileService.deleteFile(asset.s3Key, ASSET_S3_BUCKET_NAME)
+                if (asset.type === 'WEB_PACKAGE') {
+                    const prefix = asset.s3Key.includes('/')
+                        ? asset.s3Key.slice(0, asset.s3Key.lastIndexOf('/'))
+                        : asset.s3Key
+                    await FileService.deletePrefix(prefix, ASSET_S3_BUCKET_NAME)
+                } else {
+                    await FileService.deleteFile(asset.s3Key, ASSET_S3_BUCKET_NAME)
+                }
             } catch (err) {
                 // Log but don't fail - DB records are already deleted
                 log('S3', 'error', 'Failed to delete S3 object after lesson asset deletion', {

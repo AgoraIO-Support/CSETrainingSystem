@@ -455,7 +455,7 @@ export class ApiClient {
         })
     }
 
-    static async uploadLessonAsset(courseId: string, chapterId: string, lessonId: string, payload: { filename: string; contentType: string; type: 'VIDEO' | 'DOCUMENT' | 'PRESENTATION' | 'TEXT' | 'AUDIO' | 'OTHER' }): Promise<{
+    static async uploadLessonAsset(courseId: string, chapterId: string, lessonId: string, payload: { filename: string; contentType: string; type: 'VIDEO' | 'DOCUMENT' | 'PRESENTATION' | 'TEXT' | 'AUDIO' | 'WEB_PACKAGE' | 'OTHER' }): Promise<{
         success: boolean
         data: {
             uploadSessionId: string
@@ -485,7 +485,7 @@ export class ApiClient {
             asset: {
                 id: string
                 title: string
-                type: 'VIDEO' | 'DOCUMENT' | 'PRESENTATION' | 'TEXT' | 'AUDIO' | 'OTHER'
+                type: 'VIDEO' | 'DOCUMENT' | 'PRESENTATION' | 'TEXT' | 'AUDIO' | 'WEB_PACKAGE' | 'OTHER'
                 url: string
                 mimeType?: string
                 s3Key: string
@@ -493,6 +493,53 @@ export class ApiClient {
         }
     }> {
         return this.request(`/admin/courses/${courseId}/chapters/${chapterId}/lessons/${lessonId}/assets/confirm`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async uploadLessonWebPackage(courseId: string, chapterId: string, lessonId: string, payload: {
+        title: string
+        files: Array<{ path: string; contentType: string }>
+    }): Promise<{
+        success: boolean
+        data: {
+            uploadSessionId: string
+            courseAssetId: string
+            status: 'PENDING_UPLOAD'
+            uploads: Array<{
+                path: string
+                key: string
+                uploadUrl: string
+                requiredHeaders: Record<string, string>
+            }>
+            expiresAt: string | Date
+        }
+    }> {
+        return this.request(`/admin/courses/${courseId}/chapters/${chapterId}/lessons/${lessonId}/assets/web-package/upload`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async confirmLessonWebPackage(courseId: string, chapterId: string, lessonId: string, payload: {
+        uploadSessionId: string
+    }): Promise<{
+        success: boolean
+        data: {
+            uploadSessionId: string
+            status: 'CONFIRMED'
+            asset: {
+                id: string
+                title: string
+                type: 'WEB_PACKAGE'
+                url: string
+                mimeType?: string
+                s3Key: string
+            }
+        }
+    }> {
+        return this.request(`/admin/courses/${courseId}/chapters/${chapterId}/lessons/${lessonId}/assets/web-package/confirm`, {
             method: 'POST',
             body: JSON.stringify(payload),
         })

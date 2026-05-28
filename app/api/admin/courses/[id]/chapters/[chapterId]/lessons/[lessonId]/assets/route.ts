@@ -7,6 +7,11 @@ import { LessonAssetType } from '@prisma/client'
 import { FileService } from '@/lib/services/file.service'
 import { TrainingOpsService } from '@/lib/services/training-ops.service'
 
+const assetUrl = async (asset: { id: string; type: string; s3Key: string }) =>
+  asset.type === 'WEB_PACKAGE'
+    ? `/api/assets/web-packages/${asset.id}/index.html`
+    : await FileService.getAssetAccessUrl(asset.s3Key)
+
 // GET /admin/courses/:id/chapters/:chapterId/lessons/:lessonId/assets
 export const GET = withSmeOrAdminAuth(async (req, user, { params }: { params: Promise<{ id: string; chapterId: string; lessonId: string }> }) => {
   try {
@@ -18,7 +23,7 @@ export const GET = withSmeOrAdminAuth(async (req, user, { params }: { params: Pr
       id: asset.id,
       title: asset.title,
       type: asset.type as LessonAssetType,
-      url: await FileService.getAssetAccessUrl(asset.s3Key),
+      url: await assetUrl(asset),
       cloudfrontUrl: null,
       mimeType: asset.mimeType ?? asset.contentType ?? null,
     })))
@@ -66,7 +71,7 @@ export const POST = withSmeOrAdminAuth(async (req, user, { params }: { params: P
       id: asset.id,
       title: asset.title,
       type: asset.type as LessonAssetType,
-      url: await FileService.getAssetAccessUrl(asset.s3Key),
+      url: await assetUrl(asset),
       cloudfrontUrl: null,
       mimeType: asset.mimeType ?? asset.contentType ?? null,
     })))

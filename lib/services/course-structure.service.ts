@@ -22,6 +22,17 @@ const extensionForContentType = (contentType: string): string => {
     return ''
 }
 
+const normalizeWebPackagePath = (value: string) => {
+    const normalized = value.replace(/\\/g, '/').replace(/^\/+/, '')
+    const segments = normalized.split('/').filter(Boolean)
+    if (segments.length === 0 || segments.some(segment => segment === '.' || segment === '..')) {
+        throw new Error('WEB_PACKAGE_INVALID_PATH')
+    }
+    return segments.join('/')
+}
+
+const webPackageAccessUrl = (assetId: string) => `/api/assets/web-packages/${assetId}/index.html`
+
 export class CourseStructureService {
     /**
      * Recalculate and persist total course duration (seconds) from all lessons under the course.
@@ -557,6 +568,216 @@ export class CourseStructureService {
         return {
             id: uploadSession.id,
             status: 'ABORTED' as const,
+        }
+    }
+
+    static async prepareWebPackageUpload(lessonId: string, preparedById: string, params: {
+        title: string
+        files: Array<{
+            path: string
+            contentType: string
+        }>
+    }) {
+        const lesson = await prisma.lesson.findUnique({
+            where: { id: lessonId },
+            include: { chapter: { select: { courseId: true } } },
+        })
+        if (!lesson) throw new Error('LESSON_NOT_FOUND')
+
+        const normalizedFiles = params.files.map(file => ({
+            path: normalizeWebPackagePath(file.path),
+            contentType: file.contentType || 'application/octet-stream',
+        }))
+
+        if (!normalizedFiles.some(file => file.path === 'index.html')) {
+            throw new Error('WEB_PACKAGE_INDEX_REQUIRED')
+        }
+
+        const uniquePaths = new Set<string>()
+        for (const file of normalizedFiles) {
+            if (uniquePaths.has(file.path)) throw new Error('WEB_PACKAGE_DUPLICATE_PATH')
+            uniquePaths.add(file.path)
+        }
+
+        const uploadSessionId = uuidv4()
+        const assetId = uuidv4()
+        const basePrefix = joinPathSegments(S3_ASSET_BASE_PREFIX, lesson.chapter.courseId, lessonId, assetId)
+        const indexKey = joinPathSegments(basePrefix, 'index.html')
+
+        const uploadSession = await prisma.lessonAssetUploadSession.create({
+            data: {
+                id: uploadSessionId,
+                lessonId,
+                courseId: lesson.chapter.courseId,
+                preparedById,
+                filename: params.title.trim() || 'Web Package',
+                contentType: 'text/html',
+                assetType: 'WEB_PACKAGE' as LessonAssetType,
+                s3Key: indexKey,
+                courseAssetId: assetId,
+                expiresAt: new Date(Date.now() + 3600 * 1000),
+            },
+        })
+
+        const uploads = await Promise.all(
+            normalizedFiles.map(async (file) => {
+                const key = joinPathSegments(basePrefix, file.path)
+                const upload = await FileService.generateAssetUploadUrl({
+                    filename: file.path.split('/').pop() || file.path,
+                    contentType: file.contentType,
+                    assetType: 'other',
+                    lessonId,
+                    key,
+                })
+
+                return {
+                    path: file.path,
+                    key,
+                    uploadUrl: upload.uploadUrl,
+                    requiredHeaders: {
+                        'Content-Type': file.contentType,
+                        'x-amz-server-side-encryption': 'AES256',
+                    },
+                }
+            })
+        )
+
+        return {
+            uploadSession: {
+                id: uploadSession.id,
+                lessonId: uploadSession.lessonId,
+                courseId: uploadSession.courseId,
+                courseAssetId: uploadSession.courseAssetId,
+                s3Key: uploadSession.s3Key,
+                status: uploadSession.status,
+                expiresAt: uploadSession.expiresAt,
+            },
+            uploads,
+        }
+    }
+
+    static async confirmWebPackageUpload(lessonId: string, uploadSessionId: string) {
+        const uploadSession = await prisma.lessonAssetUploadSession.findUnique({
+            where: { id: uploadSessionId },
+        })
+
+        if (!uploadSession || uploadSession.lessonId !== lessonId || uploadSession.assetType !== 'WEB_PACKAGE') {
+            throw new Error('LESSON_ASSET_UPLOAD_SESSION_NOT_FOUND')
+        }
+
+        if (uploadSession.status === 'ABORTED') {
+            throw new Error('LESSON_ASSET_UPLOAD_ABORTED')
+        }
+
+        if (uploadSession.status === 'CONFIRMED') {
+            const existingAsset = await prisma.courseAsset.findUnique({
+                where: { id: uploadSession.courseAssetId },
+            })
+
+            if (!existingAsset) {
+                throw new Error('COURSE_ASSET_NOT_FOUND')
+            }
+
+            return {
+                uploadSession,
+                asset: {
+                    id: existingAsset.id,
+                    title: existingAsset.title,
+                    type: existingAsset.type,
+                    url: webPackageAccessUrl(existingAsset.id),
+                    mimeType: existingAsset.mimeType ?? existingAsset.contentType ?? undefined,
+                    s3Key: existingAsset.s3Key,
+                },
+            }
+        }
+
+        let head
+        try {
+            head = await s3Client.send(
+                new HeadObjectCommand({
+                    Bucket: ASSET_S3_BUCKET_NAME,
+                    Key: uploadSession.s3Key,
+                })
+            )
+        } catch (error) {
+            await prisma.lessonAssetUploadSession.update({
+                where: { id: uploadSession.id },
+                data: {
+                    status: 'FAILED',
+                    failedAt: new Date(),
+                    errorMessage: error instanceof Error ? error.message : 'Failed to locate web package index.html in S3',
+                },
+            })
+            throw new Error('LESSON_ASSET_UPLOAD_OBJECT_NOT_FOUND')
+        }
+
+        const mimeType = head.ContentType || 'text/html'
+        const sizeBytes = typeof head.ContentLength === 'number' ? head.ContentLength : null
+
+        const asset = await prisma.$transaction(async (tx) => {
+            const existingAsset = await tx.courseAsset.findUnique({
+                where: { id: uploadSession.courseAssetId },
+            })
+
+            const courseAsset =
+                existingAsset ??
+                (await tx.courseAsset.create({
+                    data: {
+                        id: uploadSession.courseAssetId,
+                        courseId: uploadSession.courseId,
+                        title: uploadSession.filename,
+                        type: 'WEB_PACKAGE' as LessonAssetType,
+                        url: webPackageAccessUrl(uploadSession.courseAssetId),
+                        cloudfrontUrl: null,
+                        s3Key: uploadSession.s3Key,
+                        contentType: mimeType,
+                        mimeType,
+                    },
+                }))
+
+            const existingBinding = await tx.lessonAsset.findFirst({
+                where: {
+                    lessonId,
+                    courseAssetId: courseAsset.id,
+                },
+            })
+
+            if (!existingBinding) {
+                await tx.lessonAsset.create({
+                    data: {
+                        lessonId,
+                        courseAssetId: courseAsset.id,
+                    },
+                })
+            }
+
+            await tx.lessonAssetUploadSession.update({
+                where: { id: uploadSession.id },
+                data: {
+                    status: 'CONFIRMED',
+                    confirmedAt: new Date(),
+                    uploadedMimeType: mimeType,
+                    uploadedSizeBytes: sizeBytes ?? undefined,
+                    errorMessage: null,
+                },
+            })
+
+            return courseAsset
+        })
+
+        return {
+            uploadSession: {
+                id: uploadSession.id,
+                status: 'CONFIRMED' as const,
+            },
+            asset: {
+                id: asset.id,
+                title: asset.title,
+                type: asset.type,
+                url: webPackageAccessUrl(asset.id),
+                mimeType: asset.mimeType ?? asset.contentType ?? undefined,
+                s3Key: asset.s3Key,
+            },
         }
     }
 

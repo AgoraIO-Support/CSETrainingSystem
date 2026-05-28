@@ -17,7 +17,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ApiClient } from '@/lib/api-client'
 import type { Course, CourseLevel } from '@/types'
 import Link from 'next/link'
-import { Loader2, Video, FileText, AlertTriangle, Check, Info } from 'lucide-react'
+import { Loader2, Video, FileText, AlertTriangle, Check, Info, MonitorPlay } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { CourseAIConfig } from '@/components/admin/course-ai-config'
 import { CourseAIAssistantTemplate } from '@/components/admin/course-ai-assistant-template'
@@ -67,6 +67,19 @@ type PendingLessonUpload = {
     id: string
     file: File
     type: string
+    uploading: boolean
+    error: string | null
+}
+
+type PendingWebPackageUpload = {
+    id: string
+    title: string
+    rootName: string
+    files: Array<{
+        file: File
+        path: string
+        contentType: string
+    }>
     uploading: boolean
     error: string | null
 }
@@ -164,6 +177,7 @@ function EditCoursePageContent({ params }: { params: Promise<{ id: string }> }) 
     const [chapterError, setChapterError] = useState<string | null>(null)
     const [lessonAttachments, setLessonAttachments] = useState<LessonAttachment[]>([])
     const [pendingLessonUploads, setPendingLessonUploads] = useState<PendingLessonUpload[]>([])
+    const [pendingWebPackageUploads, setPendingWebPackageUploads] = useState<PendingWebPackageUpload[]>([])
     const [defaultLessonAssetType, setDefaultLessonAssetType] = useState('DOCUMENT')
     const [lessonSaving, setLessonSaving] = useState(false)
     const [lessonError, setLessonError] = useState<string | null>(null)
@@ -383,6 +397,7 @@ function EditCoursePageContent({ params }: { params: Promise<{ id: string }> }) 
         })
         setLessonAttachments([])
         setPendingLessonUploads([])
+        setPendingWebPackageUploads([])
         // Ensure chapterId is set before fetching assets
         setLessonModalChapterId(chapterId)
         fetchLessonAssets(lesson.id, chapterId)
@@ -411,6 +426,7 @@ function EditCoursePageContent({ params }: { params: Promise<{ id: string }> }) 
         { value: 'PRESENTATION', label: 'Presentation' },
         { value: 'TEXT', label: 'Text' },
         { value: 'AUDIO', label: 'Audio' },
+        { value: 'WEB_PACKAGE', label: 'Web Package' },
         { value: 'OTHER', label: 'Other' },
     ]
 
@@ -420,17 +436,20 @@ function EditCoursePageContent({ params }: { params: Promise<{ id: string }> }) 
         PRESENTATION: 'presentations',
         TEXT: 'documents',
         AUDIO: 'other',
+        WEB_PACKAGE: 'other',
         OTHER: 'other',
     }
 
-    const assetTypeMap: Record<string, 'VIDEO' | 'DOCUMENT' | 'PRESENTATION' | 'TEXT' | 'AUDIO' | 'OTHER'> = {
+    const assetTypeMap: Record<string, 'VIDEO' | 'DOCUMENT' | 'PRESENTATION' | 'TEXT' | 'AUDIO' | 'WEB_PACKAGE' | 'OTHER'> = {
         VIDEO: 'VIDEO',
         DOCUMENT: 'DOCUMENT',
         PRESENTATION: 'PRESENTATION',
         TEXT: 'TEXT',
         AUDIO: 'AUDIO',
+        WEB_PACKAGE: 'WEB_PACKAGE',
         OTHER: 'OTHER',
     }
+    const isWebPackageUploadMode = defaultLessonAssetType === 'WEB_PACKAGE'
 
     const lessonTypes = [
         { value: 'VIDEO', label: 'Video' },
@@ -482,13 +501,63 @@ function EditCoursePageContent({ params }: { params: Promise<{ id: string }> }) 
         return urlExt === 'vtt' || titleExt === 'vtt'
     }
 
+    const resolveWebPackageFileContentType = (file: File, path: string) => {
+        if (file.type) return file.type
+        const extension = getFileExtension(path)
+        const byExtension: Record<string, string> = {
+            html: 'text/html',
+            htm: 'text/html',
+            js: 'text/javascript',
+            css: 'text/css',
+            json: 'application/json',
+            mp3: 'audio/mpeg',
+            mp4: 'video/mp4',
+            vtt: 'text/vtt',
+            png: 'image/png',
+            jpg: 'image/jpeg',
+            jpeg: 'image/jpeg',
+            webp: 'image/webp',
+            svg: 'image/svg+xml',
+            gif: 'image/gif',
+            xml: 'application/xml',
+            txt: 'text/plain',
+            md: 'text/markdown',
+        }
+        return extension ? byExtension[extension] ?? 'application/octet-stream' : 'application/octet-stream'
+    }
+
+    const normalizeWebPackageFiles = (fileList: FileList | null) => {
+        const files = Array.from(fileList || [])
+        if (files.length === 0) return null
+
+        const rawPaths = files.map(file => ((file as any).webkitRelativePath || file.name).replace(/\\/g, '/'))
+        const commonRoot = rawPaths.every(path => path.includes('/'))
+            ? rawPaths[0].split('/')[0]
+            : null
+        const relativePaths = rawPaths.map(path => commonRoot && path.startsWith(`${commonRoot}/`) ? path.slice(commonRoot.length + 1) : path)
+        const normalizedFiles = files.map((file, index) => ({
+            file,
+            path: relativePaths[index].replace(/^\/+/, ''),
+            contentType: resolveWebPackageFileContentType(file, relativePaths[index]),
+        }))
+
+        if (!normalizedFiles.some(file => file.path === 'index.html')) {
+            throw new Error('Select the web package folder that contains index.html at its root.')
+        }
+
+        return {
+            rootName: commonRoot || 'web-package',
+            files: normalizedFiles,
+        }
+    }
+
     const getAssetDisplayType = (asset: { type?: string; mimeType?: string | null; url?: string; title?: string }) => {
         if (isVttAsset(asset)) return 'VTT'
         return asset.type || asset.mimeType || 'Unknown'
     }
 
     // Auto-detect asset type from file
-    const detectAssetType = (file: File): 'VIDEO' | 'DOCUMENT' | 'PRESENTATION' | 'TEXT' | 'AUDIO' | 'OTHER' => {
+    const detectAssetType = (file: File): 'VIDEO' | 'DOCUMENT' | 'PRESENTATION' | 'TEXT' | 'AUDIO' | 'WEB_PACKAGE' | 'OTHER' => {
         const mimeType = file.type.toLowerCase()
         const extension = file.name.split('.').pop()?.toLowerCase()
 
@@ -514,6 +583,9 @@ function EditCoursePageContent({ params }: { params: Promise<{ id: string }> }) 
             mimeType.includes('document') || mimeType === 'application/pdf') {
             return 'DOCUMENT'
         }
+        if (mimeType === 'text/html' || ['html', 'htm'].includes(extension || '')) {
+            return 'WEB_PACKAGE'
+        }
         // Text detection
         if (mimeType.startsWith('text/') || ['txt', 'md', 'markdown'].includes(extension || '')) {
             return 'TEXT'
@@ -522,12 +594,32 @@ function EditCoursePageContent({ params }: { params: Promise<{ id: string }> }) 
         return 'OTHER'
     }
 
+    const handleWebPackageFolderSelected = (fileList: FileList | null) => {
+        try {
+            const normalized = normalizeWebPackageFiles(fileList)
+            if (!normalized) return
+            setPendingWebPackageUploads(prev => [
+                ...prev,
+                {
+                    id: generateTempId(),
+                    title: normalized.rootName,
+                    rootName: normalized.rootName,
+                    files: normalized.files,
+                    uploading: false,
+                    error: null,
+                },
+            ])
+        } catch (err) {
+            setLessonError(err instanceof Error ? err.message : 'Invalid web package folder')
+        }
+    }
+
     const handleLessonFilesSelected = (fileList: FileList | null) => {
         if (!fileList || fileList.length === 0) return
         const newItems: PendingLessonUpload[] = Array.from(fileList).map(file => ({
             id: generateTempId(),
             file,
-            type: detectAssetType(file),  // Auto-detect type instead of using default
+            type: defaultLessonAssetType === 'WEB_PACKAGE' ? detectAssetType(file) : defaultLessonAssetType,
             uploading: false,
             error: null,
         }))
@@ -542,6 +634,16 @@ function EditCoursePageContent({ params }: { params: Promise<{ id: string }> }) 
 
     const removePendingLessonUpload = (uploadId: string) => {
         setPendingLessonUploads(prev => prev.filter(upload => upload.id !== uploadId))
+    }
+
+    const updatePendingWebPackageUpload = (uploadId: string, patch: Partial<Omit<PendingWebPackageUpload, 'id' | 'files'>>) => {
+        setPendingWebPackageUploads(prev =>
+            prev.map(upload => (upload.id === uploadId ? { ...upload, ...patch } : upload))
+        )
+    }
+
+    const removePendingWebPackageUpload = (uploadId: string) => {
+        setPendingWebPackageUploads(prev => prev.filter(upload => upload.id !== uploadId))
     }
 
     const apiUrl = (path: string) => (backendBaseUrl ? `${backendBaseUrl}${path}` : path)
@@ -832,6 +934,7 @@ const handleDeleteLessonAsset = async (assetId: string) => {
         })
         setLessonAttachments([])
         setPendingLessonUploads([])
+        setPendingWebPackageUploads([])
         setLessonError(null)
         setLessonModalOpen(true)
     };
@@ -991,6 +1094,66 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                     console.error(err)
                     const message = err instanceof Error ? err.message : 'Failed to upload asset'
                     updatePendingLessonUpload(upload.id, { uploading: false, error: message })
+                    throw err
+                }
+            }
+
+            for (const webPackage of pendingWebPackageUploads) {
+                updatePendingWebPackageUpload(webPackage.id, { uploading: true, error: null })
+                try {
+                    const uploadMeta = await ApiClient.uploadLessonWebPackage(id, chapterId, lessonId!, {
+                        title: webPackage.title,
+                        files: webPackage.files.map(file => ({
+                            path: file.path,
+                            contentType: file.contentType,
+                        })),
+                    })
+
+                    const uploadsByPath = new Map(uploadMeta.data.uploads.map(item => [item.path, item]))
+                    for (const item of webPackage.files) {
+                        const target = uploadsByPath.get(item.path)
+                        if (!target) throw new Error(`Missing upload URL for ${item.path}`)
+
+                        const s3PutResponse = await fetch(target.uploadUrl, {
+                            method: 'PUT',
+                            headers: target.requiredHeaders,
+                            body: item.file,
+                        })
+
+                        if (!s3PutResponse.ok) {
+                            await ApiClient.abortLessonAssetUpload(id, chapterId, lessonId!, {
+                                uploadSessionId: uploadMeta.data.uploadSessionId,
+                                reason: `S3 upload failed for ${item.path} (${s3PutResponse.status} ${s3PutResponse.statusText})`,
+                            }).catch(() => undefined)
+                            const bodyText = await s3PutResponse.text().catch(() => '')
+                            throw new Error(
+                                `S3 upload failed for ${item.path} (${s3PutResponse.status} ${s3PutResponse.statusText})${bodyText ? `: ${bodyText.slice(0, 500)}` : ''}`
+                            )
+                        }
+                    }
+
+                    const confirmMeta = await ApiClient.confirmLessonWebPackage(id, chapterId, lessonId!, {
+                        uploadSessionId: uploadMeta.data.uploadSessionId,
+                    })
+
+                    const asset = confirmMeta.data.asset
+                    newAssetIds.push(asset.id)
+                    setLessonAttachments(prev => [
+                        ...prev,
+                        {
+                            id: asset.id,
+                            title: asset.title || webPackage.title,
+                            type: asset.type,
+                            url: asset.url,
+                            mimeType: asset.mimeType,
+                            checked: true,
+                        },
+                    ])
+                    setPendingWebPackageUploads(prev => prev.filter(item => item.id !== webPackage.id))
+                } catch (err) {
+                    console.error(err)
+                    const message = err instanceof Error ? err.message : 'Failed to upload web package'
+                    updatePendingWebPackageUpload(webPackage.id, { uploading: false, error: message })
                     throw err
                 }
             }
@@ -1867,55 +2030,104 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                                     </SelectContent>
                                 </Select>
                             </div>
-                            <div className="space-y-2">
-                                <Label>Upload files</Label>
-                                <Input
-                                    type="file"
-                                    multiple
-                                    onChange={e => {
-                                        handleLessonFilesSelected(e.target.files)
-                                        if (e.target) e.target.value = ''
-                                    }}
-                                />
-                                {pendingLessonUploads.length > 0 && (
-                                    <div className="space-y-3 rounded-md border p-3">
-                                        {pendingLessonUploads.map(upload => (
-                                            <div key={upload.id} className="space-y-2">
-                                                <div className="flex items-center justify-between">
-                                                    <div>
-                                                        <p className="font-medium">{upload.file.name}</p>
-                                                        <p className="text-xs text-muted-foreground">
-                                                            {formatFileSize(upload.file.size)} · {upload.file.type || 'unknown'}
-                                                        </p>
-                                                    </div>
-                                                    <Button variant="ghost" size="sm" onClick={() => removePendingLessonUpload(upload.id)}>
-                                                        Remove
-                                                    </Button>
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <Label>Type</Label>
-                                                    <Select
-                                                        value={upload.type}
-                                                        onValueChange={value => updatePendingLessonUpload(upload.id, { type: value })}
-                                                    >
-                                                        <SelectTrigger>
-                                                            <SelectValue placeholder="Select type" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {assetTypes.map(type => (
-                                                                <SelectItem key={type.value} value={type.value}>
-                                                                    {type.label}
-                                                                </SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-                                                {upload.error && <p className="text-sm text-destructive">{upload.error}</p>}
-                                            </div>
-                                        ))}
+                            {isWebPackageUploadMode ? (
+                                <div className="space-y-2 rounded-md border border-dashed p-3">
+                                    <div className="flex items-center gap-2">
+                                        <MonitorPlay className="h-4 w-4 text-muted-foreground" />
+                                        <Label>Upload web package folder</Label>
                                     </div>
-                                )}
-                            </div>
+                                    <Input
+                                        type="file"
+                                        multiple
+                                        {...({ webkitdirectory: 'true', directory: 'true' } as any)}
+                                        onChange={e => {
+                                            handleWebPackageFolderSelected(e.target.files)
+                                            if (e.target) e.target.value = ''
+                                        }}
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Select the folder that contains index.html plus its audio, script, image, and media files.
+                                    </p>
+                                    {pendingWebPackageUploads.length > 0 && (
+                                        <div className="space-y-3">
+                                            {pendingWebPackageUploads.map(upload => (
+                                                <div key={upload.id} className="rounded-md border bg-muted/20 p-3">
+                                                    <div className="flex items-start justify-between gap-3">
+                                                        <div>
+                                                            <p className="font-medium">{upload.title}</p>
+                                                            <p className="text-xs text-muted-foreground">
+                                                                {upload.files.length} files · root: {upload.rootName}
+                                                            </p>
+                                                        </div>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            disabled={upload.uploading}
+                                                            onClick={() => removePendingWebPackageUpload(upload.id)}
+                                                        >
+                                                            Remove
+                                                        </Button>
+                                                    </div>
+                                                    {upload.uploading && (
+                                                        <p className="mt-2 text-xs text-muted-foreground">Uploading package...</p>
+                                                    )}
+                                                    {upload.error && <p className="mt-2 text-sm text-destructive">{upload.error}</p>}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    <Label>Upload files</Label>
+                                    <Input
+                                        type="file"
+                                        multiple
+                                        onChange={e => {
+                                            handleLessonFilesSelected(e.target.files)
+                                            if (e.target) e.target.value = ''
+                                        }}
+                                    />
+                                    {pendingLessonUploads.length > 0 && (
+                                        <div className="space-y-3 rounded-md border p-3">
+                                            {pendingLessonUploads.map(upload => (
+                                                <div key={upload.id} className="space-y-2">
+                                                    <div className="flex items-center justify-between">
+                                                        <div>
+                                                            <p className="font-medium">{upload.file.name}</p>
+                                                            <p className="text-xs text-muted-foreground">
+                                                                {formatFileSize(upload.file.size)} · {upload.file.type || 'unknown'}
+                                                            </p>
+                                                        </div>
+                                                        <Button variant="ghost" size="sm" onClick={() => removePendingLessonUpload(upload.id)}>
+                                                            Remove
+                                                        </Button>
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <Label>Type</Label>
+                                                        <Select
+                                                            value={upload.type}
+                                                            onValueChange={value => updatePendingLessonUpload(upload.id, { type: value })}
+                                                        >
+                                                            <SelectTrigger>
+                                                                <SelectValue placeholder="Select type" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {assetTypes.map(type => (
+                                                                    <SelectItem key={type.value} value={type.value}>
+                                                                        {type.label}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    {upload.error && <p className="text-sm text-destructive">{upload.error}</p>}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">

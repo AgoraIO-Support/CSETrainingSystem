@@ -15,6 +15,7 @@ import {
     FileSpreadsheet,
     File,
     Music,
+    MonitorPlay,
     FolderOpen,
     BookOpen
 } from 'lucide-react'
@@ -41,6 +42,8 @@ function getAssetIcon(type: string | undefined) {
             return <FileSpreadsheet className="h-4 w-4" />
         case 'AUDIO':
             return <Music className="h-4 w-4" />
+        case 'WEB_PACKAGE':
+            return <MonitorPlay className="h-4 w-4" />
         default:
             return <File className="h-4 w-4" />
     }

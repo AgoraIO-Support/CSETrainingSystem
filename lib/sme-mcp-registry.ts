@@ -805,7 +805,7 @@ export const smeMcpToolDefinitions = [
                         type: 'object',
                         properties: {
                             lessonRef: { type: 'string' },
-                            assetType: { type: 'string', enum: ['VIDEO', 'DOCUMENT', 'PRESENTATION', 'TEXT', 'AUDIO', 'OTHER'] },
+                            assetType: { type: 'string', enum: ['VIDEO', 'DOCUMENT', 'PRESENTATION', 'TEXT', 'AUDIO', 'WEB_PACKAGE', 'OTHER'] },
                             title: { type: 'string' },
                             sourceKind: { type: 'string', enum: ['upload', 'external_url'] },
                             transcriptNeeded: { type: 'boolean' },

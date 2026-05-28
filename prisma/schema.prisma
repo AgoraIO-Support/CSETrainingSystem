@@ -1132,6 +1132,7 @@ enum LessonAssetType {
   PRESENTATION
   TEXT
   AUDIO
+  WEB_PACKAGE
   OTHER
 }
 

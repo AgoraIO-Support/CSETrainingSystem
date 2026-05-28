@@ -1,4 +1,4 @@
-import { PutObjectCommand, DeleteObjectCommand, GetObjectCommand, DeleteObjectsCommand } from '@aws-sdk/client-s3'
+import { PutObjectCommand, DeleteObjectCommand, GetObjectCommand, DeleteObjectsCommand, ListObjectsV2Command } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { getSignedUrl as getCloudFrontSignedUrl } from 'aws-cloudfront-sign'
 import s3Client, {
@@ -366,5 +366,23 @@ export class FileService {
                 }
             })
         }
+    }
+
+    static async deletePrefix(prefix: string, bucket: string = ASSET_S3_BUCKET_NAME): Promise<void> {
+        const normalizedPrefix = prefix.replace(/^\/+/, '').replace(/\/?$/, '/')
+        let continuationToken: string | undefined
+
+        do {
+            const listed = await s3Client.send(new ListObjectsV2Command({
+                Bucket: bucket,
+                Prefix: normalizedPrefix,
+                ContinuationToken: continuationToken,
+            }))
+            const keys = (listed.Contents ?? []).map(item => item.Key).filter((key): key is string => Boolean(key))
+            if (keys.length > 0) {
+                await this.deleteFiles(keys, bucket)
+            }
+            continuationToken = listed.IsTruncated ? listed.NextContinuationToken : undefined
+        } while (continuationToken)
     }
 }

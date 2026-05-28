@@ -5,6 +5,11 @@ import { FileService } from '@/lib/services/file.service'
 import { LessonAssetType } from '@prisma/client'
 import { TrainingOpsService } from '@/lib/services/training-ops.service'
 
+const assetUrl = async (asset: { id: string; type: string; s3Key?: string | null; url?: string | null }) =>
+  asset.type === 'WEB_PACKAGE'
+    ? `/api/assets/web-packages/${asset.id}/index.html`
+    : asset.s3Key ? await FileService.getAssetAccessUrl(asset.s3Key) : asset.url
+
 // DELETE /admin/courses/:id/chapters/:chapterId/lessons/:lessonId/assets/:assetId
 // Deletes the lesson-asset binding AND the underlying CourseAsset + S3 file
 export const DELETE = withSmeOrAdminAuth(async (req, user, { params }: { params: Promise<{ id: string; chapterId: string; lessonId: string; assetId: string }> }) => {
@@ -29,7 +34,7 @@ export const DELETE = withSmeOrAdminAuth(async (req, user, { params }: { params:
       id: asset.id,
       title: asset.title,
       type: asset.type as LessonAssetType,
-      url: asset.s3Key ? await FileService.getAssetAccessUrl(asset.s3Key) : asset.url,
+      url: await assetUrl(asset),
       cloudfrontUrl: asset.cloudfrontUrl,
       mimeType: asset.mimeType,
       sizeBytes: asset.sizeBytes,

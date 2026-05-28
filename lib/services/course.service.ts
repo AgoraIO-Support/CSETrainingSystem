@@ -5,6 +5,15 @@ import { getActiveTranscriptTracks, getDefaultSubtitleTrack, getTranscriptLabel 
 
 const ABSOLUTE_URL_REGEX = /^https?:\/\//i
 const isAbsoluteUrl = (value?: string | null) => typeof value === 'string' && ABSOLUTE_URL_REGEX.test(value)
+const getCourseAssetUrl = async (asset: { id: string; type: string; s3Key?: string | null; cloudfrontUrl?: string | null; url?: string | null }) => {
+    if (asset.type === 'WEB_PACKAGE') {
+        return `/api/assets/web-packages/${asset.id}/index.html`
+    }
+
+    return asset.s3Key
+        ? await FileService.getAssetAccessUrl(asset.s3Key)
+        : asset.cloudfrontUrl || asset.url || null
+}
 
 export class CourseService {
     /**
@@ -215,9 +224,7 @@ export class CourseService {
                         const assets = await Promise.all(
                             lesson.assets.map(async (binding) => {
                                 const asset = binding.courseAsset
-                                const url = asset?.s3Key
-                                    ? await FileService.getAssetAccessUrl(asset.s3Key)
-                                    : asset?.cloudfrontUrl || asset?.url || null
+                                const url = await getCourseAssetUrl(asset)
 
                                 return {
                                     ...asset,
