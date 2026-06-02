@@ -266,12 +266,14 @@ export class CascadeDeleteService {
             cleanupErrors.push(err instanceof Error ? err.message : String(err))
         }
 
-        // Legacy cleanup for all lessons
-        for (const lid of lessonIds) {
-            try {
-                await deletePrefix(`${LEGACY_LESSON_FOLDER}/${lid}/`, ASSET_S3_BUCKET_NAME, { bestEffort: false })
-            } catch (err) {
-                cleanupErrors.push(err instanceof Error ? err.message : String(err))
+        // Optional legacy cleanup for all lessons
+        if (ENABLE_LEGACY_SWEEP) {
+            for (const lid of lessonIds) {
+                try {
+                    await deletePrefix(`${LEGACY_LESSON_FOLDER}/${lid}/`, ASSET_S3_BUCKET_NAME, { bestEffort: false })
+                } catch (err) {
+                    cleanupErrors.push(err instanceof Error ? err.message : String(err))
+                }
             }
         }
 

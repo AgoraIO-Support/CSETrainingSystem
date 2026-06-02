@@ -999,6 +999,33 @@ export interface CourseAsset {
     createdAt?: string | Date
 }
 
+export type CourseDownloadKind = 'COURSE_ASSET' | 'TRANSCRIPT' | 'KNOWLEDGE_XML' | 'WEB_PACKAGE_FILE'
+
+export interface CourseDownloadItem {
+    id: string
+    title: string
+    filename: string
+    kind: CourseDownloadKind
+    type: string
+    url: string
+    mimeType?: string | null
+    sizeBytes?: number | null
+    chapterId?: string | null
+    chapterTitle?: string | null
+    lessonId?: string | null
+    lessonTitle?: string | null
+    assetId?: string | null
+    path?: string | null
+}
+
+export interface CourseDownloadsPayload {
+    course: {
+        id: string
+        title: string
+    }
+    items: CourseDownloadItem[]
+}
+
 export type CourseStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
 
 export interface Course {

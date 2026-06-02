@@ -11,6 +11,7 @@ import { VideoJSPlayer } from '@/components/video/videojs-player'
 import { AIChatPanel } from '@/components/ai/ai-chat-panel'
 import { KnowledgeAnchors } from '@/components/ai/knowledge-anchors'
 import { CourseContentPanel } from '@/components/learning/course-content-panel'
+import { CourseDownloadsDialog } from '@/components/learning/course-downloads-dialog'
 import { AssetViewer } from '@/components/learning/asset-viewer'
 import { ApiClient } from '@/lib/api-client'
 import type { Course, Lesson, LessonProgress, CourseAsset } from '@/types'
@@ -25,6 +26,7 @@ import {
     X,
     List,
     LogOut,
+    Download,
     Maximize2,
     Minimize2,
     Minus,
@@ -62,6 +64,7 @@ export default function LessonPage({
     const [selectedAsset, setSelectedAsset] = useState<CourseAsset | null>(null)
     const [showAIChat, setShowAIChat] = useState(false)
     const [showSidebar, setShowSidebar] = useState(true)
+    const [downloadsOpen, setDownloadsOpen] = useState(false)
 
     const syncThrottleRef = useRef(0)
     const maxWatchedRef = useRef(0)
@@ -667,6 +670,16 @@ export default function LessonPage({
                             <span className="text-xs font-medium text-slate-700">{Math.round(progressPercent)}%</span>
                         </div>
 
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="border-slate-200 bg-slate-50 text-slate-700 hover:border-[#b8ecff] hover:bg-[#f8fdff] hover:text-[#006688]"
+                            onClick={() => setDownloadsOpen(true)}
+                        >
+                            <Download className="h-4 w-4 mr-1" />
+                            <span className="hidden sm:inline">Downloads</span>
+                        </Button>
+
                         {/* AI Chat toggle */}
                         {course?.aiAssistantEnabled !== false && (
                             <Button
@@ -970,6 +983,12 @@ export default function LessonPage({
                     </>
                 )}
             </div>
+
+            <CourseDownloadsDialog
+                courseId={course.id}
+                open={downloadsOpen}
+                onOpenChange={setDownloadsOpen}
+            />
         </div>
     )
 }

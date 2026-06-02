@@ -40,6 +40,7 @@ import type {
     ExamQuestionType,
     EssayAIGradingBreakdown,
     EssayGradingCriterion,
+    CourseDownloadsPayload,
 } from '@/types'
 
 // Types
@@ -352,6 +353,10 @@ export class ApiClient {
 
     static async getCourseContent(id: string) {
         return this.request(`/courses/${id}/content`)
+    }
+
+    static async getCourseDownloads(id: string): Promise<{ success: boolean; data: CourseDownloadsPayload }> {
+        return this.request(`/courses/${id}/downloads`)
     }
 
     static async enrollInCourse(courseId: string) {

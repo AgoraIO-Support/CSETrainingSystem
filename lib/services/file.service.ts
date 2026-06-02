@@ -39,6 +39,11 @@ const stripWrappingQuotes = (value: string): string => {
     return trimmed
 }
 
+const buildContentDisposition = (filename: string) => {
+    const fallback = filename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_') || 'download'
+    return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`
+}
+
 const getDeliveryMode = (): AssetDeliveryMode => {
     const raw = (process.env.CSE_ASSET_DELIVERY_MODE || '').trim()
     if (raw === 'cloudfront_signed' || raw === 's3_presigned' || raw === 'public') return raw
@@ -294,6 +299,32 @@ export class FileService {
         })
     }
 
+    static async getAssetDownloadUrl(key: string, filename?: string | null): Promise<string> {
+        const normalizedKey = key.replace(/^\/+/, '')
+        const mode = getDeliveryMode()
+
+        if (mode === 'public') {
+            return this.getAssetPublicUrl(normalizedKey)
+        }
+
+        if (mode === 's3_presigned') {
+            const command = new GetObjectCommand({
+                Bucket: ASSET_S3_BUCKET_NAME,
+                Key: normalizedKey,
+                ...(filename ? { ResponseContentDisposition: buildContentDisposition(filename) } : {}),
+            })
+            const ttlSeconds = getAssetUrlTtlSeconds()
+            return await timeAsync(
+                'S3',
+                'presign GetObject download',
+                { bucket: ASSET_S3_BUCKET_NAME, key: normalizedKey, expiresIn: ttlSeconds },
+                () => getSignedUrl(s3Client, command, { expiresIn: ttlSeconds })
+            )
+        }
+
+        return this.getAssetAccessUrl(normalizedKey)
+    }
+
     /**
      * Generate temporary signed URL for video access (1 hour validity)
      */
@@ -384,5 +415,34 @@ export class FileService {
             }
             continuationToken = listed.IsTruncated ? listed.NextContinuationToken : undefined
         } while (continuationToken)
+    }
+
+    static async listFilesByPrefix(prefix: string, bucket: string = ASSET_S3_BUCKET_NAME): Promise<Array<{
+        key: string
+        size: number | null
+        lastModified: Date | null
+    }>> {
+        const normalizedPrefix = prefix.replace(/^\/+/, '').replace(/\/?$/, '/')
+        const files: Array<{ key: string; size: number | null; lastModified: Date | null }> = []
+        let continuationToken: string | undefined
+
+        do {
+            const listed = await s3Client.send(new ListObjectsV2Command({
+                Bucket: bucket,
+                Prefix: normalizedPrefix,
+                ContinuationToken: continuationToken,
+            }))
+            for (const item of listed.Contents ?? []) {
+                if (!item.Key || item.Key.endsWith('/')) continue
+                files.push({
+                    key: item.Key,
+                    size: typeof item.Size === 'number' ? item.Size : null,
+                    lastModified: item.LastModified ?? null,
+                })
+            }
+            continuationToken = listed.IsTruncated ? listed.NextContinuationToken : undefined
+        } while (continuationToken)
+
+        return files
     }
 }
