@@ -8,6 +8,7 @@ import { ExamGenerationService } from '@/lib/services/exam-generation.service'
 import { FileService } from '@/lib/services/file.service'
 import { KnowledgeContextJobService } from '@/lib/services/knowledge-context-job.service'
 import { TranscriptJobService } from '@/lib/services/transcript-job.service'
+import { ExternalRecordingImportService } from '@/lib/services/external-recording-import.service'
 import { WecomWebhookService } from '@/lib/services/wecom-webhook.service'
 import { TrainingOpsRewardService } from '@/lib/services/training-ops-reward.service'
 import { AuthUser } from '@/lib/auth-middleware'
@@ -78,6 +79,8 @@ const optionalText = (value?: string | null) => {
     const normalized = value?.trim()
     return normalized ? normalized : null
 }
+
+const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : String(error)
 
 const isUuid = (value: string) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
@@ -990,7 +993,20 @@ export class SmeMcpService {
                 lessonRef: string
                 assetType: LessonAssetType
                 title: string
-                sourceKind: 'upload' | 'external_url'
+                sourceKind: 'upload' | 'external_url' | 's3_object'
+                sourceBucket?: string
+                sourceKey?: string
+                sourceRegion?: string
+                sourceContentType?: string
+                transcriptBucket?: string
+                transcriptKey?: string
+                transcriptRegion?: string
+                transcriptFormat?: 'AUTO' | 'TIMESTAMPED_TEXT' | 'PLAIN_TEXT'
+                transcriptLanguage?: string
+                transcriptLabel?: string | null
+                setTranscriptAsDefaultSubtitle?: boolean
+                setTranscriptAsPrimaryForAI?: boolean
+                processKnowledge?: boolean
                 transcriptNeeded?: boolean
             }>
             transcriptPlan?: Array<{
@@ -1032,9 +1048,43 @@ export class SmeMcpService {
             lessonId: string | null
             title: string
             assetType: LessonAssetType
-            sourceKind: 'upload' | 'external_url'
+            sourceKind: 'upload' | 'external_url' | 's3_object'
             transcriptNeeded: boolean
             status: 'ready' | 'unresolved'
+        }>
+        assetImports: Array<{
+            lessonRef: string
+            lessonId: string | null
+            assetId?: string
+            title: string
+            assetType: LessonAssetType
+            sourceKind: 's3_object'
+            sourceBucket: string
+            sourceKey: string
+            s3Key?: string
+            mimeType?: string | null
+            url?: string
+            status: 'imported' | 'failed'
+            error?: string
+        }>
+        transcriptImports: Array<{
+            lessonRef: string
+            lessonId: string | null
+            videoAssetId?: string
+            transcriptAssetId?: string
+            textAssetId?: string
+            sourceBucket: string
+            sourceKey: string
+            sourceFormat?: 'TIMESTAMPED_TEXT' | 'PLAIN_TEXT'
+            storedFormat?: 'VTT' | 'TEXT'
+            cuesCount?: number
+            knowledgeProcessing?: {
+                status: 'queued' | 'skipped'
+                jobId?: string
+            }
+            status: 'imported' | 'plain_text_imported' | 'skipped' | 'failed'
+            warning?: string
+            error?: string
         }>
         transcriptTasks: Array<{
             lessonRef: string
@@ -1106,7 +1156,7 @@ export class SmeMcpService {
                 title: task.title,
                 assetType: task.assetType,
                 sourceKind: task.sourceKind,
-                transcriptNeeded: task.transcriptNeeded ?? false,
+                transcriptNeeded: task.transcriptNeeded ?? Boolean(task.transcriptKey?.trim()),
                 status: resolvedLesson ? 'ready' as const : 'unresolved' as const,
             }
         })
@@ -1126,6 +1176,168 @@ export class SmeMcpService {
             }
         })
 
+        const assetImports: Array<{
+            lessonRef: string
+            lessonId: string | null
+            assetId?: string
+            title: string
+            assetType: LessonAssetType
+            sourceKind: 's3_object'
+            sourceBucket: string
+            sourceKey: string
+            s3Key?: string
+            mimeType?: string | null
+            url?: string
+            status: 'imported' | 'failed'
+            error?: string
+        }> = []
+        const transcriptImports: Array<{
+            lessonRef: string
+            lessonId: string | null
+            videoAssetId?: string
+            transcriptAssetId?: string
+            textAssetId?: string
+            sourceBucket: string
+            sourceKey: string
+            sourceFormat?: 'TIMESTAMPED_TEXT' | 'PLAIN_TEXT'
+            storedFormat?: 'VTT' | 'TEXT'
+            cuesCount?: number
+            knowledgeProcessing?: {
+                status: 'queued' | 'skipped'
+                jobId?: string
+            }
+            status: 'imported' | 'plain_text_imported' | 'skipped' | 'failed'
+            warning?: string
+            error?: string
+        }> = []
+
+        for (const task of input.assetPlan ?? []) {
+            if (task.sourceKind !== 's3_object') continue
+
+            const resolvedLesson =
+                lessonLookup.get(task.lessonRef) ??
+                lessonLookup.get(normalizeLookupValue(task.lessonRef))
+            const sourceBucket = task.sourceBucket?.trim() || ''
+            const sourceKey = task.sourceKey?.replace(/^\/+/, '') || ''
+
+            if (!resolvedLesson) {
+                assetImports.push({
+                    lessonRef: task.lessonRef,
+                    lessonId: null,
+                    title: task.title,
+                    assetType: task.assetType,
+                    sourceKind: 's3_object',
+                    sourceBucket,
+                    sourceKey,
+                    status: 'failed',
+                    error: 'LESSON_REF_UNRESOLVED',
+                })
+                continue
+            }
+
+            try {
+                const importedAsset = await ExternalRecordingImportService.importLessonAssetFromS3Object({
+                    lessonId: resolvedLesson.id,
+                    title: task.title,
+                    assetType: task.assetType,
+                    source: {
+                        bucket: sourceBucket,
+                        key: sourceKey,
+                        region: task.sourceRegion,
+                    },
+                    sourceContentType: task.sourceContentType,
+                })
+
+                assetImports.push({
+                    lessonRef: task.lessonRef,
+                    lessonId: resolvedLesson.id,
+                    assetId: importedAsset.id,
+                    title: importedAsset.title,
+                    assetType: importedAsset.type,
+                    sourceKind: 's3_object',
+                    sourceBucket,
+                    sourceKey,
+                    s3Key: importedAsset.s3Key,
+                    mimeType: importedAsset.mimeType,
+                    url: importedAsset.url,
+                    status: 'imported',
+                })
+
+                const transcriptKey = task.transcriptKey?.replace(/^\/+/, '')
+                if (!transcriptKey) continue
+
+                const transcriptBucket = task.transcriptBucket?.trim() || sourceBucket
+                if (importedAsset.type !== 'VIDEO') {
+                    transcriptImports.push({
+                        lessonRef: task.lessonRef,
+                        lessonId: resolvedLesson.id,
+                        videoAssetId: importedAsset.id,
+                        sourceBucket: transcriptBucket,
+                        sourceKey: transcriptKey,
+                        status: 'skipped',
+                        warning: 'TRANSCRIPT_IMPORT_REQUIRES_VIDEO_ASSET',
+                    })
+                    continue
+                }
+
+                try {
+                    const importedTranscript = await ExternalRecordingImportService.importTranscriptFromS3Object({
+                        lessonId: resolvedLesson.id,
+                        videoAssetId: importedAsset.id,
+                        source: {
+                            bucket: transcriptBucket,
+                            key: transcriptKey,
+                            region: task.transcriptRegion ?? task.sourceRegion,
+                        },
+                        transcriptFormat: task.transcriptFormat ?? 'TIMESTAMPED_TEXT',
+                        language: task.transcriptLanguage,
+                        label: task.transcriptLabel,
+                        setAsDefaultSubtitle: task.setTranscriptAsDefaultSubtitle,
+                        setAsPrimaryForAI: task.setTranscriptAsPrimaryForAI,
+                        processKnowledge: task.processKnowledge ?? true,
+                    })
+
+                    transcriptImports.push({
+                        lessonRef: task.lessonRef,
+                        lessonId: resolvedLesson.id,
+                        videoAssetId: importedAsset.id,
+                        transcriptAssetId: importedTranscript.transcriptAssetId,
+                        textAssetId: importedTranscript.textAssetId,
+                        sourceBucket: transcriptBucket,
+                        sourceKey: transcriptKey,
+                        sourceFormat: importedTranscript.sourceFormat,
+                        storedFormat: importedTranscript.storedFormat,
+                        cuesCount: importedTranscript.cuesCount,
+                        knowledgeProcessing: importedTranscript.knowledgeProcessing,
+                        status: importedTranscript.status,
+                        warning: importedTranscript.warning,
+                    })
+                } catch (error) {
+                    transcriptImports.push({
+                        lessonRef: task.lessonRef,
+                        lessonId: resolvedLesson.id,
+                        videoAssetId: importedAsset.id,
+                        sourceBucket: transcriptBucket,
+                        sourceKey: transcriptKey,
+                        status: 'failed',
+                        error: getErrorMessage(error),
+                    })
+                }
+            } catch (error) {
+                assetImports.push({
+                    lessonRef: task.lessonRef,
+                    lessonId: resolvedLesson.id,
+                    title: task.title,
+                    assetType: task.assetType,
+                    sourceKind: 's3_object',
+                    sourceBucket,
+                    sourceKey,
+                    status: 'failed',
+                    error: getErrorMessage(error),
+                })
+            }
+        }
+
         const warnings: string[] = []
         if (input.mode === 'generate_outline') {
             warnings.push('generate_outline currently creates a scaffolded outline. Review and refine chapter and lesson titles in the course editor if needed.')
@@ -1135,6 +1347,12 @@ export class SmeMcpService {
         const unresolvedTranscriptTasks = transcriptTasks.filter((task) => task.status === 'unresolved').length
         if (unresolvedUploadTasks > 0 || unresolvedTranscriptTasks > 0) {
             warnings.push('Some asset or transcript tasks could not be matched to a created lesson. Use the returned lesson IDs or exact lesson titles when planning uploads.')
+        }
+        if (assetImports.some((item) => item.status === 'failed') || transcriptImports.some((item) => item.status === 'failed')) {
+            warnings.push('One or more external S3 imports failed. Check assetImports and transcriptImports for source bucket/key and permission errors.')
+        }
+        if (transcriptImports.some((item) => item.status === 'skipped')) {
+            warnings.push('One or more transcript imports were skipped because the linked imported asset is not a video.')
         }
 
         return {
@@ -1161,6 +1379,8 @@ export class SmeMcpService {
                         })),
                 })),
                 uploadTasks,
+                assetImports,
+                transcriptImports,
                 transcriptTasks,
             },
             nextActions: ['review_event_status'],

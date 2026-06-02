@@ -273,7 +273,20 @@ const designCourseSchema = z
                     lessonRef: z.string().trim().min(1).max(160),
                     assetType: z.nativeEnum(LessonAssetType),
                     title: z.string().trim().min(1).max(160),
-                    sourceKind: z.enum(['upload', 'external_url']),
+                    sourceKind: z.enum(['upload', 'external_url', 's3_object']),
+                    sourceBucket: z.string().trim().min(1).max(255).optional(),
+                    sourceKey: z.string().trim().min(1).max(1024).optional(),
+                    sourceRegion: z.string().trim().min(1).max(64).optional(),
+                    sourceContentType: z.string().trim().min(1).max(120).optional(),
+                    transcriptBucket: z.string().trim().min(1).max(255).optional(),
+                    transcriptKey: z.string().trim().min(1).max(1024).optional(),
+                    transcriptRegion: z.string().trim().min(1).max(64).optional(),
+                    transcriptFormat: z.enum(['AUTO', 'TIMESTAMPED_TEXT', 'PLAIN_TEXT']).optional(),
+                    transcriptLanguage: z.string().trim().min(2).max(20).optional(),
+                    transcriptLabel: z.string().trim().max(80).optional().nullable(),
+                    setTranscriptAsDefaultSubtitle: z.boolean().optional(),
+                    setTranscriptAsPrimaryForAI: z.boolean().optional(),
+                    processKnowledge: z.boolean().optional(),
                     transcriptNeeded: z.boolean().optional(),
                 })
             )
@@ -305,6 +318,24 @@ const designCourseSchema = z
                 message: 'chapters are required when mode is manual_outline.',
             })
         }
+
+        value.assetPlan?.forEach((asset, index) => {
+            if (asset.sourceKind === 's3_object' && (!asset.sourceBucket?.trim() || !asset.sourceKey?.trim())) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ['assetPlan', index],
+                    message: 'sourceBucket and sourceKey are required when sourceKind is s3_object.',
+                })
+            }
+
+            if (asset.transcriptKey?.trim() && !asset.transcriptBucket?.trim() && !asset.sourceBucket?.trim()) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ['assetPlan', index, 'transcriptBucket'],
+                    message: 'transcriptBucket or sourceBucket is required when transcriptKey is provided.',
+                })
+            }
+        })
     })
 
 const manualQuestionSchema = z.object({
@@ -807,7 +838,20 @@ export const smeMcpToolDefinitions = [
                             lessonRef: { type: 'string' },
                             assetType: { type: 'string', enum: ['VIDEO', 'DOCUMENT', 'PRESENTATION', 'TEXT', 'AUDIO', 'WEB_PACKAGE', 'OTHER'] },
                             title: { type: 'string' },
-                            sourceKind: { type: 'string', enum: ['upload', 'external_url'] },
+                            sourceKind: { type: 'string', enum: ['upload', 'external_url', 's3_object'] },
+                            sourceBucket: { type: 'string' },
+                            sourceKey: { type: 'string' },
+                            sourceRegion: { type: 'string' },
+                            sourceContentType: { type: 'string' },
+                            transcriptBucket: { type: 'string' },
+                            transcriptKey: { type: 'string' },
+                            transcriptRegion: { type: 'string' },
+                            transcriptFormat: { type: 'string', enum: ['AUTO', 'TIMESTAMPED_TEXT', 'PLAIN_TEXT'] },
+                            transcriptLanguage: { type: 'string' },
+                            transcriptLabel: { type: ['string', 'null'] },
+                            setTranscriptAsDefaultSubtitle: { type: 'boolean' },
+                            setTranscriptAsPrimaryForAI: { type: 'boolean' },
+                            processKnowledge: { type: 'boolean' },
                             transcriptNeeded: { type: 'boolean' },
                         },
                         required: ['lessonRef', 'assetType', 'title', 'sourceKind'],
