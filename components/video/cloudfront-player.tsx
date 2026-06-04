@@ -15,6 +15,19 @@ export function CloudFrontPlayer({ src, poster }: Props) {
         const video = videoRef.current
         if (!video) return
 
+        const isHls = (() => {
+            try {
+                return new URL(src, window.location.href).pathname.toLowerCase().endsWith('.m3u8')
+            } catch {
+                return src.toLowerCase().split('?')[0].endsWith('.m3u8')
+            }
+        })()
+
+        if (!isHls) {
+            video.src = src
+            return
+        }
+
         if (video.canPlayType('application/vnd.apple.mpegurl')) {
             video.src = src
             return
@@ -26,6 +39,8 @@ export function CloudFrontPlayer({ src, poster }: Props) {
             hls.attachMedia(video)
             return () => hls.destroy()
         }
+
+        video.src = src
     }, [src])
 
     return (

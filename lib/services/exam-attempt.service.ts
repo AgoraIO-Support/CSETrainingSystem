@@ -376,7 +376,6 @@ export class ExamAttemptService {
     const hasEssays = exam.questions.some(
       (q) =>
         q.type === ExamQuestionType.ESSAY ||
-        q.type === ExamQuestionType.FILL_IN_BLANK ||
         q.type === ExamQuestionType.EXERCISE
     );
 
@@ -688,7 +687,7 @@ export class ExamAttemptService {
     }
 
     // Auto-grade objective questions immediately on submission.
-    // Only Multiple Choice + True/False are auto-graded; other types remain pending.
+    // Essay and exercise questions remain pending for manual/AI-assisted grading.
     try {
       const gradingService = new ExamGradingService();
       const gradingResult = await gradingService.gradeAttempt(attemptId);

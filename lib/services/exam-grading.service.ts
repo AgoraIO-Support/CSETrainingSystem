@@ -101,7 +101,7 @@ export class ExamGradingService {
 
     // Ensure there is an ExamAnswer row for every question so:
     // - unanswered objective questions can be auto-graded as incorrect (0 points)
-    // - manual questions (essay/fill-in-blank) show up for admin grading
+    // - manual questions (essay/exercise) show up for admin grading
     const answeredQuestionIds = new Set(attempt.answers.map((a) => a.questionId));
     const questionBank =
       attempt.questionSnapshots.length > 0
@@ -157,7 +157,6 @@ export class ExamGradingService {
         .filter(
           (q) =>
             q.type === ExamQuestionType.ESSAY ||
-            q.type === ExamQuestionType.FILL_IN_BLANK ||
             q.type === ExamQuestionType.EXERCISE
         )
         .map((q) => q.id)
@@ -183,11 +182,10 @@ export class ExamGradingService {
 
       if (
         question.type === ExamQuestionType.ESSAY ||
-        question.type === ExamQuestionType.FILL_IN_BLANK ||
         question.type === ExamQuestionType.EXERCISE
       ) {
-        // Essays and fill-in-blank questions require manual grading in this system.
-        // Auto-grading is limited to Multiple Choice + True/False.
+        // Essays and exercise questions require manual grading in this system.
+        // Auto-grading is limited to objective question types.
         continue;
       }
 
@@ -217,7 +215,7 @@ export class ExamGradingService {
       gradedCount++;
     }
 
-    // Count pending manual-graded questions (essay + fill-in-blank)
+    // Count pending manual-graded questions (essay + exercise)
     pendingEssays = 0;
     for (const qid of manualQuestionIds) {
       const manual = manualAnswerByQuestionId.get(qid);
@@ -333,6 +331,15 @@ export class ExamGradingService {
       const userAnswer = answer?.toLowerCase().trim();
       const correct = correctAnswer.toLowerCase().trim();
       isCorrect = userAnswer === correct;
+    } else if (type === ExamQuestionType.FILL_IN_BLANK) {
+      const normalizeFillInBlankAnswer = (value: string | null) =>
+        (value ?? '')
+          .trim()
+          .replace(/\s+/g, ' ')
+          .toLocaleLowerCase();
+      const userAnswer = normalizeFillInBlankAnswer(answer);
+      const correct = normalizeFillInBlankAnswer(correctAnswer);
+      isCorrect = userAnswer.length > 0 && userAnswer === correct;
     } else {
       isCorrect = false;
     }

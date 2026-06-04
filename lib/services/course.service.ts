@@ -254,10 +254,18 @@ export class CourseService {
 
         const { aiConfig, ...courseRest } = course as any
         const aiAssistantEnabled: boolean = aiConfig?.isEnabled ?? true
+        const assets = await Promise.all(
+            course.assets.map(async (asset) => ({
+                ...asset,
+                url: await getCourseAssetUrl(asset),
+                mimeType: asset.mimeType ?? asset.contentType,
+            }))
+        )
 
         return {
             ...courseRest,
             chapters,
+            assets,
             isEnrolled,
             progress,
             aiAssistantEnabled,
