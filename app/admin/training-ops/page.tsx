@@ -9,6 +9,10 @@ import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { ApiClient } from '@/lib/api-client'
 import type { TrainingOpsAdminReport, TrainingOpsLearnerRiskStatus, TrainingOpsReportRange } from '@/types'
 import {
@@ -20,6 +24,7 @@ import {
     Download,
     FileText,
     Loader2,
+    Settings2,
     Search,
     ShieldAlert,
     Target,
@@ -155,12 +160,19 @@ export default function TrainingOpsDashboardPage() {
     const [error, setError] = useState<string | null>(null)
     const [learnerSearch, setLearnerSearch] = useState('')
     const [range, setRange] = useState<TrainingOpsReportRange>('30d')
+    const [includeAdmins, setIncludeAdmins] = useState(false)
+    const [excludedUserIds, setExcludedUserIds] = useState<string[]>([])
+    const [filterDialogOpen, setFilterDialogOpen] = useState(false)
 
     useEffect(() => {
         const loadData = async () => {
             try {
                 setLoading(true)
-                const response = await ApiClient.getTrainingOpsAdminReport(range)
+                const response = await ApiClient.getTrainingOpsAdminReport({
+                    range,
+                    includeAdmins,
+                    excludeUserIds: excludedUserIds,
+                })
                 setReport(response.data)
                 setError(null)
             } catch (err) {
@@ -171,7 +183,7 @@ export default function TrainingOpsDashboardPage() {
         }
 
         void loadData()
-    }, [range])
+    }, [range, includeAdmins, excludedUserIds])
 
     const filteredLearners = useMemo(() => {
         if (!report) return []
@@ -185,6 +197,14 @@ export default function TrainingOpsDashboardPage() {
             learner.riskStatus.toLowerCase().includes(query)
         )
     }, [learnerSearch, report])
+
+    const activeFilterCount = (includeAdmins ? 1 : 0) + excludedUserIds.length
+
+    const toggleExcludedUser = (userId: string, checked: boolean) => {
+        setExcludedUserIds((prev) =>
+            checked ? [...prev, userId] : prev.filter((id) => id !== userId)
+        )
+    }
 
     return (
         <DashboardLayout>
@@ -213,6 +233,88 @@ export default function TrainingOpsDashboardPage() {
                                 ))}
                             </SelectContent>
                         </Select>
+                        <Dialog open={filterDialogOpen} onOpenChange={setFilterDialogOpen}>
+                            <DialogTrigger asChild>
+                                <Button variant="outline" className="border-slate-200 bg-slate-50">
+                                    <Settings2 className="mr-2 h-4 w-4" />
+                                    Filters
+                                    {activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="max-w-2xl">
+                                <DialogHeader>
+                                    <DialogTitle>Report filters</DialogTitle>
+                                    <DialogDescription>
+                                        Include admins in the report or exclude specific users from all metrics.
+                                    </DialogDescription>
+                                </DialogHeader>
+
+                                <div className="space-y-6">
+                                    <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                        <div className="space-y-1">
+                                            <Label htmlFor="include-admins">Include admin users</Label>
+                                            <p className="text-sm text-slate-500">
+                                                When enabled, admins are counted in team summary, follow-up queue, and learner performance.
+                                            </p>
+                                        </div>
+                                        <Switch
+                                            id="include-admins"
+                                            checked={includeAdmins}
+                                            onCheckedChange={setIncludeAdmins}
+                                        />
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <Label>Exclude users</Label>
+                                                <p className="text-sm text-slate-500">
+                                                    Useful for test accounts or people you do not want in this report.
+                                                </p>
+                                            </div>
+                                            {excludedUserIds.length > 0 ? (
+                                                <Button variant="ghost" size="sm" onClick={() => setExcludedUserIds([])}>
+                                                    Clear all
+                                                </Button>
+                                            ) : null}
+                                        </div>
+                                        <ScrollArea className="h-72 rounded-xl border border-slate-200">
+                                            <div className="space-y-2 p-3">
+                                                {(report?.availableUsers ?? []).map((user) => {
+                                                    const checked = excludedUserIds.includes(user.userId)
+                                                    return (
+                                                        <label
+                                                            key={user.userId}
+                                                            className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3"
+                                                        >
+                                                            <input
+                                                                type="checkbox"
+                                                                className="mt-1 h-4 w-4 rounded border-slate-300"
+                                                                checked={checked}
+                                                                onChange={(event) => toggleExcludedUser(user.userId, event.target.checked)}
+                                                            />
+                                                            <div className="min-w-0">
+                                                                <div className="flex flex-wrap items-center gap-2">
+                                                                    <p className="font-medium text-slate-950">{user.name}</p>
+                                                                    <Badge variant="outline">{user.role}</Badge>
+                                                                </div>
+                                                                <p className="text-sm text-slate-500">{user.email}</p>
+                                                            </div>
+                                                        </label>
+                                                    )
+                                                })}
+                                            </div>
+                                        </ScrollArea>
+                                    </div>
+                                </div>
+
+                                <DialogFooter>
+                                    <Button variant="outline" onClick={() => setFilterDialogOpen(false)}>
+                                        Done
+                                    </Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
                         <Link href="/admin/training-ops/effectiveness">
                             <Button variant="outline"><BarChart3 className="mr-2 h-4 w-4" />Effectiveness</Button>
                         </Link>

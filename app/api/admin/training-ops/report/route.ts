@@ -30,6 +30,19 @@ const resolveRange = (range: string | null): TrainingOpsReportRange => {
     return '30d'
 }
 
+const parseBoolean = (value: string | null, fallback: boolean) => {
+    if (value === null) return fallback
+    return value === 'true'
+}
+
+const parseExcludedUserIds = (value: string | null) => {
+    if (!value) return []
+    return value
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+}
+
 const buildPeriod = (range: TrainingOpsReportRange) => {
     const endDate = new Date()
     const startDate = new Date(endDate)
@@ -64,10 +77,19 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     try {
         const { searchParams } = new URL(req.url)
         const range = resolveRange(searchParams.get('range'))
+        const includeAdmins = parseBoolean(searchParams.get('includeAdmins'), false)
+        const excludedUserIds = parseExcludedUserIds(searchParams.get('excludeUserIds'))
         const { startDate, endDate } = buildPeriod(range)
+        const includedRoles = includeAdmins ? [UserRole.USER, UserRole.SME, UserRole.ADMIN] : [UserRole.USER, UserRole.SME]
+        const userFilter = {
+            status: UserStatus.ACTIVE,
+            role: { in: includedRoles },
+            ...(excludedUserIds.length > 0 ? { id: { notIn: excludedUserIds } } : {}),
+        } as const
 
         const [
             learners,
+            availableUsers,
             enrollments,
             invitations,
             attempts,
@@ -78,8 +100,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
         ] = await Promise.all([
             prisma.user.findMany({
                 where: {
-                    status: UserStatus.ACTIVE,
-                    role: { in: [UserRole.USER, UserRole.SME] },
+                    ...userFilter,
                 },
                 select: {
                     id: true,
@@ -91,11 +112,23 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
                 },
                 orderBy: [{ department: 'asc' }, { name: 'asc' }],
             }),
+            prisma.user.findMany({
+                where: {
+                    status: UserStatus.ACTIVE,
+                    role: { in: [UserRole.USER, UserRole.SME, UserRole.ADMIN] },
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    role: true,
+                },
+                orderBy: [{ role: 'asc' }, { name: 'asc' }],
+            }),
             prisma.enrollment.findMany({
                 where: {
                     user: {
-                        status: UserStatus.ACTIVE,
-                        role: { in: [UserRole.USER, UserRole.SME] },
+                        ...userFilter,
                     },
                     enrolledAt: {
                         gte: startDate,
@@ -113,8 +146,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
             prisma.examInvitation.findMany({
                 where: {
                     user: {
-                        status: UserStatus.ACTIVE,
-                        role: { in: [UserRole.USER, UserRole.SME] },
+                        ...userFilter,
                     },
                     exam: {
                         status: 'PUBLISHED',
@@ -138,8 +170,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
             prisma.examAttempt.findMany({
                 where: {
                     user: {
-                        status: UserStatus.ACTIVE,
-                        role: { in: [UserRole.USER, UserRole.SME] },
+                        ...userFilter,
                     },
                     status: {
                         in: [ExamAttemptStatus.SUBMITTED, ExamAttemptStatus.GRADED],
@@ -182,8 +213,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
                 by: ['userId'],
                 where: {
                     user: {
-                        status: UserStatus.ACTIVE,
-                        role: { in: [UserRole.USER, UserRole.SME] },
+                        ...userFilter,
                     },
                     awardedAt: {
                         gte: startDate,
@@ -198,8 +228,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
                 by: ['userId'],
                 where: {
                     user: {
-                        status: UserStatus.ACTIVE,
-                        role: { in: [UserRole.USER, UserRole.SME] },
+                        ...userFilter,
                     },
                     awardedAt: {
                         gte: startDate,
@@ -408,6 +437,16 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
                 startDate,
                 endDate,
             },
+            filters: {
+                includeAdmins,
+                excludedUserIds,
+            },
+            availableUsers: availableUsers.map((user) => ({
+                userId: user.id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+            })),
             summary,
             reportHighlights,
             domainProgress: domainEffectiveness

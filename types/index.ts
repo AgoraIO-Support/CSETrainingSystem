@@ -361,6 +361,16 @@ export interface TrainingOpsAdminReport {
         startDate: string | Date
         endDate: string | Date
     }
+    filters: {
+        includeAdmins: boolean
+        excludedUserIds: string[]
+    }
+    availableUsers: Array<{
+        userId: string
+        name: string
+        email: string
+        role: 'USER' | 'SME' | 'ADMIN'
+    }>
     summary: {
         teamMembers: number
         activeLearners: number

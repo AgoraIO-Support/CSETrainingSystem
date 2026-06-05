@@ -678,13 +678,23 @@ export class ApiClient {
         return this.request('/admin/training-ops/bridge')
     }
 
-    static async getTrainingOpsAdminReport(range?: TrainingOpsReportRange): Promise<{
+    static async getTrainingOpsAdminReport(params?: {
+        range?: TrainingOpsReportRange
+        includeAdmins?: boolean
+        excludeUserIds?: string[]
+    }): Promise<{
         success: boolean
         data: TrainingOpsAdminReport
     }> {
         const query = new URLSearchParams()
-        if (range) {
-            query.set('range', range)
+        if (params?.range) {
+            query.set('range', params.range)
+        }
+        if (typeof params?.includeAdmins === 'boolean') {
+            query.set('includeAdmins', String(params.includeAdmins))
+        }
+        if (params?.excludeUserIds?.length) {
+            query.set('excludeUserIds', params.excludeUserIds.join(','))
         }
         const search = query.toString() ? `?${query.toString()}` : ''
         return this.request(`/admin/training-ops/report${search}`)
