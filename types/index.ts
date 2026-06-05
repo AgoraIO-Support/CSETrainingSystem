@@ -350,6 +350,81 @@ export interface ProductDomainEffectivenessSummary {
     } | null
 }
 
+export type TrainingOpsLearnerRiskStatus = 'ON_TRACK' | 'WATCH' | 'AT_RISK' | 'NO_ASSIGNMENT'
+export type TrainingOpsReportRange = '30d' | '90d' | '180d' | '365d' | 'ytd' | 'all'
+
+export interface TrainingOpsAdminReport {
+    generatedAt: string | Date
+    period: {
+        range: TrainingOpsReportRange
+        label: string
+        startDate: string | Date
+        endDate: string | Date
+    }
+    summary: {
+        teamMembers: number
+        activeLearners: number
+        courseCompletionRate: number
+        examParticipationRate: number
+        examPassRate: number
+        averageExamScore: number
+        certificationRate: number
+        atRiskLearners: number
+        watchLearners: number
+        retakeNeeded: number
+        overdueLearners: number
+    }
+    reportHighlights: string[]
+    domainProgress: Array<{
+        id: string
+        name: string
+        track: ProductDomainEffectivenessSummary['track']
+        ownerName: string | null
+        currentPassRate: number
+        targetPassRate: number | null
+        targetGap: number | null
+        gradedAttempts: number
+        scheduledEventCount: number
+        status: ProductDomainEffectivenessSummary['status']
+    }>
+    learnerPerformance: Array<{
+        userId: string
+        name: string
+        email: string
+        department: string | null
+        title: string | null
+        lastActivityAt: string | Date | null
+        courseAssigned: number
+        courseCompleted: number
+        averageCourseProgress: number
+        examInvitations: number
+        examAttempts: number
+        gradedAttempts: number
+        passedAttempts: number
+        failedAttempts: number
+        passRate: number
+        averageScore: number
+        bestScore: number
+        certificates: number
+        stars: number
+        badges: number
+        overdueExams: number
+        retakeNeeded: number
+        riskStatus: TrainingOpsLearnerRiskStatus
+    }>
+    riskQueue: Array<{
+        userId: string
+        name: string
+        email: string
+        reason: string
+        overdueExams: number
+        retakeNeeded: number
+        averageCourseProgress: number
+        passRate: number
+        lastActivityAt: string | Date | null
+    }>
+}
+
 export interface LearningSeriesSummary {
     id: string
     name: string

@@ -8,6 +8,8 @@ import type {
     AdminSmeScopeAudit,
     AdminAnalyticsSummary,
     TrainingOpsBridge,
+    TrainingOpsAdminReport,
+    TrainingOpsReportRange,
     SmeWorkspaceSummary,
     ProductDomainEffectivenessSummary,
     ProductDomainSummary,
@@ -674,6 +676,18 @@ export class ApiClient {
         data: TrainingOpsBridge
     }> {
         return this.request('/admin/training-ops/bridge')
+    }
+
+    static async getTrainingOpsAdminReport(range?: TrainingOpsReportRange): Promise<{
+        success: boolean
+        data: TrainingOpsAdminReport
+    }> {
+        const query = new URLSearchParams()
+        if (range) {
+            query.set('range', range)
+        }
+        const search = query.toString() ? `?${query.toString()}` : ''
+        return this.request(`/admin/training-ops/report${search}`)
     }
 
     static async getTrainingOpsDomains(params: Record<string, string | number | boolean | undefined> = {}): Promise<{

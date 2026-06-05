@@ -903,7 +903,15 @@ export class TrainingOpsService {
         return this.getDomainById(id)
     }
 
-    static async getDomainEffectiveness() {
+    static async getDomainEffectiveness(params?: {
+        startDate?: Date
+        endDate?: Date
+    }) {
+        const startDateFilter = params?.startDate ? Prisma.sql`AND ea."submittedAt" >= ${params.startDate}` : Prisma.empty
+        const endDateFilter = params?.endDate ? Prisma.sql`AND ea."submittedAt" <= ${params.endDate}` : Prisma.empty
+        const eventStartDateFilter = params?.startDate ? Prisma.sql`AND COALESCE(le."scheduledAt", le."createdAt") >= ${params.startDate}` : Prisma.empty
+        const eventEndDateFilter = params?.endDate ? Prisma.sql`AND COALESCE(le."scheduledAt", le."createdAt") <= ${params.endDate}` : Prisma.empty
+
         const [domains, performanceStats, scheduledEventCounts] = await Promise.all([
             prisma.productDomain.findMany({
                 include: {
@@ -940,6 +948,8 @@ export class TrainingOpsService {
                 FROM "exams" e
                 LEFT JOIN "exam_attempts" ea ON ea."examId" = e."id"
                 WHERE e."productDomainId" IS NOT NULL
+                  ${startDateFilter}
+                  ${endDateFilter}
                 GROUP BY e."productDomainId"
             `),
             prisma.$queryRaw<Array<{
@@ -951,6 +961,8 @@ export class TrainingOpsService {
                 FROM "learning_events" le
                 WHERE le."domainId" IS NOT NULL
                   AND le."status" IN ('DRAFT', 'SCHEDULED', 'IN_PROGRESS')
+                  ${eventStartDateFilter}
+                  ${eventEndDateFilter}
                 GROUP BY le."domainId"
             `),
         ])
