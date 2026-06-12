@@ -160,7 +160,7 @@ export default function TrainingOpsDashboardPage() {
     const [error, setError] = useState<string | null>(null)
     const [learnerSearch, setLearnerSearch] = useState('')
     const [range, setRange] = useState<TrainingOpsReportRange>('30d')
-    const [includeAdmins, setIncludeAdmins] = useState(false)
+    const [includeAdmins, setIncludeAdmins] = useState(true)
     const [excludedUserIds, setExcludedUserIds] = useState<string[]>([])
     const [filterDialogOpen, setFilterDialogOpen] = useState(false)
 

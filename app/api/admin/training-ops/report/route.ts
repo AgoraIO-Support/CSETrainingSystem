@@ -77,7 +77,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     try {
         const { searchParams } = new URL(req.url)
         const range = resolveRange(searchParams.get('range'))
-        const includeAdmins = parseBoolean(searchParams.get('includeAdmins'), false)
+        const includeAdmins = parseBoolean(searchParams.get('includeAdmins'), true)
         const excludedUserIds = parseExcludedUserIds(searchParams.get('excludeUserIds'))
         const { startDate, endDate } = buildPeriod(range)
         const includedRoles = includeAdmins ? [UserRole.USER, UserRole.SME, UserRole.ADMIN] : [UserRole.USER, UserRole.SME]
