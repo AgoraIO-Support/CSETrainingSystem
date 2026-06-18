@@ -14,7 +14,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Loader2, Plus, Save, Trash2, Pencil } from 'lucide-react'
-import { getFallbackOpenAIModelOptions, isSupportedOpenAIModel, type OpenAIModelOption } from '@/lib/services/openai-models'
+import {
+    getFallbackLLMModelOptions,
+    isAllowedChatModelId,
+    LLM_PROVIDERS,
+    type LLMModelOption,
+    type LLMProviderId,
+} from '@/lib/services/openai-models'
 
 type AIPromptUseCase =
     | 'VTT_TO_XML_ENRICHMENT'
@@ -36,6 +42,7 @@ type PromptTemplate = {
     systemPrompt: string | null
     userPrompt: string | null
     variables: string[]
+    provider: LLMProviderId
     model: string
     temperature: number
     maxTokens: number
@@ -60,6 +67,7 @@ type CourseAssignment = {
     courseId: string
     useCase: AIPromptUseCase
     templateId: string
+    providerOverride: LLMProviderId | null
     modelOverride: string | null
     temperatureOverride: number | null
     maxTokensOverride: number | null
@@ -72,6 +80,7 @@ type ExamAssignment = {
     examId: string
     useCase: AIPromptUseCase
     templateId: string
+    providerOverride: LLMProviderId | null
     modelOverride: string | null
     temperatureOverride: number | null
     maxTokensOverride: number | null
@@ -80,9 +89,9 @@ type ExamAssignment = {
 }
 
 type AIModelsResponse = {
-    data: OpenAIModelOption[]
+    data: LLMModelOption[]
     meta?: {
-        source?: 'openai' | 'fallback'
+        source?: 'openai' | 'fallback' | 'mixed'
         cached?: boolean
     }
 }
@@ -131,7 +140,7 @@ async function api<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> 
 function buildTemplateOptions(templates: PromptTemplate[], useCase: AIPromptUseCase) {
     return templates
         .filter((t) => t.useCase === useCase)
-        .map((t) => ({ id: t.id, name: t.name, isActive: t.isActive }))
+        .map((t) => ({ id: t.id, name: t.name, isActive: t.isActive, provider: t.provider, model: t.model }))
 }
 
 function numberOrNull(value: string): number | null {
@@ -165,8 +174,8 @@ export default function AdminAIConfigPage() {
     const [defaults, setDefaults] = useState<PromptDefault[]>([])
     const [courses, setCourses] = useState<CourseRow[]>([])
     const [exams, setExams] = useState<ExamRow[]>([])
-    const [modelOptions, setModelOptions] = useState<OpenAIModelOption[]>(getFallbackOpenAIModelOptions())
-    const [modelCatalogSource, setModelCatalogSource] = useState<'openai' | 'fallback'>('fallback')
+    const [modelOptions, setModelOptions] = useState<LLMModelOption[]>(getFallbackLLMModelOptions())
+    const [modelCatalogSource, setModelCatalogSource] = useState<'openai' | 'fallback' | 'mixed'>('fallback')
 
     const [templateSearch, setTemplateSearch] = useState('')
     const [templateUseCaseFilter, setTemplateUseCaseFilter] = useState<AIPromptUseCase | 'ALL'>('ALL')
@@ -190,6 +199,7 @@ export default function AdminAIConfigPage() {
         systemPrompt: string
         userPrompt: string
         variables: string
+        provider: LLMProviderId
         model: string
         temperature: string
         maxTokens: string
@@ -202,6 +212,7 @@ export default function AdminAIConfigPage() {
         systemPrompt: '',
         userPrompt: '',
         variables: '',
+        provider: 'openai',
         model: 'gpt-4o-mini',
         temperature: '0.2',
         maxTokens: '1024',
@@ -222,6 +233,7 @@ export default function AdminAIConfigPage() {
         systemPrompt: string
         userPrompt: string
         variables: string
+        provider: LLMProviderId
         model: string
         temperature: string
         maxTokens: string
@@ -231,21 +243,33 @@ export default function AdminAIConfigPage() {
 
     const editModelUnsupported = useMemo(() => {
         if (!editForm) return false
-        return !isSupportedOpenAIModel(editForm.model)
+        return !isAllowedChatModelId(editForm.provider, editForm.model)
     }, [editForm])
 
-    const modelIds = useMemo(() => {
-        const ids = new Set(modelOptions.map((option) => option.id))
-        if (createForm.model) ids.add(createForm.model)
-        if (editForm?.model) ids.add(editForm.model)
+    const modelIdsByProvider = useMemo(() => {
+        const ids: Record<LLMProviderId, Set<string>> = {
+            openai: new Set(),
+            vexke: new Set(),
+        }
+        for (const option of modelOptions) {
+            ids[option.provider].add(option.id)
+        }
+        for (const template of templates) {
+            ids[template.provider].add(template.model)
+        }
+        if (createForm.model) ids[createForm.provider].add(createForm.model)
+        if (editForm?.model) ids[editForm.provider].add(editForm.model)
         for (const assignment of courseAssignments) {
-            if (assignment.modelOverride) ids.add(assignment.modelOverride)
+            if (assignment.modelOverride) ids[assignment.providerOverride ?? assignment.template.provider].add(assignment.modelOverride)
         }
         for (const assignment of examAssignments) {
-            if (assignment.modelOverride) ids.add(assignment.modelOverride)
+            if (assignment.modelOverride) ids[assignment.providerOverride ?? assignment.template.provider].add(assignment.modelOverride)
         }
-        return Array.from(ids).sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))
-    }, [courseAssignments, createForm.model, editForm?.model, examAssignments, modelOptions])
+        return {
+            openai: Array.from(ids.openai).sort((a, b) => b.localeCompare(a, undefined, { numeric: true })),
+            vexke: Array.from(ids.vexke).sort((a, b) => b.localeCompare(a, undefined, { numeric: true })),
+        }
+    }, [courseAssignments, createForm.model, createForm.provider, editForm?.model, editForm?.provider, examAssignments, modelOptions, templates])
 
     const filteredTemplates = useMemo(() => {
         const q = templateSearch.trim().toLowerCase()
@@ -287,10 +311,10 @@ export default function AdminAIConfigPage() {
                 api<PromptDefault[]>('/api/admin/ai/defaults', { headers: getAuthHeaders() }),
                 api<CourseRow[]>('/api/admin/courses?limit=50', { headers: getAuthHeaders() }),
                 api<ExamRow[]>('/api/admin/exams?limit=50', { headers: getAuthHeaders() }),
-                api<OpenAIModelOption[]>('/api/admin/ai/models', { headers: getAuthHeaders() })
+                api<LLMModelOption[]>('/api/admin/ai/models', { headers: getAuthHeaders() })
                     .then((data) => ({ data, meta: undefined } satisfies AIModelsResponse))
                     .catch(() => ({
-                        data: getFallbackOpenAIModelOptions(),
+                        data: getFallbackLLMModelOptions(),
                         meta: { source: 'fallback', cached: false },
                     } satisfies AIModelsResponse)),
             ])
@@ -299,7 +323,7 @@ export default function AdminAIConfigPage() {
             setCourses(c)
             setExams(e)
             setModelOptions(models.data)
-            setModelCatalogSource(models.meta?.source ?? (models.data.some((model) => model.source === 'openai') ? 'openai' : 'fallback'))
+            setModelCatalogSource(models.meta?.source ?? (models.data.some((model) => model.source !== 'fallback') ? 'mixed' : 'fallback'))
         } catch (e: unknown) {
             setError(errorMessage(e, 'Failed to load AI configuration'))
         } finally {
@@ -353,6 +377,7 @@ export default function AdminAIConfigPage() {
         payload: {
             templateId: string
             isEnabled: boolean
+            providerOverride: LLMProviderId | null
             modelOverride: string | null
             temperatureOverride: number | null
             maxTokensOverride: number | null
@@ -393,6 +418,7 @@ export default function AdminAIConfigPage() {
         payload: {
             templateId: string
             isEnabled: boolean
+            providerOverride: LLMProviderId | null
             modelOverride: string | null
             temperatureOverride: number | null
             maxTokensOverride: number | null
@@ -445,6 +471,7 @@ export default function AdminAIConfigPage() {
                     systemPrompt: createForm.systemPrompt,
                     userPrompt: createForm.userPrompt || null,
                     variables,
+                    provider: createForm.provider,
                     model: createForm.model,
                     temperature: Number(createForm.temperature),
                     maxTokens: Number(createForm.maxTokens),
@@ -471,6 +498,7 @@ export default function AdminAIConfigPage() {
             systemPrompt: t.systemPrompt || t.template,
             userPrompt: t.userPrompt || '',
             variables: (t.variables || []).join(','),
+            provider: t.provider,
             model: t.model,
             temperature: String(t.temperature),
             maxTokens: String(t.maxTokens),
@@ -499,6 +527,7 @@ export default function AdminAIConfigPage() {
                     systemPrompt: editForm.systemPrompt,
                     userPrompt: editForm.userPrompt || null,
                     variables,
+                    provider: editForm.provider,
                     model: editForm.model,
                     temperature: Number(editForm.temperature),
                     maxTokens: Number(editForm.maxTokens),
@@ -581,8 +610,7 @@ export default function AdminAIConfigPage() {
                     <div>
                         <h1 className="text-3xl font-bold">AI Configuration</h1>
                         <p className="text-muted-foreground mt-1">
-                            Manage prompt templates, defaults, and per course/exam overrides. Models loaded from{' '}
-                            {modelCatalogSource === 'openai' ? 'OpenAI' : 'local fallback'}.
+                            Manage prompt templates, defaults, and per course/exam overrides. Model catalog source: {modelCatalogSource}.
                         </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -707,13 +735,35 @@ export default function AdminAIConfigPage() {
                                             />
                                         </div>
                                         <div className="space-y-2">
+                                            <Label>Provider</Label>
+                                            <Select
+                                                value={createForm.provider}
+                                                onValueChange={(v) => {
+                                                    const provider = v as LLMProviderId
+                                                    const nextModel = modelIdsByProvider[provider][0] || createForm.model
+                                                    setCreateForm((p) => ({ ...p, provider, model: nextModel }))
+                                                }}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {LLM_PROVIDERS.map((provider) => (
+                                                        <SelectItem key={provider.id} value={provider.id}>
+                                                            {provider.label}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="space-y-2">
                                             <Label>Model</Label>
                                             <Select value={createForm.model} onValueChange={(v) => setCreateForm((p) => ({ ...p, model: v }))}>
                                                 <SelectTrigger>
                                                     <SelectValue />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    {modelIds.map((m) => (
+                                                    {modelIdsByProvider[createForm.provider].map((m) => (
                                                         <SelectItem key={m} value={m}>
                                                             {m}
                                                         </SelectItem>
@@ -766,6 +816,7 @@ export default function AdminAIConfigPage() {
                                     <tr className="text-left text-muted-foreground border-b">
                                         <th className="py-3 px-4 font-medium">Name</th>
                                         <th className="py-3 px-4 font-medium">Use-case</th>
+                                        <th className="py-3 px-4 font-medium">Provider</th>
                                         <th className="py-3 px-4 font-medium">Model</th>
                                         <th className="py-3 px-4 font-medium">Active</th>
                                         <th className="py-3 px-4 font-medium text-right">Action</th>
@@ -780,6 +831,9 @@ export default function AdminAIConfigPage() {
                                             </td>
                                             <td className="py-3 px-4">
                                                 <Badge variant="secondary">{t.useCase}</Badge>
+                                            </td>
+                                            <td className="py-3 px-4">
+                                                <Badge variant="outline">{t.provider}</Badge>
                                             </td>
                                             <td className="py-3 px-4">
                                                 <div>{t.model}</div>
@@ -804,7 +858,7 @@ export default function AdminAIConfigPage() {
                                     ))}
                                     {filteredTemplates.length === 0 && (
                                         <tr>
-                                            <td className="py-6 px-4 text-muted-foreground" colSpan={5}>
+                                            <td className="py-6 px-4 text-muted-foreground" colSpan={6}>
                                                 No templates found.
                                             </td>
                                         </tr>
@@ -881,6 +935,28 @@ export default function AdminAIConfigPage() {
                                             />
                                         </div>
                                         <div className="space-y-2">
+                                            <Label>Provider</Label>
+                                            <Select
+                                                value={editForm.provider}
+                                                onValueChange={(v) => {
+                                                    const provider = v as LLMProviderId
+                                                    const nextModel = modelIdsByProvider[provider][0] || editForm.model
+                                                    setEditForm((p) => (p ? { ...p, provider, model: nextModel } : p))
+                                                }}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {LLM_PROVIDERS.map((provider) => (
+                                                        <SelectItem key={provider.id} value={provider.id}>
+                                                            {provider.label}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="space-y-2">
                                             <Label>Model</Label>
                                             <Select value={editForm.model} onValueChange={(v) => setEditForm((p) => (p ? { ...p, model: v } : p))}>
                                                 <SelectTrigger>
@@ -892,7 +968,7 @@ export default function AdminAIConfigPage() {
                                                             (unsupported) {editForm.model}
                                                         </SelectItem>
                                                     )}
-                                                    {modelIds.map((m) => (
+                                                    {modelIdsByProvider[editForm.provider].map((m) => (
                                                         <SelectItem key={m} value={m}>
                                                             {m}
                                                         </SelectItem>
@@ -1043,10 +1119,11 @@ export default function AdminAIConfigPage() {
                                                     title={u.label}
                                                     useCase={u.value}
                                                     options={options}
-                                                    modelOptions={modelIds}
+                                                    modelOptionsByProvider={modelIdsByProvider}
                                                     initial={{
                                                         templateId: row?.templateId || defaultsByUseCase.get(u.value)?.templateId || 'none',
                                                         isEnabled: row?.isEnabled ?? true,
+                                                        providerOverride: row?.providerOverride ?? null,
                                                         modelOverride: row?.modelOverride ?? '',
                                                         temperatureOverride: row?.temperatureOverride?.toString() ?? '',
                                                         maxTokensOverride: row?.maxTokensOverride?.toString() ?? '',
@@ -1055,6 +1132,7 @@ export default function AdminAIConfigPage() {
                                                         handleUpsertCourseAssignment(selectedCourseId, u.value, {
                                                             templateId: payload.templateId,
                                                             isEnabled: payload.isEnabled,
+                                                            providerOverride: payload.providerOverride,
                                                             modelOverride: payload.modelOverride || null,
                                                             temperatureOverride: numberOrNull(payload.temperatureOverride),
                                                             maxTokensOverride: payload.maxTokensOverride ? Number(payload.maxTokensOverride) : null,
@@ -1111,10 +1189,11 @@ export default function AdminAIConfigPage() {
                                                     title={u.label}
                                                     useCase={u.value}
                                                     options={options}
-                                                    modelOptions={modelIds}
+                                                    modelOptionsByProvider={modelIdsByProvider}
                                                     initial={{
                                                         templateId: row?.templateId || defaultsByUseCase.get(u.value)?.templateId || 'none',
                                                         isEnabled: row?.isEnabled ?? true,
+                                                        providerOverride: row?.providerOverride ?? null,
                                                         modelOverride: row?.modelOverride ?? '',
                                                         temperatureOverride: row?.temperatureOverride?.toString() ?? '',
                                                         maxTokensOverride: row?.maxTokensOverride?.toString() ?? '',
@@ -1123,6 +1202,7 @@ export default function AdminAIConfigPage() {
                                                         handleUpsertExamAssignment(selectedExamId, u.value, {
                                                             templateId: payload.templateId,
                                                             isEnabled: payload.isEnabled,
+                                                            providerOverride: payload.providerOverride,
                                                             modelOverride: payload.modelOverride || null,
                                                             temperatureOverride: numberOrNull(payload.temperatureOverride),
                                                             maxTokensOverride: payload.maxTokensOverride ? Number(payload.maxTokensOverride) : null,
@@ -1159,11 +1239,12 @@ export default function AdminAIConfigPage() {
 function AssignmentRow(props: {
     title: string
     useCase: string
-    options: { id: string; name: string; isActive: boolean }[]
-    modelOptions: string[]
+    options: { id: string; name: string; isActive: boolean; provider: LLMProviderId; model: string }[]
+    modelOptionsByProvider: Record<LLMProviderId, string[]>
     initial: {
         templateId: string
         isEnabled: boolean
+        providerOverride: LLMProviderId | null
         modelOverride: string
         temperatureOverride: string
         maxTokensOverride: string
@@ -1172,6 +1253,7 @@ function AssignmentRow(props: {
     onSave: (payload: {
         templateId: string
         isEnabled: boolean
+        providerOverride: LLMProviderId | null
         modelOverride: string
         temperatureOverride: string
         maxTokensOverride: string
@@ -1180,19 +1262,24 @@ function AssignmentRow(props: {
 }) {
     const [templateId, setTemplateId] = useState(props.initial.templateId)
     const [isEnabled, setIsEnabled] = useState(props.initial.isEnabled)
+    const [providerOverride, setProviderOverride] = useState<LLMProviderId | ''>(props.initial.providerOverride ?? '')
     const [modelOverride, setModelOverride] = useState(props.initial.modelOverride)
     const [temperatureOverride, setTemperatureOverride] = useState(props.initial.temperatureOverride)
     const [maxTokensOverride, setMaxTokensOverride] = useState(props.initial.maxTokensOverride)
-    const modelOverrideUnsupported = modelOverride ? !isSupportedOpenAIModel(modelOverride) : false
+    const selectedTemplate = props.options.find((option) => option.id === templateId)
+    const effectiveProvider = providerOverride || selectedTemplate?.provider || 'openai'
+    const modelOptions = props.modelOptionsByProvider[effectiveProvider]
+    const modelOverrideUnsupported = modelOverride ? !isAllowedChatModelId(effectiveProvider, modelOverride) : false
 
     useEffect(() => {
         setTemplateId(props.initial.templateId)
         setIsEnabled(props.initial.isEnabled)
+        setProviderOverride(props.initial.providerOverride ?? '')
         setModelOverride(props.initial.modelOverride)
         setTemperatureOverride(props.initial.temperatureOverride)
         setMaxTokensOverride(props.initial.maxTokensOverride)
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [props.initial.templateId])
+    }, [props.initial.templateId, props.initial.providerOverride])
 
     return (
         <div className="rounded-lg border p-4 space-y-3">
@@ -1212,6 +1299,7 @@ function AssignmentRow(props: {
                             props.onSave({
                                 templateId,
                                 isEnabled,
+                                providerOverride: providerOverride || null,
                                 modelOverride,
                                 temperatureOverride,
                                 maxTokensOverride,
@@ -1247,7 +1335,32 @@ function AssignmentRow(props: {
                     </Select>
                 </div>
 
-                <div className="grid gap-3 md:grid-cols-3">
+                <div className="grid gap-3 md:grid-cols-4">
+                    <div className="space-y-2">
+                        <Label>Provider override</Label>
+                        <Select
+                            value={providerOverride || 'none'}
+                            onValueChange={(v) => {
+                                const nextProvider = v === 'none' ? '' : (v as LLMProviderId)
+                                setProviderOverride(nextProvider)
+                                if (modelOverride && nextProvider && !isAllowedChatModelId(nextProvider, modelOverride)) {
+                                    setModelOverride('')
+                                }
+                            }}
+                        >
+                            <SelectTrigger>
+                                <SelectValue placeholder="(optional)" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="none">(none)</SelectItem>
+                                {LLM_PROVIDERS.map((provider) => (
+                                    <SelectItem key={provider.id} value={provider.id}>
+                                        {provider.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
                     <div className="space-y-2">
                         <Label>Model override</Label>
                         <Select
@@ -1264,7 +1377,7 @@ function AssignmentRow(props: {
                                         (unsupported) {modelOverride}
                                     </SelectItem>
                                 )}
-                                {props.modelOptions.map((m) => (
+                                {modelOptions.map((m) => (
                                     <SelectItem key={m} value={m}>
                                         {m}
                                     </SelectItem>

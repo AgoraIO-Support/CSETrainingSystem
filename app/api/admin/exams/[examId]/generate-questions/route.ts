@@ -147,6 +147,19 @@ export const POST = withSmeOrAdminAuth(
             { status: 500 }
           );
         }
+
+        if (error.message === 'VEXKE_API_KEY_MISSING') {
+          return NextResponse.json(
+            {
+              success: false,
+              error: {
+                code: 'VEXKE_001',
+                message: 'VEXKE_API_KEY is not configured on the server',
+              },
+            },
+            { status: 500 }
+          );
+        }
       }
 
       return NextResponse.json(

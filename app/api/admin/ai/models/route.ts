@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server'
 import { withAdminAuth } from '@/lib/auth-middleware'
 import {
     getFallbackOpenAIModelOptions,
+    getFallbackVexkeModelOptions,
     normalizeOpenAIModelOptions,
+    type LLMModelOption,
     type OpenAIModelOption,
 } from '@/lib/services/openai-models'
 
@@ -10,8 +12,8 @@ const MODEL_CACHE_TTL_MS = 60 * 60 * 1000
 
 let cachedModels: {
     expiresAt: number
-    data: OpenAIModelOption[]
-    source: 'openai' | 'fallback'
+    data: LLMModelOption[]
+    source: 'openai' | 'fallback' | 'mixed'
 } | null = null
 
 type OpenAIModelsResponse = {
@@ -61,8 +63,10 @@ export const GET = withAdminAuth(async () => {
         }
 
         const openAIModels = await fetchOpenAIModels()
-        const data = openAIModels.length > 0 ? openAIModels : getFallbackOpenAIModelOptions()
-        const source = openAIModels.length > 0 ? 'openai' : 'fallback'
+        const openAIData = openAIModels.length > 0 ? openAIModels : getFallbackOpenAIModelOptions()
+        const vexkeData = getFallbackVexkeModelOptions()
+        const data = [...openAIData, ...vexkeData]
+        const source = openAIModels.length > 0 ? 'mixed' : 'fallback'
 
         cachedModels = {
             expiresAt: now + MODEL_CACHE_TTL_MS,
@@ -76,8 +80,8 @@ export const GET = withAdminAuth(async () => {
             meta: { source, cached: false },
         })
     } catch (error) {
-        console.error('List OpenAI models error:', error)
-        const data = getFallbackOpenAIModelOptions()
+        console.error('List LLM models error:', error)
+        const data = [...getFallbackOpenAIModelOptions(), ...getFallbackVexkeModelOptions()]
         cachedModels = {
             expiresAt: Date.now() + MODEL_CACHE_TTL_MS,
             data,

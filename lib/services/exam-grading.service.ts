@@ -9,15 +9,13 @@ import {
   GradingStatus,
   ExamAttemptStatus,
   AIPromptUseCase,
-  AIResponseFormat,
   Prisma,
 } from '@prisma/client';
-import OpenAI from 'openai';
-import { log, timeAsync } from '@/lib/logger';
+import { log } from '@/lib/logger';
 import { CertificateService } from '@/lib/services/certificate.service';
 import { TrainingOpsRewardService } from '@/lib/services/training-ops-reward.service';
 import { AIPromptResolverService } from '@/lib/services/ai-prompt-resolver.service';
-import { getChatCompletionsTokenBudget } from '@/lib/services/openai-models';
+import { createLLMChatCompletion } from '@/lib/services/llm-chat-client';
 import { stripRichTextToPlainText } from '@/lib/rich-text';
 import {
   formatEssayGradingCriteriaForPrompt,
@@ -58,14 +56,6 @@ export interface FinalScoreResult {
 }
 
 export class ExamGradingService {
-  private openai: OpenAI;
-
-  constructor() {
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
-  }
-
   /**
    * Grade all objective questions in an attempt (auto-grading)
    */
@@ -432,41 +422,20 @@ export class ExamGradingService {
       { role: 'system' as const, content: promptConfig.systemPrompt },
       { role: 'user' as const, content: prompt },
     ];
-    const budget = getChatCompletionsTokenBudget(promptConfig.model, promptConfig.maxTokens);
-    const request: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming = {
+    const response = await createLLMChatCompletion({
+      provider: promptConfig.provider,
       model: promptConfig.model,
       messages,
-      ...(promptConfig.responseFormat === AIResponseFormat.JSON_OBJECT
-        ? { response_format: { type: 'json_object' as const } }
-        : {}),
+      responseFormat: promptConfig.responseFormat,
       temperature: promptConfig.temperature,
-      ...budget.param,
-    };
-
-    const logOpenAiContent = process.env.CSE_OPENAI_LOG_CONTENT === '1';
-    log('OpenAI', 'info', 'exam-grading chat.completions request', {
-      model: request.model,
-      tokenParam: budget.tokenParam,
-      requestedMaxTokens: budget.requestedMaxTokens,
-      effectiveMaxTokens: budget.effectiveMaxTokens,
-      clamped: budget.clamped,
-      promptChars: prompt.length,
+      maxTokens: promptConfig.maxTokens,
+      logContext: {
+        useCase: 'exam-grading',
+        promptChars: prompt.length,
+      },
     });
-    if (logOpenAiContent) {
-      log('OpenAI', 'debug', 'exam-grading chat.completions request body', { body: request });
-    }
 
-    const response = await timeAsync(
-      'OpenAI',
-      'exam-grading chat.completions response',
-      { model: request.model },
-      () => this.openai.chat.completions.create(request)
-    );
-    if (logOpenAiContent) {
-      log('OpenAI', 'debug', 'exam-grading chat.completions raw response', { response });
-    }
-
-    const result = JSON.parse(response.choices[0].message.content || '{}');
+    const result = JSON.parse(response.content || '{}');
     const breakdown = this.normalizeEssayAIResult(result, resolvedQuestion.gradingCriteria, resolvedQuestion.points);
     if (answer.answer && /data-asset-key=|<img\b/i.test(answer.answer)) {
       breakdown.flags = Array.from(new Set([...(breakdown.flags ?? []), 'answer_contains_uploaded_assets']));

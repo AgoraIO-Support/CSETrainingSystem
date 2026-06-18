@@ -226,6 +226,10 @@ export const normalizeSmeMcpError = (error: unknown) => {
             return errorResponse(500, 'OPENAI_API_KEY_MISSING', 'OPENAI_API_KEY is not configured on the server')
         }
 
+        if (message === 'VEXKE_API_KEY_MISSING') {
+            return errorResponse(500, 'VEXKE_API_KEY_MISSING', 'VEXKE_API_KEY is not configured on the server')
+        }
+
         if (message === 'EXAM_NOT_APPROVED') {
             return errorResponse(400, 'EXAM_NOT_APPROVED', 'Exam must be APPROVED before it can be published')
         }

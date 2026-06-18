@@ -3,7 +3,7 @@ import { withAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
 import { AIResponseFormat, AIPromptUseCase } from '@prisma/client'
 import { z } from 'zod'
-import { isAllowedOpenAIChatModelId } from '@/lib/services/openai-models'
+import { isAllowedChatModelId } from '@/lib/services/openai-models'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -20,7 +20,8 @@ const updateTemplateSchema = z.object({
     systemPrompt: z.string().min(1).optional(),
     userPrompt: z.string().optional().nullable(),
     variables: z.array(z.string()).optional(),
-    model: z.string().trim().refine(isAllowedOpenAIChatModelId, 'Unsupported OpenAI chat model').optional(),
+    provider: z.enum(['openai', 'vexke']).optional(),
+    model: z.string().trim().optional(),
     temperature: z.number().min(0).max(2).optional(),
     maxTokens: z.number().int().min(1).max(32768).optional(),
     responseFormat: z.nativeEnum(AIResponseFormat).optional(),
@@ -74,6 +75,14 @@ export const PATCH = withAdminAuth(async (req, _user, ctx: RouteContext) => {
         }
 
         const systemPrompt = patch.systemPrompt ?? existing.systemPrompt ?? existing.template
+        const provider = patch.provider ?? existing.provider
+        const model = patch.model ?? existing.model
+        if (!isAllowedChatModelId(provider as 'openai' | 'vexke', model)) {
+            return NextResponse.json(
+                { success: false, error: { code: 'VALIDATION_ERROR', message: 'Unsupported chat model for selected provider' } },
+                { status: 400 }
+            )
+        }
 
         const updated = await prisma.aIPromptTemplate.update({
             where: { id },
@@ -86,6 +95,7 @@ export const PATCH = withAdminAuth(async (req, _user, ctx: RouteContext) => {
                 template: systemPrompt,
                 userPrompt: patch.userPrompt,
                 variables: patch.variables,
+                provider: patch.provider,
                 model: patch.model,
                 temperature: patch.temperature,
                 maxTokens: patch.maxTokens,

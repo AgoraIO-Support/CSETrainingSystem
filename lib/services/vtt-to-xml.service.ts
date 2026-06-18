@@ -7,9 +7,9 @@
 import { VTTParserService, VTTCue } from './vtt-parser.service';
 import { createHash } from 'crypto';
 import { AIPromptUseCase, KnowledgeAnchorType } from '@prisma/client';
-import { log, timeAsync } from '@/lib/logger';
+import { log } from '@/lib/logger';
 import { AIPromptResolverService } from './ai-prompt-resolver.service';
-import { extractChatCompletionsText, getChatCompletionsTokenBudget } from '@/lib/services/openai-models';
+import { createLLMChatCompletion } from '@/lib/services/llm-chat-client';
 
 // Filler word patterns for moderate denoising
 const FILLER_PATTERNS = [
@@ -97,11 +97,7 @@ export interface CourseContext {
 }
 
 export class VTTToXMLService {
-  private openaiApiKey: string;
-
-  constructor(openaiApiKey?: string) {
-    this.openaiApiKey = openaiApiKey || process.env.OPENAI_API_KEY || '';
-  }
+  constructor(_openaiApiKey?: string) {}
 
   /**
    * Main entry point: Convert VTT content to structured XML
@@ -163,7 +159,7 @@ export class VTTToXMLService {
     log('KnowledgeContext', 'info', 'VTTToXML Step 3: enriched sections', {
       courseId: context.courseId,
       lessonId: context.lessonId,
-      openaiEnabled: Boolean(this.openaiApiKey),
+      aiEnrichmentFallback: this.enrichmentResult.usedFallback,
       sectionsCount: sections.length,
       anchorsMarkedByAI: anchorsMarked,
       conceptsTotal,
@@ -324,19 +320,6 @@ export class VTTToXMLService {
     // Reset enrichment tracking
     this.enrichmentResult = { usedFallback: false, fallbackReason: undefined };
 
-    if (!this.openaiApiKey) {
-      // Fallback: generate titles without AI
-      this.enrichmentResult = {
-        usedFallback: true,
-        fallbackReason: 'OPENAI_API_KEY not configured',
-      };
-      log('KnowledgeContext', 'warn', 'AI enrichment skipped: no API key', {
-        courseId: context.courseId,
-        lessonId: context.lessonId,
-      });
-      return this.enrichWithoutAI(paragraphs);
-    }
-
     const promptConfig = await AIPromptResolverService.resolve({
       useCase: AIPromptUseCase.VTT_TO_XML_ENRICHMENT,
       courseId: context.courseId,
@@ -396,90 +379,35 @@ export class VTTToXMLService {
     const userPrompt = AIPromptResolverService.render(userPromptTemplate, vars);
 
     try {
-      const logOpenAiContent = process.env.CSE_OPENAI_LOG_CONTENT === '1';
       const controller = new AbortController();
       const timeoutMs = parseInt(process.env.VTT_TO_XML_ENRICH_TIMEOUT_MS || '20000', 10);
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-      const budget = getChatCompletionsTokenBudget(promptConfig.model, promptConfig.maxTokens);
-      const requestBody = {
+      const response = await createLLMChatCompletion({
+        provider: promptConfig.provider,
         model: promptConfig.model,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
+        responseFormat: promptConfig.responseFormat,
         temperature: promptConfig.temperature,
-        ...budget.param,
-      };
-
-      log('OpenAI', 'info', 'vtt-to-xml chat.completions request', {
-        templateSource: promptConfig.source,
-        templateId: promptConfig.templateId,
-        templateName: promptConfig.templateName,
-        model: promptConfig.model,
-        temperature: promptConfig.temperature,
-        tokenParam: budget.tokenParam,
-        requestedMaxTokens: budget.requestedMaxTokens,
-        effectiveMaxTokens: budget.effectiveMaxTokens,
-        clamped: budget.clamped,
-        batchStartIndex: startIndex,
-        batchSize: paragraphs.length,
-        systemPromptChars: systemPrompt.length,
-        userPromptChars: userPrompt.length,
-      });
-      if (logOpenAiContent) {
-        log('OpenAI', 'debug', 'vtt-to-xml chat.completions request body', { body: requestBody });
-      }
-
-      const response = await timeAsync(
-        'OpenAI',
-        'vtt-to-xml chat.completions response',
-        { url: 'https://api.openai.com/v1/chat/completions', model: promptConfig.model, batchStartIndex: startIndex },
-        () =>
-          fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${this.openaiApiKey}`,
-            },
-            body: JSON.stringify(requestBody),
-            signal: controller.signal,
-          })
-      ).finally(() => clearTimeout(timeout));
-
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => '');
-        log('OpenAI', 'error', 'vtt-to-xml chat.completions error', {
-          status: response.status,
-          bodyPreview: errorText.slice(0, 500),
+        maxTokens: promptConfig.maxTokens,
+        signal: controller.signal,
+        logContext: {
+          useCase: 'vtt-to-xml',
+          templateSource: promptConfig.source,
+          templateId: promptConfig.templateId,
+          templateName: promptConfig.templateName,
           batchStartIndex: startIndex,
-        });
-        if (logOpenAiContent) {
-          log('OpenAI', 'error', 'vtt-to-xml chat.completions error body', { status: response.status, body: errorText });
-        }
-        return { sections: this.enrichWithoutAI(paragraphs), usedFallback: true };
-      }
-
-      const data = await response.json();
-      if (logOpenAiContent) {
-        log('OpenAI', 'debug', 'vtt-to-xml chat.completions raw response', { response: data });
-      }
-      log('OpenAI', 'info', 'vtt-to-xml chat.completions usage', {
-        model: data.model || promptConfig.model,
-        totalTokens: data.usage?.total_tokens,
-        promptTokens: data.usage?.prompt_tokens,
-        completionTokens: data.usage?.completion_tokens,
-        batchStartIndex: startIndex,
-      });
-
-      const extracted = extractChatCompletionsText(data);
-      const content = extracted.text || '';
-      if (logOpenAiContent) {
-        log('OpenAI', 'debug', 'vtt-to-xml chat.completions message.content', { content, source: extracted.source });
-      }
+          batchSize: paragraphs.length,
+          systemPromptChars: systemPrompt.length,
+          userPromptChars: userPrompt.length,
+        },
+      }).finally(() => clearTimeout(timeout));
 
       // Parse JSON response
-      const parsed = this.parseAIResponse(content);
+      const parsed = this.parseAIResponse(response.content || '');
 
       const sections = paragraphs.map((para, idx) => {
         const aiResult = parsed[idx] || {};

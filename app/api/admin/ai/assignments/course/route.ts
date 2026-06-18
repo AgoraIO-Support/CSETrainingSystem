@@ -3,20 +3,16 @@ import { withSmeOrAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
 import { AIPromptUseCase } from '@prisma/client'
 import { z } from 'zod'
-import { isAllowedOpenAIChatModelId } from '@/lib/services/openai-models'
+import { isAllowedChatModelId } from '@/lib/services/openai-models'
 import { TrainingOpsService } from '@/lib/services/training-ops.service'
-
-const openAIChatModelOverrideSchema = z
-    .string()
-    .trim()
-    .refine(isAllowedOpenAIChatModelId, 'Unsupported OpenAI chat model')
 
 const upsertAssignmentSchema = z.object({
     courseId: z.string().uuid(),
     useCase: z.nativeEnum(AIPromptUseCase),
     templateId: z.string().uuid(),
     isEnabled: z.boolean().optional().default(true),
-    modelOverride: openAIChatModelOverrideSchema.optional().nullable(),
+    providerOverride: z.enum(['openai', 'vexke']).optional().nullable(),
+    modelOverride: z.string().trim().optional().nullable(),
     temperatureOverride: z.number().min(0).max(2).optional().nullable(),
     maxTokensOverride: z.number().int().min(1).max(32768).optional().nullable(),
 })
@@ -111,6 +107,14 @@ export const PUT = withSmeOrAdminAuth(async (req, user) => {
                 { status: 400 }
             )
         }
+        const effectiveProvider = data.providerOverride ?? template.provider
+        const effectiveModel = data.modelOverride ?? template.model
+        if (!isAllowedChatModelId(effectiveProvider as 'openai' | 'vexke', effectiveModel)) {
+            return NextResponse.json(
+                { success: false, error: { code: 'AI_ASSIGN_400', message: 'Unsupported chat model for selected provider' } },
+                { status: 400 }
+            )
+        }
 
         const row = await prisma.courseAIPromptAssignment.upsert({
             where: { courseId_useCase: { courseId: data.courseId, useCase: data.useCase } },
@@ -119,6 +123,7 @@ export const PUT = withSmeOrAdminAuth(async (req, user) => {
                 useCase: data.useCase,
                 templateId: data.templateId,
                 isEnabled: data.isEnabled,
+                providerOverride: data.providerOverride ?? null,
                 modelOverride: data.modelOverride ?? null,
                 temperatureOverride: data.temperatureOverride ?? null,
                 maxTokensOverride: data.maxTokensOverride ?? null,
@@ -126,6 +131,7 @@ export const PUT = withSmeOrAdminAuth(async (req, user) => {
             update: {
                 templateId: data.templateId,
                 isEnabled: data.isEnabled,
+                providerOverride: data.providerOverride ?? null,
                 modelOverride: data.modelOverride ?? null,
                 temperatureOverride: data.temperatureOverride ?? null,
                 maxTokensOverride: data.maxTokensOverride ?? null,

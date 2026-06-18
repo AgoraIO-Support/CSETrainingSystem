@@ -1,5 +1,6 @@
 export const SUPPORTED_OPENAI_MODELS = [
     'gpt-5.5',
+    'gpt-5.5-mini',
     'gpt-5.4',
     'gpt-5.4-mini',
     'gpt-5.4-nano',
@@ -17,6 +18,14 @@ export const SUPPORTED_OPENAI_MODELS = [
 ] as const
 
 export type SupportedOpenAIModel = (typeof SUPPORTED_OPENAI_MODELS)[number]
+export type LLMProviderId = 'openai' | 'vexke'
+
+export const LLM_PROVIDERS: Array<{ id: LLMProviderId; label: string; requiresStream: boolean }> = [
+    { id: 'openai', label: 'OpenAI', requiresStream: false },
+    { id: 'vexke', label: 'Vexke', requiresStream: true },
+]
+
+export const DEFAULT_LLM_PROVIDER: LLMProviderId = 'openai'
 
 const EXCLUDED_OPENAI_MODEL_ID_PARTS = [
     'audio',
@@ -37,7 +46,19 @@ const EXCLUDED_OPENAI_MODEL_ID_PARTS = [
 export type OpenAIModelOption = {
     id: string
     ownedBy?: string
-    source: 'openai' | 'fallback'
+    provider: LLMProviderId
+    source: LLMProviderId | 'fallback'
+}
+
+export type LLMModelOption = OpenAIModelOption
+
+export function isLLMProviderId(value: string | null | undefined): value is LLMProviderId {
+    return value === 'openai' || value === 'vexke'
+}
+
+export function getDefaultLLMProvider(): LLMProviderId {
+    const configured = process.env.LLM_DEFAULT_PROVIDER?.trim().toLowerCase()
+    return isLLMProviderId(configured) ? configured : DEFAULT_LLM_PROVIDER
 }
 
 export function isAllowedOpenAIChatModelId(model: string): boolean {
@@ -53,7 +74,7 @@ export function isSupportedOpenAIModel(model: string): boolean {
 }
 
 export function getFallbackOpenAIModelOptions(): OpenAIModelOption[] {
-    return SUPPORTED_OPENAI_MODELS.map((id) => ({ id, source: 'fallback' }))
+    return SUPPORTED_OPENAI_MODELS.map((id) => ({ id, provider: 'openai', source: 'fallback' }))
 }
 
 export function normalizeOpenAIModelOptions(models: Array<{ id: string; owned_by?: string }>): OpenAIModelOption[] {
@@ -66,10 +87,36 @@ export function normalizeOpenAIModelOptions(models: Array<{ id: string; owned_by
             continue
         }
         seen.add(id)
-        options.push({ id, ownedBy: model.owned_by, source: 'openai' })
+        options.push({ id, ownedBy: model.owned_by, provider: 'openai', source: 'openai' })
     }
 
     return options.sort((a, b) => b.id.localeCompare(a.id, undefined, { numeric: true }))
+}
+
+export function getFallbackVexkeModelOptions(): LLMModelOption[] {
+    const configured = (process.env.VEXKE_MODEL_IDS || '')
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean)
+    const ids = configured.length > 0 ? configured : ['gpt-5.5', 'gpt-5.5-mini', 'gpt-5.4', 'gpt-5.4-mini']
+    return Array.from(new Set(ids))
+        .filter(isAllowedOpenAIChatModelId)
+        .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))
+        .map((id) => ({ id, provider: 'vexke', source: 'fallback' }))
+}
+
+export function getFallbackLLMModelOptions(): LLMModelOption[] {
+    return [...getFallbackOpenAIModelOptions(), ...getFallbackVexkeModelOptions()]
+}
+
+export function isAllowedChatModelId(provider: LLMProviderId, model: string): boolean {
+    switch (provider) {
+        case 'openai':
+        case 'vexke':
+            return isAllowedOpenAIChatModelId(model)
+        default:
+            return false
+    }
 }
 
 export type ChatCompletionsTokenParamName = 'max_tokens' | 'max_completion_tokens'

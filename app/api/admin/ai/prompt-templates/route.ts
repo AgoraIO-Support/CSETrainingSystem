@@ -3,26 +3,34 @@ import { withAdminAuth, withSmeOrAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
 import { AIResponseFormat, AIPromptUseCase } from '@prisma/client'
 import { z } from 'zod'
-import { isAllowedOpenAIChatModelId } from '@/lib/services/openai-models'
+import { isAllowedChatModelId } from '@/lib/services/openai-models'
 
-const openAIChatModelSchema = z
-    .string()
-    .trim()
-    .refine(isAllowedOpenAIChatModelId, 'Unsupported OpenAI chat model')
+const llmProviderSchema = z.enum(['openai', 'vexke'])
 
-const createTemplateSchema = z.object({
-    name: z.string().min(1),
-    description: z.string().optional().nullable(),
-    useCase: z.nativeEnum(AIPromptUseCase),
-    systemPrompt: z.string().min(1),
-    userPrompt: z.string().optional().nullable(),
-    variables: z.array(z.string()).optional().default([]),
-    model: openAIChatModelSchema.optional().default('gpt-4o-mini'),
-    temperature: z.number().min(0).max(2).optional().default(0.2),
-    maxTokens: z.number().int().min(1).max(32768).optional().default(1024),
-    responseFormat: z.nativeEnum(AIResponseFormat).optional().default(AIResponseFormat.TEXT),
-    isActive: z.boolean().optional().default(true),
-})
+const createTemplateSchema = z
+    .object({
+        name: z.string().min(1),
+        description: z.string().optional().nullable(),
+        useCase: z.nativeEnum(AIPromptUseCase),
+        systemPrompt: z.string().min(1),
+        userPrompt: z.string().optional().nullable(),
+        variables: z.array(z.string()).optional().default([]),
+        provider: llmProviderSchema.optional().default('openai'),
+        model: z.string().trim().optional().default('gpt-4o-mini'),
+        temperature: z.number().min(0).max(2).optional().default(0.2),
+        maxTokens: z.number().int().min(1).max(32768).optional().default(1024),
+        responseFormat: z.nativeEnum(AIResponseFormat).optional().default(AIResponseFormat.TEXT),
+        isActive: z.boolean().optional().default(true),
+    })
+    .superRefine((data, ctx) => {
+        if (!isAllowedChatModelId(data.provider, data.model)) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['model'],
+                message: 'Unsupported chat model for selected provider',
+            })
+        }
+    })
 
 function getPrismaCode(error: unknown): string | undefined {
     if (!error || typeof error !== 'object') return undefined
@@ -80,6 +88,7 @@ export const POST = withAdminAuth(async (req) => {
                 systemPrompt: data.systemPrompt,
                 userPrompt: data.userPrompt ?? null,
                 variables: data.variables,
+                provider: data.provider,
                 model: data.model,
                 temperature: data.temperature,
                 maxTokens: data.maxTokens,

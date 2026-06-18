@@ -1,15 +1,12 @@
 import prisma from '@/lib/prisma'
 import { RAGService } from './_legacy_rag.service'
 import { KnowledgeContextService } from '@/lib/services/knowledge-context.service'
-import { log, timeAsync } from '@/lib/logger'
+import { log } from '@/lib/logger'
 import { ChunkingService } from './_legacy_chunking.service'
 import { AIPromptResolverService } from '@/lib/services/ai-prompt-resolver.service'
 import { AIPromptUseCase } from '@prisma/client'
-import {
-    estimateChatCompletionsCostUsd,
-    extractChatCompletionsText,
-    getChatCompletionsTokenBudget,
-} from '@/lib/services/openai-models'
+import { createLLMChatCompletion } from '@/lib/services/llm-chat-client'
+import { getDefaultLLMProvider, type LLMProviderId } from '@/lib/services/openai-models'
 
 interface AIMessage {
     role: 'user' | 'assistant'
@@ -18,6 +15,7 @@ interface AIMessage {
 
 interface AIConfig {
     systemPrompt: string
+    provider: LLMProviderId
     model: string
     temperature: number
     maxTokens: number
@@ -44,6 +42,7 @@ interface FullContextResult {
 
 const DEFAULT_AI_CONFIG: AIConfig = {
     systemPrompt: `You are a helpful training assistant for the Agora CSE platform. Use the provided lesson context to answer questions concisely and accurately. If you're unsure about something, say so rather than making up information.`,
+    provider: getDefaultLLMProvider(),
     model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
     temperature: 0.2,
     maxTokens: 1024,
@@ -143,6 +142,7 @@ export class AIService {
             if (lessonConfig?.isEnabled) {
                 return {
                     systemPrompt: lessonConfig.systemPrompt,
+                    provider: DEFAULT_AI_CONFIG.provider,
                     model: lessonConfig.modelOverride || DEFAULT_AI_CONFIG.model,
                     temperature: lessonConfig.temperature ?? DEFAULT_AI_CONFIG.temperature,
                     maxTokens: lessonConfig.maxTokens ?? DEFAULT_AI_CONFIG.maxTokens,
@@ -161,6 +161,7 @@ export class AIService {
             if (courseConfig?.isEnabled) {
                 return {
                     systemPrompt: courseConfig.systemPrompt,
+                    provider: DEFAULT_AI_CONFIG.provider,
                     model: courseConfig.modelOverride || DEFAULT_AI_CONFIG.model,
                     temperature: courseConfig.temperature ?? DEFAULT_AI_CONFIG.temperature,
                     maxTokens: courseConfig.maxTokens ?? DEFAULT_AI_CONFIG.maxTokens,
@@ -593,6 +594,8 @@ The "quiz" field is optional - only include when testing understanding would be 
             templateId: promptConfig.templateId ?? null,
             templateName: promptConfig.templateName ?? null,
             source: promptConfig.source,
+            provider: promptConfig.provider,
+            model: promptConfig.model,
             contextLength: lessonContext.length,
             historyLimit,
         })
@@ -608,6 +611,7 @@ The "quiz" field is optional - only include when testing understanding would be 
         // Call AI model with configured settings
         const aiConfig: AIConfig = {
             systemPrompt: '',
+            provider: promptConfig.provider,
             model: promptConfig.model,
             temperature: promptConfig.temperature,
             maxTokens: promptConfig.maxTokens,
@@ -684,244 +688,103 @@ The "quiz" field is optional - only include when testing understanding would be 
             correctIndex: number
         }
     }> {
-        const apiKey = process.env.OPENAI_API_KEY
         const { config, contextMode = 'full' } = params
-        const logOpenAiContent = process.env.CSE_OPENAI_LOG_CONTENT === '1'
 
-        if (apiKey) {
+        try {
+            const systemPromptWithContext = params.context
+            const messages = [
+                {
+                    role: 'system' as const,
+                    content: systemPromptWithContext,
+                },
+                ...params.history,
+                { role: 'user' as const, content: params.userMessage },
+            ]
+
+            const llmResponse = await createLLMChatCompletion({
+                provider: config.provider,
+                model: config.model,
+                messages,
+                temperature: config.temperature,
+                maxTokens: config.maxTokens,
+                logContext: {
+                    useCase: 'ai-assistant',
+                    userMessageChars: params.userMessage.length,
+                    historyCount: params.history.length,
+                    contextChars: (params.context || '').length,
+                    contextMode,
+                },
+            })
+
+            const rawContent = llmResponse.content || 'Unable to generate a response right now.'
+            let parsed: {
+                answer?: string
+                suggestions?: string[]
+                quiz?: {
+                    question: string
+                    options: string[]
+                    correctIndex: number
+                }
+            } | null = null
+
             try {
-                // Knowledge Context injection: context IS the system prompt and must include the XML prefix.
-                const systemPromptWithContext = params.context
-
-                const messages = [
-                    {
-                        role: 'system',
-                        content: systemPromptWithContext,
-                    },
-                    ...params.history,
-                    { role: 'user', content: params.userMessage },
-                ]
-
-                const doRequest = async (maxTokens: number, attempt: 1 | 2) => {
-                    const budget = getChatCompletionsTokenBudget(config.model, maxTokens)
-                    const requestBody = {
-                        model: config.model,
-                        messages,
-                        temperature: config.temperature,
-                        ...budget.param,
-                    }
-
-                    log('OpenAI', 'info', 'chat.completions request', {
-                        attempt,
-                        model: config.model,
-                        temperature: config.temperature,
-                        tokenParam: budget.tokenParam,
-                        requestedMaxTokens: budget.requestedMaxTokens,
-                        effectiveMaxTokens: budget.effectiveMaxTokens,
-                        clamped: budget.clamped,
-                        messagesCount: messages.length,
-                        userMessageChars: params.userMessage.length,
-                        historyCount: params.history.length,
-                        contextChars: (params.context || '').length,
-                        contextMode,
-                    })
-
-                    if (logOpenAiContent) {
-                        log('OpenAI', 'debug', 'chat.completions request body', { body: requestBody })
-                    }
-
-                    const response = await timeAsync(
-                        'OpenAI',
-                        'chat.completions response',
-                        { url: 'https://api.openai.com/v1/chat/completions', model: config.model, attempt },
-                        () =>
-                            fetch('https://api.openai.com/v1/chat/completions', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    Authorization: `Bearer ${apiKey}`,
-                                },
-                                body: JSON.stringify(requestBody),
-                            })
-                    )
-
-                    return { response, budget, requestBody }
-                }
-
-                const { response, budget } = await doRequest(config.maxTokens, 1)
-
-                if (!response.ok) {
-                    const errorText = await response.text()
-                    log('OpenAI', 'error', 'chat.completions error', {
-                        status: response.status,
-                        bodyPreview: errorText.slice(0, 500),
-                    })
-                    if (logOpenAiContent) {
-                        log('OpenAI', 'error', 'chat.completions error body', { status: response.status, body: errorText })
-                    }
-                    throw new Error(`OpenAI error: ${response.status}`)
-                }
-
-                let data = await response.json()
-                if (logOpenAiContent) {
-                    log('OpenAI', 'debug', 'chat.completions raw response', { response: data })
-                }
-                const usageModel = data.model || config.model
-                const usagePromptTokens = data.usage?.prompt_tokens
-                const usageCompletionTokens = data.usage?.completion_tokens
-                const usageCachedTokens = data.usage?.prompt_tokens_details?.cached_tokens
-                const costEstimate = estimateChatCompletionsCostUsd(usageModel, {
-                    promptTokens: usagePromptTokens,
-                    completionTokens: usageCompletionTokens,
-                    cachedTokens: usageCachedTokens,
-                })
-                log('OpenAI', 'info', 'chat.completions usage', {
-                    model: usageModel,
-                    totalTokens: data.usage?.total_tokens,
-                    promptTokens: usagePromptTokens,
-                    completionTokens: usageCompletionTokens,
-                    cachedTokens: usageCachedTokens,
-                    uncachedPromptTokens: costEstimate.uncachedPromptTokens,
-                    estimatedCostUsd: costEstimate.estimatedCostUsd,
-                    pricingApplied: costEstimate.pricingApplied,
-                })
-
-                let extracted = extractChatCompletionsText(data)
-                const finishReason = data.choices?.[0]?.finish_reason
-
-                // GPT-5 family can spend the entire completion budget on reasoning, producing empty message.content.
-                // If that happens, retry once with a larger max_completion_tokens budget.
-                if (!extracted.text && budget.tokenParam === 'max_completion_tokens' && finishReason === 'length') {
-                    const retryMaxTokens = Math.min(8192, Math.max(4096, budget.effectiveMaxTokens * 2))
-                    if (retryMaxTokens > budget.effectiveMaxTokens) {
-                        log('OpenAI', 'warn', 'chat.completions retrying due to empty content', {
-                            model: data.model || config.model,
-                            finishReason,
-                            previousMaxCompletionTokens: budget.effectiveMaxTokens,
-                            retryMaxCompletionTokens: retryMaxTokens,
-                        })
-
-                        const retry = await doRequest(retryMaxTokens, 2)
-                        if (!retry.response.ok) {
-                            const errorText = await retry.response.text()
-                            log('OpenAI', 'error', 'chat.completions retry error', {
-                                status: retry.response.status,
-                                bodyPreview: errorText.slice(0, 500),
-                            })
-                            throw new Error(`OpenAI retry error: ${retry.response.status}`)
-                        }
-
-                        data = await retry.response.json()
-                        if (logOpenAiContent) {
-                            log('OpenAI', 'debug', 'chat.completions retry raw response', { response: data })
-                        }
-                        const retryUsageModel = data.model || config.model
-                        const retryUsagePromptTokens = data.usage?.prompt_tokens
-                        const retryUsageCompletionTokens = data.usage?.completion_tokens
-                        const retryUsageCachedTokens = data.usage?.prompt_tokens_details?.cached_tokens
-                        const retryCostEstimate = estimateChatCompletionsCostUsd(retryUsageModel, {
-                            promptTokens: retryUsagePromptTokens,
-                            completionTokens: retryUsageCompletionTokens,
-                            cachedTokens: retryUsageCachedTokens,
-                        })
-                        log('OpenAI', 'info', 'chat.completions retry usage', {
-                            model: retryUsageModel,
-                            totalTokens: data.usage?.total_tokens,
-                            promptTokens: retryUsagePromptTokens,
-                            completionTokens: retryUsageCompletionTokens,
-                            cachedTokens: retryUsageCachedTokens,
-                            uncachedPromptTokens: retryCostEstimate.uncachedPromptTokens,
-                            estimatedCostUsd: retryCostEstimate.estimatedCostUsd,
-                            pricingApplied: retryCostEstimate.pricingApplied,
-                        })
-
-                        extracted = extractChatCompletionsText(data)
+                parsed = JSON.parse(rawContent)
+            } catch {
+                const jsonMatch = rawContent.match(/```(?:json)?\s*([\s\S]*?)```/)
+                if (jsonMatch) {
+                    try {
+                        parsed = JSON.parse(jsonMatch[1].trim())
+                    } catch {
+                        parsed = null
                     }
                 }
 
-                if (!extracted.text) {
-                    log('OpenAI', 'error', 'chat.completions missing message content', {
-                        model: data.model || config.model,
-                        finishReason: data.choices?.[0]?.finish_reason,
-                        extractedSource: extracted.source,
-                    })
-                }
-
-                const rawContent: string = extracted.text || 'Unable to generate a response right now.'
-                if (logOpenAiContent) {
-                    log('OpenAI', 'debug', 'chat.completions message.content', { content: rawContent, source: extracted.source })
-                }
-
-                let parsed: {
-                    answer?: string
-                    suggestions?: string[]
-                    quiz?: {
-                        question: string
-                        options: string[]
-                        correctIndex: number
-                    }
-                } | null = null
-                try {
-                    // Try parsing the raw content as JSON first
-                    parsed = JSON.parse(rawContent)
-                } catch {
-                    // If direct parsing fails, try extracting JSON from markdown code blocks
-                    const jsonMatch = rawContent.match(/```(?:json)?\s*([\s\S]*?)```/)
-                    if (jsonMatch) {
+                if (!parsed) {
+                    const jsonObjectMatch = rawContent.match(/\{[\s\S]*"answer"[\s\S]*\}/)
+                    if (jsonObjectMatch) {
                         try {
-                            parsed = JSON.parse(jsonMatch[1].trim())
+                            parsed = JSON.parse(jsonObjectMatch[0])
                         } catch {
                             parsed = null
                         }
                     }
-
-                    // If still not parsed, try to find JSON object pattern in the text
-                    if (!parsed) {
-                        const jsonObjectMatch = rawContent.match(/\{[\s\S]*"answer"[\s\S]*\}/)
-                        if (jsonObjectMatch) {
-                            try {
-                                parsed = JSON.parse(jsonObjectMatch[0])
-                            } catch {
-                                parsed = null
-                            }
-                        }
-                    }
                 }
-
-                const answer = parsed?.answer || rawContent
-                const suggestions = Array.isArray(parsed?.suggestions)
-                    ? parsed!.suggestions.filter((s: any): s is string => typeof s === 'string' && s.trim().length > 0)
-                    : undefined
-
-                // Extract quiz if present (only in full context mode)
-                let quiz = undefined
-                if (parsed?.quiz && typeof parsed.quiz === 'object') {
-                    const q = parsed.quiz
-                    if (
-                        typeof q.question === 'string' &&
-                        Array.isArray(q.options) &&
-                        typeof q.correctIndex === 'number'
-                    ) {
-                        quiz = {
-                            question: q.question,
-                            options: q.options.filter((o: any): o is string => typeof o === 'string'),
-                            correctIndex: q.correctIndex,
-                        }
-                    }
-                }
-
-                return {
-                    content: answer,
-                    tokens: data.usage?.total_tokens,
-                    model: data.model || config.model,
-                    suggestions,
-                    quiz,
-                }
-            } catch (error) {
-                log('OpenAI', 'error', 'OpenAI call failed, falling back to mock response', {
-                    error: error instanceof Error ? error.message : String(error),
-                })
             }
+
+            const answer = parsed?.answer || rawContent
+            const suggestions = Array.isArray(parsed?.suggestions)
+                ? parsed!.suggestions.filter((s: any): s is string => typeof s === 'string' && s.trim().length > 0)
+                : undefined
+
+            let quiz = undefined
+            if (parsed?.quiz && typeof parsed.quiz === 'object') {
+                const q = parsed.quiz
+                if (
+                    typeof q.question === 'string' &&
+                    Array.isArray(q.options) &&
+                    typeof q.correctIndex === 'number'
+                ) {
+                    quiz = {
+                        question: q.question,
+                        options: q.options.filter((o: any): o is string => typeof o === 'string'),
+                        correctIndex: q.correctIndex,
+                    }
+                }
+            }
+
+            return {
+                content: answer,
+                tokens: llmResponse.usage?.totalTokens,
+                model: llmResponse.model,
+                suggestions,
+                quiz,
+            }
+        } catch (error) {
+            log('OpenAI', 'error', 'LLM call failed, falling back to mock response', {
+                provider: config.provider,
+                model: config.model,
+                error: error instanceof Error ? error.message : String(error),
+            })
         }
 
         // Fallback response when no API key or call fails.
@@ -929,7 +792,7 @@ The "quiz" field is optional - only include when testing understanding would be 
         return {
             content: 'Unable to generate a response right now.',
             tokens: undefined,
-            model: apiKey ? `${config.model}-fallback` : 'mock-model',
+            model: `${config.provider}:${config.model}-fallback`,
             suggestions: [],
         }
     }

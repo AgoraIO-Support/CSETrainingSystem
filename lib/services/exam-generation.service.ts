@@ -8,17 +8,15 @@ import {
   ExamQuestionType,
   DifficultyLevel,
   AIPromptUseCase,
-  AIResponseFormat,
 } from '@prisma/client';
-import OpenAI from 'openai';
-import { log, timeAsync } from '@/lib/logger';
+import { log } from '@/lib/logger';
 import { ExamService } from '@/lib/services/exam.service';
 import { KnowledgeContextService } from '@/lib/services/knowledge-context.service';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import s3Client, { ASSET_S3_BUCKET_NAME } from '@/lib/aws-s3';
 import { createHash } from 'crypto';
 import { AIPromptResolverService, type ResolvedAIPrompt } from '@/lib/services/ai-prompt-resolver.service';
-import { getChatCompletionsTokenBudget } from '@/lib/services/openai-models';
+import { createLLMChatCompletion } from '@/lib/services/llm-chat-client';
 import { getPrimaryAiTranscriptTrack } from '@/lib/transcript-tracks';
 import {
   buildEssayGradingCriteria,
@@ -83,14 +81,10 @@ type QuestionCoverageHints = {
 };
 
 export class ExamGenerationService {
-  private openai: OpenAI;
   private knowledgeService: KnowledgeContextService;
 
   constructor() {
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
-    this.knowledgeService = new KnowledgeContextService(process.env.OPENAI_API_KEY);
+    this.knowledgeService = new KnowledgeContextService();
   }
 
   private augmentEssayQuestion(question: GeneratedQuestion, config: GenerationConfig): GeneratedQuestion {
@@ -176,10 +170,6 @@ export class ExamGenerationService {
 
     if (!exam) {
       throw new Error('EXAM_NOT_FOUND');
-    }
-
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error('OPENAI_API_KEY_MISSING');
     }
 
     const promptConfig = await AIPromptResolverService.resolve({
@@ -703,47 +693,25 @@ export class ExamGenerationService {
       taskPrompt,
     });
 
-    // Call OpenAI API
+    // Call the configured LLM provider.
     const messages = [
       { role: 'system' as const, content: effectivePromptConfig.systemPrompt },
       { role: 'user' as const, content: prompt },
     ];
-    const budget = getChatCompletionsTokenBudget(effectivePromptConfig.model, effectivePromptConfig.maxTokens);
-    const request = {
+    const response = await createLLMChatCompletion({
+      provider: effectivePromptConfig.provider,
       model: effectivePromptConfig.model,
       messages,
-      ...(effectivePromptConfig.responseFormat === AIResponseFormat.JSON_OBJECT
-        ? { response_format: { type: 'json_object' as const } }
-        : {}),
+      responseFormat: effectivePromptConfig.responseFormat,
       temperature: effectivePromptConfig.temperature,
-      ...budget.param,
-    };
-
-    const logOpenAiContent = process.env.CSE_OPENAI_LOG_CONTENT === '1';
-    log('OpenAI', 'info', 'exam-generation chat.completions request', {
-      model: request.model,
-      tokenParam: budget.tokenParam,
-      requestedMaxTokens: budget.requestedMaxTokens,
-      effectiveMaxTokens: budget.effectiveMaxTokens,
-      clamped: budget.clamped,
-      messagesCount: messages.length,
-      promptChars: prompt.length,
+      maxTokens: effectivePromptConfig.maxTokens,
+      logContext: {
+        useCase: 'exam-generation',
+        promptChars: prompt.length,
+      },
     });
-    if (logOpenAiContent) {
-      log('OpenAI', 'debug', 'exam-generation chat.completions request body', { body: request });
-    }
 
-    const response = await timeAsync(
-      'OpenAI',
-      'exam-generation chat.completions response',
-      { model: request.model },
-      () => this.openai.chat.completions.create(request as any)
-    );
-    if (logOpenAiContent) {
-      log('OpenAI', 'debug', 'exam-generation chat.completions raw response', { response });
-    }
-
-    const result = JSON.parse(response.choices[0].message.content || '{}');
+    const result = JSON.parse(response.content || '{}');
     const normalized = this.normalizeGeneratedQuestion(type, difficulty, result);
 
     return {
@@ -760,7 +728,7 @@ export class ExamGenerationService {
         sourceChunkIds: [],
         confidence: normalized.confidence,
       },
-      tokensUsed: response.usage?.total_tokens || 0,
+      tokensUsed: response.usage?.totalTokens || 0,
       generationPrompt: taskPrompt,
     };
   }

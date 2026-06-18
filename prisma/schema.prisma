@@ -900,6 +900,7 @@ model AIPromptTemplate {
   variables    String[] // List of variable names used in template
 
   // Model defaults for this template (can be overridden by course/exam assignments)
+  provider       String           @default("openai")
   model          String           @default("gpt-4o-mini")
   temperature    Float            @default(0.2)
   maxTokens      Int              @default(1024)
@@ -964,6 +965,7 @@ model CourseAIPromptAssignment {
   templateId String
   template   AIPromptTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
 
+  providerOverride    String?
   modelOverride       String?
   temperatureOverride Float?
   maxTokensOverride   Int?
@@ -987,6 +989,7 @@ model ExamAIPromptAssignment {
   templateId String
   template   AIPromptTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
 
+  providerOverride    String?
   modelOverride       String?
   temperatureOverride Float?
   maxTokensOverride   Int?

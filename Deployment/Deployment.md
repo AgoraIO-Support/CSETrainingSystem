@@ -73,6 +73,11 @@ AWS_SECRET_ACCESS_KEY=REPLACE_ME
 # Optional: AI (only needed if you will use AI endpoints)
 OPENAI_API_KEY=REPLACE_ME
 OPENAI_MODEL=gpt-4o-mini
+LLM_DEFAULT_PROVIDER=openai
+VEXKE_API_KEY=REPLACE_ME
+VEXKE_BASE_URL=https://v2.vexke.com/openai/v1
+VEXKE_CHAT_COMPLETIONS_PATH=/chat/completions
+VEXKE_MODEL_IDS=gpt-5.5,gpt-5.5-mini,gpt-5.4,gpt-5.4-mini
 
 # Optional: CloudFront signed cookies for private course materials
 # CLOUDFRONT_DOMAIN=your-cloudfront-domain
@@ -219,6 +224,11 @@ CLOUDFRONT_SIGNED_COOKIE_TTL_HOURS=12
 # AI
 OPENAI_API_KEY=<YOUR_OPENAI_KEY>
 OPENAI_MODEL=gpt-4o-mini
+LLM_DEFAULT_PROVIDER=openai
+VEXKE_API_KEY=<YOUR_VEXKE_KEY>
+VEXKE_BASE_URL=https://v2.vexke.com/openai/v1
+VEXKE_CHAT_COMPLETIONS_PATH=/chat/completions
+VEXKE_MODEL_IDS=gpt-5.5,gpt-5.5-mini,gpt-5.4,gpt-5.4-mini
 EOF
 
 sudo chmod 600 /opt/cselearning.env
