@@ -135,6 +135,20 @@ function logUsage(provider: LLMProviderId, model: string, usage: LLMChatCompleti
     })
 }
 
+function extractProviderErrorMessage(errorText: string): string | null {
+    try {
+        const parsed = JSON.parse(errorText)
+        if (typeof parsed?.detail === 'string' && parsed.detail.trim()) return parsed.detail.trim()
+        if (typeof parsed?.message === 'string' && parsed.message.trim()) return parsed.message.trim()
+        if (typeof parsed?.error === 'string' && parsed.error.trim()) return parsed.error.trim()
+        if (typeof parsed?.error?.message === 'string' && parsed.error.message.trim()) return parsed.error.message.trim()
+    } catch {
+        // Fall through to plain text.
+    }
+    const trimmed = errorText.trim()
+    return trimmed.length > 0 ? trimmed.slice(0, 300) : null
+}
+
 async function parseStreamingChatCompletion(response: Response): Promise<{
     content: string
     model?: string
@@ -254,7 +268,8 @@ async function executeChatCompletion(
                 body: errorText,
             })
         }
-        throw new Error(`${providerConfig.label} error: ${response.status}`)
+        const providerMessage = extractProviderErrorMessage(errorText)
+        throw new Error(`${providerConfig.label} error: ${response.status}${providerMessage ? ` - ${providerMessage}` : ''}`)
     }
 
     if (providerConfig.requiresStream) {

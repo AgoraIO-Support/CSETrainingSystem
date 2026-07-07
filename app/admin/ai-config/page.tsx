@@ -29,6 +29,9 @@ type AIPromptUseCase =
     | 'EXAM_GRADING_ESSAY'
     | 'AI_ASSISTANT_RAG_SYSTEM'
     | 'AI_ASSISTANT_KNOWLEDGE_CONTEXT_SYSTEM'
+    | 'LEARNING_AGENT_LESSON_COACH'
+    | 'LEARNING_AGENT_EXAM_MISTAKE_REVIEW'
+    | 'LEARNING_AGENT_PLAN'
     | 'MISC'
 
 type AIResponseFormat = 'TEXT' | 'JSON_OBJECT'
@@ -102,6 +105,9 @@ const USE_CASES: { value: Exclude<AIPromptUseCase, 'MISC'>; label: string; scope
     { value: 'EXAM_GENERATION', label: 'Exam generation', scope: 'exam' },
     { value: 'EXAM_GRADING_ESSAY', label: 'Exam essay grading', scope: 'exam' },
     { value: 'AI_ASSISTANT_KNOWLEDGE_CONTEXT_SYSTEM', label: 'AI assistant (Knowledge Context)', scope: 'global' },
+    { value: 'LEARNING_AGENT_LESSON_COACH', label: 'Learning Agent: Lesson Coach', scope: 'course' },
+    { value: 'LEARNING_AGENT_EXAM_MISTAKE_REVIEW', label: 'Learning Agent: Mistake Review', scope: 'exam' },
+    { value: 'LEARNING_AGENT_PLAN', label: 'Learning Agent: Learning Plan', scope: 'global' },
 ]
 
 // Hide this use-case in Defaults/Assignments for now since runtime currently uses VTT_TO_XML_ENRICHMENT.

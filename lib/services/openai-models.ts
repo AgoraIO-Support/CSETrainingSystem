@@ -98,7 +98,7 @@ export function getFallbackVexkeModelOptions(): LLMModelOption[] {
         .split(',')
         .map((id) => id.trim())
         .filter(Boolean)
-    const ids = configured.length > 0 ? configured : ['gpt-5.5', 'gpt-5.5-mini', 'gpt-5.4', 'gpt-5.4-mini']
+    const ids = configured.length > 0 ? configured : ['gpt-5.4', 'gpt-5.4-mini']
     return Array.from(new Set(ids))
         .filter(isAllowedOpenAIChatModelId)
         .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))

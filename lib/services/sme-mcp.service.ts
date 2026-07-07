@@ -85,6 +85,97 @@ const getErrorMessage = (error: unknown) => error instanceof Error ? error.messa
 const isUuid = (value: string) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 
+const normalizeChoiceText = (value: string) =>
+    value
+        .trim()
+        .replace(/^[A-Z]\s*[\.)、:：-]\s*/i, '')
+        .replace(/^option\s+[A-Z]\s*[\.)、:：-]?\s*/i, '')
+        .replace(/\s+/g, ' ')
+        .toLowerCase()
+
+const parseManualChoiceIndex = (value: unknown, options: string[]): number | null => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        const index = Math.floor(value)
+        return index >= 0 && index < options.length ? index : null
+    }
+
+    const raw = String(value ?? '').trim()
+    if (!raw) return null
+
+    const optionLetter = raw.match(/^(?:option\s*)?([A-Z])(?:\s*[\.)、:：-])?$/i)?.[1]
+    if (optionLetter) {
+        const index = optionLetter.toUpperCase().charCodeAt(0) - 65
+        return index >= 0 && index < options.length ? index : null
+    }
+
+    const leadingLetter = raw.match(/^(?:option\s*)?([A-Z])\s*[\.)、:：-]\s+.+$/i)?.[1]
+    if (leadingLetter) {
+        const index = leadingLetter.toUpperCase().charCodeAt(0) - 65
+        if (index >= 0 && index < options.length) return index
+    }
+
+    if (/^\d+$/.test(raw)) {
+        const index = Number.parseInt(raw, 10)
+        return index >= 0 && index < options.length ? index : null
+    }
+
+    const normalizedRaw = normalizeChoiceText(raw)
+    const matchIndex = options.findIndex((option) => normalizeChoiceText(option) === normalizedRaw)
+    return matchIndex >= 0 ? matchIndex : null
+}
+
+const normalizeManualCorrectAnswer = (
+    type: ExamQuestionType,
+    rawCorrectAnswer: unknown,
+    options?: string[]
+) => {
+    if (rawCorrectAnswer === undefined || rawCorrectAnswer === null) return undefined
+
+    if (type === ExamQuestionType.TRUE_FALSE) {
+        const raw = String(rawCorrectAnswer).trim().toLowerCase()
+        if (['true', 't', 'yes', 'y', '1'].includes(raw)) return 'true'
+        if (['false', 'f', 'no', 'n', '0'].includes(raw)) return 'false'
+        return String(rawCorrectAnswer).trim()
+    }
+
+    if (
+        type !== ExamQuestionType.SINGLE_CHOICE &&
+        type !== ExamQuestionType.MULTIPLE_CHOICE
+    ) {
+        return String(rawCorrectAnswer).trim()
+    }
+
+    const normalizedOptions = (options ?? []).map((option) => option.trim()).filter(Boolean)
+    if (normalizedOptions.length === 0) return String(rawCorrectAnswer).trim()
+
+    const rawParts = Array.isArray(rawCorrectAnswer)
+        ? rawCorrectAnswer
+        : [rawCorrectAnswer]
+
+    if (type === ExamQuestionType.SINGLE_CHOICE) {
+        const exactIndex = parseManualChoiceIndex(rawParts[0], normalizedOptions)
+        return exactIndex === null ? String(rawParts[0] ?? '').trim() : String(exactIndex)
+    }
+
+    const rawText = rawParts.map((part) => String(part ?? '').trim()).filter(Boolean).join(',')
+    const exactSingleIndex = parseManualChoiceIndex(rawText, normalizedOptions)
+    if (exactSingleIndex !== null) return String(exactSingleIndex)
+
+    const splitParts = rawParts.flatMap((part) =>
+        String(part ?? '')
+            .split(/[,;，；、\n]+/)
+            .map((item) => item.trim())
+            .filter(Boolean)
+    )
+    const indexes = Array.from(new Set(
+        splitParts
+            .map((part) => parseManualChoiceIndex(part, normalizedOptions))
+            .filter((index): index is number => index !== null)
+    ))
+
+    return indexes.length > 0 ? indexes.join(',') : rawText
+}
+
 const buildEssayQuestionSupport = (input: {
     question: string
     points: number
@@ -1414,7 +1505,7 @@ export class SmeMcpService {
                 difficulty?: DifficultyLevel
                 question: string
                 options?: string[]
-                correctAnswer?: string
+                correctAnswer?: string | number | Array<string | number>
                 rubric?: string
                 sampleAnswer?: string
                 gradingCriteria?: Array<{
@@ -1532,6 +1623,11 @@ export class SmeMcpService {
         if (input.mode === 'manual_payload') {
             for (const question of input.questions ?? []) {
                 const points = question.points ?? 10
+                const normalizedCorrectAnswer = normalizeManualCorrectAnswer(
+                    question.type,
+                    question.correctAnswer,
+                    question.options
+                )
                 const essaySupport = question.type === ExamQuestionType.ESSAY
                     ? buildEssayQuestionSupport({
                         question: question.question,
@@ -1563,7 +1659,7 @@ export class SmeMcpService {
                     difficulty: question.difficulty ?? DifficultyLevel.MEDIUM,
                     question: question.question,
                     options: question.options,
-                    correctAnswer: question.correctAnswer,
+                    correctAnswer: normalizedCorrectAnswer,
                     rubric: essaySupport?.rubric ?? question.rubric,
                     sampleAnswer: essaySupport?.sampleAnswer ?? question.sampleAnswer,
                     gradingCriteria:

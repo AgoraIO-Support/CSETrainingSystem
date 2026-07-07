@@ -149,7 +149,7 @@ export default function CourseDetailPage({ params }: { params: Promise<{ slug: s
                             </div>
                             <div>
                                 <h1 className="text-4xl font-bold mb-4">{course.title}</h1>
-                                <p className="text-lg text-muted-foreground max-w-3xl">
+                                <p className="text-lg text-muted-foreground max-w-3xl whitespace-pre-line">
                                     {course.description}
                                 </p>
                             </div>

@@ -937,6 +937,11 @@ enum AIPromptUseCase {
   // AI Assistant panel wrappers
   AI_ASSISTANT_RAG_SYSTEM
   AI_ASSISTANT_KNOWLEDGE_CONTEXT_SYSTEM
+
+  // Learning Agent actions
+  LEARNING_AGENT_LESSON_COACH
+  LEARNING_AGENT_EXAM_MISTAKE_REVIEW
+  LEARNING_AGENT_PLAN
 }
 
 enum AIResponseFormat {

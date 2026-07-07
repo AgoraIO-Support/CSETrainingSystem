@@ -1468,6 +1468,37 @@ export class ApiClient {
         })
     }
 
+    static async runLearningAgentAction(payload:
+        | {
+            action: 'lesson_coach'
+            courseId: string
+            lessonId: string
+            currentTimestamp?: number
+        }
+        | {
+            action: 'exam_mistake_review'
+            examId: string
+            attemptId?: string | null
+        }
+        | {
+            action: 'learning_plan'
+        }
+    ): Promise<{
+        success: boolean
+        data: {
+            action: 'lesson_coach' | 'exam_mistake_review' | 'learning_plan'
+            answer: string
+            model: string
+            provider: string
+            metadata: Record<string, unknown>
+        }
+    }> {
+        return this.request('/learning-agent/actions', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        })
+    }
+
     // ========== Admin Exams ==========
 
     static async getAdminExams(params: Record<string, string | number | undefined> = {}): Promise<{

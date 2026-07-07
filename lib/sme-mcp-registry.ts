@@ -343,7 +343,11 @@ const manualQuestionSchema = z.object({
     difficulty: z.nativeEnum(DifficultyLevel).optional(),
     question: z.string().trim().min(1),
     options: z.array(z.string().trim().min(1)).optional(),
-    correctAnswer: z.string().trim().optional(),
+    correctAnswer: z.union([
+        z.string().trim(),
+        z.number(),
+        z.array(z.union([z.string().trim(), z.number()])),
+    ]).optional(),
     rubric: z.string().trim().optional(),
     sampleAnswer: z.string().trim().optional(),
     gradingCriteria: z.array(
@@ -951,7 +955,14 @@ export const smeMcpToolDefinitions = [
                             difficulty: { type: 'string', enum: ['EASY', 'MEDIUM', 'HARD'] },
                             question: { type: 'string' },
                             options: { type: 'array', items: { type: 'string' } },
-                            correctAnswer: { type: 'string' },
+                            correctAnswer: {
+                                anyOf: [
+                                    { type: 'string' },
+                                    { type: 'number' },
+                                    { type: 'array', items: { anyOf: [{ type: 'string' }, { type: 'number' }] } },
+                                ],
+                                description: 'For SINGLE_CHOICE, use A/B/C/D, 0-based index, or exact option text; the MCP normalizes it to "0".."3". For MULTIPLE_CHOICE, use comma-separated letters/indexes/text or an array; it normalizes to "0,2".',
+                            },
                             rubric: { type: 'string' },
                             sampleAnswer: { type: 'string' },
                             gradingCriteria: {

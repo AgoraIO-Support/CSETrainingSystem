@@ -3,7 +3,7 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -128,13 +128,45 @@ export function AIChatPanel({
     const [knowledgeReady, setKnowledgeReady] = useState(true)
     const [knowledgeError, setKnowledgeError] = useState<string | null>(null)
     const [showFollowUpSuggestions, setShowFollowUpSuggestions] = useState(true)
+    const [panelHeight, setPanelHeight] = useState<number | null>(null)
+    const [isResizingHeight, setIsResizingHeight] = useState(false)
+    const panelRef = useRef<HTMLDivElement>(null)
     const messagesEndRef = useRef<HTMLDivElement>(null)
+    const heightResizeStateRef = useRef<{ startY: number; startHeight: number } | null>(null)
     const knowledgeRetryCountRef = useRef(0)
     const knowledgeRetryTimerRef = useRef<number | null>(null)
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }, [messages])
+
+    useEffect(() => {
+        if (!isResizingHeight) return
+
+        const onPointerMove = (event: PointerEvent) => {
+            const state = heightResizeStateRef.current
+            if (!state) return
+            const minHeight = 360
+            const maxHeight = Math.max(420, window.innerHeight - 96)
+            const nextHeight = Math.max(minHeight, Math.min(maxHeight, state.startHeight + event.clientY - state.startY))
+            setPanelHeight(nextHeight)
+        }
+
+        const onPointerUp = () => {
+            setIsResizingHeight(false)
+            heightResizeStateRef.current = null
+        }
+
+        window.addEventListener('pointermove', onPointerMove)
+        window.addEventListener('pointerup', onPointerUp, { once: true })
+        window.addEventListener('pointercancel', onPointerUp, { once: true })
+
+        return () => {
+            window.removeEventListener('pointermove', onPointerMove)
+            window.removeEventListener('pointerup', onPointerUp)
+            window.removeEventListener('pointercancel', onPointerUp)
+        }
+    }, [isResizingHeight])
 
     useEffect(() => {
         let cancelled = false
@@ -301,7 +333,38 @@ export function AIChatPanel({
     const chatDisabled = loading || knowledgeLoading || !knowledgeReady
 
     return (
-        <Card className={cn("h-full min-h-0 flex flex-col overflow-hidden border border-slate-200 bg-white shadow-none", className)}>
+        <Card
+            ref={panelRef}
+            className={cn(
+                "relative h-full min-h-[360px] min-w-0 flex flex-col overflow-hidden border border-slate-200 bg-white shadow-none",
+                isResizingHeight ? "select-none" : null,
+                className
+            )}
+            style={panelHeight ? { height: panelHeight } : undefined}
+        >
+            <div
+                role="separator"
+                aria-label="Resize AI assistant height"
+                aria-orientation="horizontal"
+                tabIndex={0}
+                className="absolute bottom-0 left-0 z-10 h-2 w-full cursor-row-resize bg-transparent hover:bg-slate-300/70 focus:outline-none focus:ring-2 focus:ring-[#00c2ff]/30"
+                onPointerDown={(e) => {
+                    if (e.button !== 0) return
+                    const currentHeight = panelRef.current?.getBoundingClientRect().height ?? 520
+                    heightResizeStateRef.current = { startY: e.clientY, startHeight: currentHeight }
+                    setIsResizingHeight(true)
+                    e.currentTarget.setPointerCapture(e.pointerId)
+                }}
+                onKeyDown={(e) => {
+                    const delta = e.key === 'ArrowUp' ? -24 : e.key === 'ArrowDown' ? 24 : 0
+                    if (!delta) return
+                    e.preventDefault()
+                    const currentHeight = panelRef.current?.getBoundingClientRect().height ?? panelHeight ?? 520
+                    const minHeight = 360
+                    const maxHeight = Math.max(420, window.innerHeight - 96)
+                    setPanelHeight(Math.max(minHeight, Math.min(maxHeight, currentHeight + delta)))
+                }}
+            />
             <CardHeader className="border-b border-slate-200 bg-white px-4 py-3">
                 <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center space-x-2.5 min-w-0">
@@ -458,13 +521,13 @@ export function AIChatPanel({
                 )}
 
                 <div className="border-t border-slate-200 bg-white p-4">
-                    <div className="flex items-center space-x-2">
-                        <Input
+                    <div className="flex items-end space-x-2">
+                        <Textarea
                             placeholder="Ask anything about this lesson..."
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                            className="flex-1"
+                            rows={2}
+                            className="max-h-40 min-h-[44px] flex-1 resize-y"
                             disabled={chatDisabled}
                         />
                         <Button

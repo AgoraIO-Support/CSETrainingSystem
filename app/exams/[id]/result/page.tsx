@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { RichTextContent } from '@/components/ui/rich-text-content'
+import { LearningAgentCard } from '@/components/learning/learning-agent-card'
 import { ApiClient } from '@/lib/api-client'
 import {
     ArrowLeft,
@@ -399,6 +400,19 @@ function ExamResultPageContent({ params }: PageProps) {
                             </CardContent>
                         </Card>
                     </div>
+                )}
+
+                {!isPending && result.reviewUnlocked && (
+                    <LearningAgentCard
+                        title="Mistake Review Coach"
+                        description="Turn this attempt into a focused review plan before your next study session."
+                        actionLabel="Review mistakes"
+                        payload={{
+                            action: 'exam_mistake_review',
+                            examId,
+                            attemptId: result.attemptId,
+                        }}
+                    />
                 )}
 
                 {/* Answer Review */}
