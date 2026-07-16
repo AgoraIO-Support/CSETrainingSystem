@@ -229,7 +229,7 @@ export default function TrainingOpsDomainDetailPage() {
                                             </p>
                                         </div>
                                         <div className="flex gap-2">
-                                            <Link href={`/admin/exams/${exam.id}`}>
+                                            <Link href={`/admin/exams/${exam.id}/edit`}>
                                                 <Button variant="outline">Exam</Button>
                                             </Link>
                                             <Link href={`/admin/exams/${exam.id}/analytics`}>
