@@ -9,7 +9,8 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { ApiClient } from '@/lib/api-client'
 import type { LearningSeriesSummary } from '@/types'
-import { ArrowLeft, FileJson, Loader2, Plus } from 'lucide-react'
+import { FileJson, Loader2, Plus } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 
 type SeriesCatalogView = 'admin' | 'sme'
 
@@ -34,7 +35,7 @@ export function SeriesCatalogPage({ view }: SeriesCatalogPageProps) {
                 setSeries(response.data)
                 setError(null)
             } catch (err) {
-                setError(err instanceof Error ? err.message : 'Failed to load learning series')
+                setError(err instanceof Error ? err.message : 'Failed to load learning Programs')
             } finally {
                 setLoading(false)
             }
@@ -54,11 +55,7 @@ export function SeriesCatalogPage({ view }: SeriesCatalogPageProps) {
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <div className={isAdmin ? 'flex items-center gap-4' : ''}>
                         {isAdmin ? (
-                            <Link href="/admin/training-ops">
-                                <Button variant="ghost" size="icon">
-                                    <ArrowLeft className="h-4 w-4" />
-                                </Button>
-                            </Link>
+                            <BackButton fallbackHref="/admin/training-ops" />
                         ) : null}
                         <div>
                             <h1 className="text-3xl font-bold">
@@ -128,7 +125,7 @@ export function SeriesCatalogPage({ view }: SeriesCatalogPageProps) {
                         <CardTitle>{isAdmin ? 'All Programs' : 'Scoped Programs'}</CardTitle>
                         <CardDescription>
                             {isAdmin
-                                ? 'Open a learning program to govern cadence, owner assignment, and downstream event or exam creation.'
+                                ? 'Open a Program to manage settings, associate existing content, and review execution in one workspace.'
                                 : 'Use programs as reusable operating templates for weekly drills, case studies, release readiness work, and final assessments.'}
                         </CardDescription>
                     </CardHeader>
@@ -163,7 +160,7 @@ export function SeriesCatalogPage({ view }: SeriesCatalogPageProps) {
                                             {isAdmin ? (
                                                 <>
                                                     <Link href={`/admin/training-ops/series/${item.id}`}>
-                                                        <Button variant="outline">Overview</Button>
+                                                        <Button variant="outline">Open Program</Button>
                                                     </Link>
                                                     <Link href={`/admin/exams/create?learningSeriesId=${item.id}${item.domain?.id ? `&productDomainId=${item.domain.id}` : ''}`}>
                                                         <Button variant="outline">Create Exam</Button>
@@ -171,17 +168,11 @@ export function SeriesCatalogPage({ view }: SeriesCatalogPageProps) {
                                                     <Link href={`/admin/training-ops/events/new?seriesId=${item.id}`}>
                                                         <Button variant="outline">Create Event</Button>
                                                     </Link>
-                                                    <Link href={`/admin/training-ops/series/${item.id}/edit`}>
-                                                        <Button variant="outline">Edit</Button>
-                                                    </Link>
                                                 </>
                                             ) : (
                                                 <>
                                                     <Link href={`/sme/training-ops/series/${item.id}`}>
                                                         <Button variant="outline">Open Program</Button>
-                                                    </Link>
-                                                    <Link href={`/sme/training-ops/series/${item.id}/edit`}>
-                                                        <Button variant="outline">Edit Program</Button>
                                                     </Link>
                                                     <Link href={`/sme/training-ops/events?seriesId=${item.id}`}>
                                                         <Button variant="outline">View Events</Button>

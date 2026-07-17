@@ -10,7 +10,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ApiClient } from '@/lib/api-client'
 import type { BadgeMilestoneSummary, ProductDomainSummary } from '@/types'
-import { ArrowLeft, Award, FileJson, Loader2, Plus } from 'lucide-react'
+import { Award, FileJson, Loader2, Plus } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 
 const EMPTY_OPTION = '__all__'
 
@@ -71,11 +72,7 @@ export default function TrainingOpsBadgesPage() {
             <div className="space-y-6">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
-                        <Link href="/admin/training-ops">
-                            <Button variant="ghost" size="icon">
-                                <ArrowLeft className="h-4 w-4" />
-                            </Button>
-                        </Link>
+                        <BackButton fallbackHref="/admin/training-ops" />
                         <div>
                             <h1 className="text-3xl font-bold">Badge Milestones</h1>
                             <p className="mt-1 text-muted-foreground">

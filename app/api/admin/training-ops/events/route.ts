@@ -136,12 +136,12 @@ export const POST = withAdminAuth(async (req: NextRequest, user) => {
         if (error instanceof Error) {
             const errorMessages: Record<string, { status: number; message: string }> = {
                 CREATOR_NOT_FOUND: { status: 404, message: 'Creator not found' },
-                LEARNING_SERIES_NOT_FOUND: { status: 404, message: 'Learning series not found' },
+                LEARNING_SERIES_NOT_FOUND: { status: 404, message: 'Learning Program not found' },
                 PRODUCT_DOMAIN_NOT_FOUND: { status: 404, message: 'Product domain not found' },
                 HOST_NOT_FOUND: { status: 404, message: 'Host user not found or inactive' },
-                SERIES_DOMAIN_MISMATCH: { status: 400, message: 'Selected series does not belong to the selected product domain' },
+                SERIES_DOMAIN_MISMATCH: { status: 400, message: 'Selected Program does not belong to the selected Product Domain' },
                 INVALID_EVENT_TIME_RANGE: { status: 400, message: 'Event end time must be later than the scheduled or start time' },
-                INVALID_EVENT_FORMAT_FOR_SERIES: { status: 400, message: 'Selected event format is not allowed for the chosen learning series type' },
+                INVALID_EVENT_FORMAT_FOR_SERIES: { status: 400, message: 'Selected Event format is not allowed for the chosen Program type' },
             }
 
             const mapped = errorMessages[error.message]

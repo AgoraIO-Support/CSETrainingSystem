@@ -9,7 +9,8 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { ApiClient } from '@/lib/api-client'
 import type { TrainingOpsBridge } from '@/types'
-import { ArrowLeft, Loader2, Star, Trophy } from 'lucide-react'
+import { Loader2, Star, Trophy } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 
 export default function TrainingOpsLeaderboardPage() {
     const [bridge, setBridge] = useState<TrainingOpsBridge | null>(null)
@@ -53,11 +54,7 @@ export default function TrainingOpsLeaderboardPage() {
             <div className="space-y-6">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
-                        <Link href="/admin/training-ops">
-                            <Button variant="ghost" size="icon">
-                                <ArrowLeft className="h-4 w-4" />
-                            </Button>
-                        </Link>
+                        <BackButton fallbackHref="/admin/training-ops" />
                         <div>
                             <h1 className="text-3xl font-bold">Learner Leaderboard</h1>
                             <p className="mt-1 text-muted-foreground">
@@ -88,7 +85,7 @@ export default function TrainingOpsLeaderboardPage() {
                     <Card>
                         <CardHeader className="pb-2">
                             <CardDescription>Total Stars Issued</CardDescription>
-                            <CardTitle className="text-3xl">{loading ? '...' : bridge?.rewards.starAwards ?? 0}</CardTitle>
+                            <CardTitle className="text-3xl">{loading ? '...' : bridge?.rewards.totalStars ?? 0}</CardTitle>
                         </CardHeader>
                         <CardContent>
                             <p className="text-sm text-muted-foreground">Total training stars awarded across events and exams.</p>

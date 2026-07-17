@@ -1,14 +1,17 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { ArrowLeft, Award, CalendarDays, ChevronRight, Loader2 } from 'lucide-react'
+import { Award, CalendarDays, ChevronRight, Loader2 } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ApiClient } from '@/lib/api-client'
+import { ProgramAssociationManager } from '@/components/training-ops/program-association-manager'
+import { ProgramSettingsCard } from '@/components/training-ops/program-settings-card'
 import type { LearningEventSummary, LearningSeriesSummary, SmeBadgeLadderOverview, TrainingOpsExamSummary } from '@/types'
 
 type SeriesCourse = LearningEventSummary['courses'][number] & {
@@ -41,33 +44,33 @@ export default function SmeTrainingOpsSeriesDetailPage() {
     const [badges, setBadges] = useState<SmeBadgeLadderOverview | null>(null)
     const [scopedExams, setScopedExams] = useState<TrainingOpsExamSummary[]>([])
 
-    useEffect(() => {
-        const loadData = async () => {
-            try {
-                setLoading(true)
-                const [seriesRes, eventsRes, badgesRes, examsRes] = await Promise.all([
-                    ApiClient.getSmeTrainingOpsSeries(),
-                    ApiClient.getSmeTrainingOpsEvents({ seriesId }),
-                    ApiClient.getSmeTrainingOpsBadges(),
-                    ApiClient.getSmeTrainingOpsExams(),
-                ])
+    const loadData = useCallback(async () => {
+        try {
+            setLoading(true)
+            const [seriesRes, eventsRes, badgesRes, examsRes] = await Promise.all([
+                ApiClient.getSmeTrainingOpsSeries(),
+                ApiClient.getSmeTrainingOpsEvents({ seriesId }),
+                ApiClient.getSmeTrainingOpsBadges(),
+                ApiClient.getSmeTrainingOpsExams(),
+            ])
 
-                const currentSeries = seriesRes.data.find((item) => item.id === seriesId) ?? null
+            const currentSeries = seriesRes.data.find((item) => item.id === seriesId) ?? null
 
-                setSeries(currentSeries)
-                setEvents(eventsRes.data)
-                setBadges(badgesRes.data)
-                setScopedExams(examsRes.data)
-                setError(currentSeries ? null : 'Learning series not found')
-            } catch (err) {
-                setError(err instanceof Error ? err.message : 'Failed to load SME learning series overview')
-            } finally {
-                setLoading(false)
-            }
+            setSeries(currentSeries)
+            setEvents(eventsRes.data)
+            setBadges(badgesRes.data)
+            setScopedExams(examsRes.data)
+            setError(currentSeries ? null : 'Learning Program not found')
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to load SME learning Program workspace')
+        } finally {
+            setLoading(false)
         }
-
-        void loadData()
     }, [seriesId])
+
+    useEffect(() => {
+        void loadData()
+    }, [loadData])
 
     const recentEvents = useMemo(
         () =>
@@ -159,7 +162,7 @@ export default function SmeTrainingOpsSeriesDetailPage() {
             <DashboardLayout>
                 <div className="flex h-[40vh] items-center justify-center text-muted-foreground">
                     <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                    Loading learning series...
+                    Loading learning Program...
                 </div>
             </DashboardLayout>
         )
@@ -169,7 +172,7 @@ export default function SmeTrainingOpsSeriesDetailPage() {
         return (
             <DashboardLayout>
                 <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                    {error || 'Learning series not found'}
+                    {error || 'Learning Program not found'}
                 </div>
             </DashboardLayout>
         )
@@ -184,7 +187,7 @@ export default function SmeTrainingOpsSeriesDetailPage() {
                     </Link>
                     <ChevronRight className="h-4 w-4" />
                     <Link href="/sme/training-ops/series" className="transition-colors hover:text-foreground">
-                        My Series
+                        My Programs
                     </Link>
                     <ChevronRight className="h-4 w-4" />
                     <span className="font-medium text-foreground">{series.name}</span>
@@ -192,21 +195,20 @@ export default function SmeTrainingOpsSeriesDetailPage() {
 
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
-                        <Link href="/sme/training-ops/series">
-                            <Button variant="ghost" size="icon">
-                                <ArrowLeft className="h-4 w-4" />
-                            </Button>
-                        </Link>
+                        <BackButton fallbackHref="/sme/training-ops/series" />
                         <div>
                             <h1 className="text-3xl font-bold">{series.name}</h1>
                             <p className="mt-1 text-muted-foreground">
-                                Navigate the full SME path from this series into its events, linked courses, and linked exams.
+                                One workspace for Program settings, content association, Events, Courses, and Exams.
                             </p>
                         </div>
                     </div>
                     <div className="flex flex-wrap gap-3">
-                        <Link href={`/sme/training-ops/series/${series.id}/edit`}>
-                            <Button variant="outline">Edit Series</Button>
+                        <Link href="#associations">
+                            <Button variant="outline">Associate Existing</Button>
+                        </Link>
+                        <Link href="#settings">
+                            <Button variant="outline">Program Settings</Button>
                         </Link>
                         <Link href={`/sme/training-ops/events?seriesId=${series.id}`}>
                             <Button variant="outline">View Events</Button>
@@ -226,8 +228,8 @@ export default function SmeTrainingOpsSeriesDetailPage() {
                 <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
                     <Card>
                         <CardHeader>
-                            <CardTitle>Series Overview</CardTitle>
-                            <CardDescription>Default rules that this series passes down to events and related training assets.</CardDescription>
+                            <CardTitle>Program Overview</CardTitle>
+                            <CardDescription>Default rules this Program passes down to Events and related training assets.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="flex flex-wrap gap-2">
@@ -260,7 +262,7 @@ export default function SmeTrainingOpsSeriesDetailPage() {
                     <Card>
                         <CardHeader>
                             <CardTitle>Reward Output</CardTitle>
-                            <CardDescription>Recognition activity associated with this series inside its owning domain.</CardDescription>
+                            <CardDescription>Recognition activity associated with this Program inside its owning Domain.</CardDescription>
                         </CardHeader>
                         <CardContent>
                             <div className="rounded-lg border p-4 text-sm text-muted-foreground">
@@ -275,22 +277,38 @@ export default function SmeTrainingOpsSeriesDetailPage() {
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    <Card><CardHeader className="pb-2"><CardDescription>Events</CardDescription><CardTitle className="text-3xl">{events.length}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Events currently in this series.</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2"><CardDescription>Related Courses</CardDescription><CardTitle className="text-3xl">{relatedCourses.length}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Courses linked through events in this series.</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2"><CardDescription>Related Exams</CardDescription><CardTitle className="text-3xl">{relatedExams.length}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Exams aligned to this series.</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2"><CardDescription>Domain Badges</CardDescription><CardTitle className="text-3xl">{badgeLadder?.milestones.length ?? 0}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Badge milestones inherited from this series&apos;s domain.</p></CardContent></Card>
+                    <Card><CardHeader className="pb-2"><CardDescription>Events</CardDescription><CardTitle className="text-3xl">{events.length}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Events currently in this Program.</p></CardContent></Card>
+                    <Card><CardHeader className="pb-2"><CardDescription>Related Courses</CardDescription><CardTitle className="text-3xl">{relatedCourses.length}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Courses linked through Events in this Program.</p></CardContent></Card>
+                    <Card><CardHeader className="pb-2"><CardDescription>Related Exams</CardDescription><CardTitle className="text-3xl">{relatedExams.length}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Exams aligned to this Program.</p></CardContent></Card>
+                    <Card><CardHeader className="pb-2"><CardDescription>Domain Badges</CardDescription><CardTitle className="text-3xl">{badgeLadder?.milestones.length ?? 0}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Badge milestones inherited from the Program&apos;s Domain.</p></CardContent></Card>
                 </div>
+
+                <ProgramAssociationManager
+                    view="sme"
+                    program={series}
+                    programEvents={events}
+                    onAssociated={loadData}
+                />
+
+                <ProgramSettingsCard
+                    view="sme"
+                    program={series}
+                    onSaved={(updated) => {
+                        setSeries(updated)
+                        void loadData()
+                    }}
+                />
 
                 <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
                     <Card>
                         <CardHeader>
                             <CardTitle>Recent Events</CardTitle>
-                            <CardDescription>Latest sessions scheduled under this series.</CardDescription>
+                            <CardDescription>Latest sessions scheduled under this Program.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">
                             {recentEvents.length === 0 ? (
                                 <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-                                    No events scheduled for this series yet.
+                                    No Events scheduled for this Program yet.
                                 </div>
                             ) : recentEvents.map((event) => (
                                 <div key={event.id} className="rounded-lg border p-4">
@@ -321,7 +339,7 @@ export default function SmeTrainingOpsSeriesDetailPage() {
                         <CardHeader>
                             <CardTitle>Domain Badge Ladder</CardTitle>
                             <CardDescription>
-                                Recognition milestones inherited from {series.domain?.name ?? 'this series domain'}.
+                                Recognition milestones inherited from {series.domain?.name ?? 'this Program Domain'}.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">
@@ -339,7 +357,7 @@ export default function SmeTrainingOpsSeriesDetailPage() {
                                 </div>
                             )) : (
                                 <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-                                    No domain badge milestones are available for this series yet.
+                                    No Domain badge milestones are available for this Program yet.
                                 </div>
                             )}
                         </CardContent>
@@ -350,12 +368,12 @@ export default function SmeTrainingOpsSeriesDetailPage() {
                     <Card>
                         <CardHeader>
                             <CardTitle>Related Courses</CardTitle>
-                            <CardDescription>Courses linked to events inside this series.</CardDescription>
+                            <CardDescription>Courses linked to Events inside this Program.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">
                             {relatedCourses.length === 0 ? (
                                 <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-                                    No courses linked to this series yet.
+                                    No Courses linked to this Program yet.
                                 </div>
                             ) : relatedCourses.map((course) => (
                                 <div key={course.id} className="rounded-lg border p-4">
@@ -386,12 +404,12 @@ export default function SmeTrainingOpsSeriesDetailPage() {
                     <Card>
                         <CardHeader>
                             <CardTitle>Related Exams</CardTitle>
-                            <CardDescription>Exams aligned to this series, including event-linked assessments.</CardDescription>
+                            <CardDescription>Exams aligned to this Program, including Event-linked assessments.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">
                             {relatedExams.length === 0 ? (
                                 <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-                                    No exams linked to this series yet.
+                                    No Exams linked to this Program yet.
                                 </div>
                             ) : relatedExams.map((exam) => (
                                 <div key={exam.id} className="rounded-lg border p-4">
@@ -402,7 +420,7 @@ export default function SmeTrainingOpsSeriesDetailPage() {
                                                 {exam.status} · {exam.attemptCount ?? 0} attempts · {exam.passRate ?? 0}% pass rate
                                             </p>
                                             <p className="mt-2 text-sm text-muted-foreground">
-                                                {exam.eventTitle ? `Via event: ${exam.eventTitle}` : 'Series-scoped exam'}
+                                                {exam.eventTitle ? `Via Event: ${exam.eventTitle}` : 'Program-scoped Exam'}
                                             </p>
                                         </div>
                                         <div className="flex flex-wrap gap-2">
@@ -432,7 +450,7 @@ export default function SmeTrainingOpsSeriesDetailPage() {
                     <Card>
                         <CardHeader>
                             <CardTitle>Recent Unlocks</CardTitle>
-                            <CardDescription>Most recent domain badge unlocks relevant to this series.</CardDescription>
+                            <CardDescription>Most recent Domain badge unlocks relevant to this Program.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">
                             {recentUnlocks.map((unlock) => (
@@ -444,7 +462,7 @@ export default function SmeTrainingOpsSeriesDetailPage() {
                                                 {unlock.user.name} · {new Date(unlock.awardedAt).toLocaleString()}
                                             </p>
                                             <p className="mt-2 text-sm text-muted-foreground">
-                                                {unlock.event ? `Event: ${unlock.event.title}` : unlock.exam ? `Exam: ${unlock.exam.title}` : 'Series reward'}
+                                                {unlock.event ? `Event: ${unlock.event.title}` : unlock.exam ? `Exam: ${unlock.exam.title}` : 'Program reward'}
                                             </p>
                                         </div>
                                         <Award className="h-5 w-5 text-[#006688]" />

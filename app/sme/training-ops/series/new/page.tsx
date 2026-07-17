@@ -63,12 +63,12 @@ function NewSmeTrainingOpsSeriesPageContent() {
                 }))
                 setError(
                     scopedDomains.length === 0
-                        ? 'No scoped domains are available. Ask an admin to assign you to a domain before creating a series.'
+                        ? 'No scoped Domains are available. Ask an admin to assign you to a Domain before creating a Program.'
                         : null
                 )
             } catch (err) {
                 if (cancelled) return
-                setError(err instanceof Error ? err.message : 'Failed to load SME series options')
+                setError(err instanceof Error ? err.message : 'Failed to load SME Program options')
             } finally {
                 if (!cancelled) {
                     setLoadingOptions(false)
@@ -90,7 +90,7 @@ function NewSmeTrainingOpsSeriesPageContent() {
     const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault()
         if (!form.domainId) {
-            setError('Select a domain in your SME scope before creating a series.')
+            setError('Select a Domain in your SME scope before creating a Program.')
             return
         }
         setLoading(true)
@@ -103,7 +103,7 @@ function NewSmeTrainingOpsSeriesPageContent() {
             }))
             router.push(`/sme/training-ops/series/${response.data.id}`)
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to create learning series')
+            setError(err instanceof Error ? err.message : 'Failed to create Learning Program')
         } finally {
             setLoading(false)
         }
@@ -118,22 +118,22 @@ function NewSmeTrainingOpsSeriesPageContent() {
                     </Link>
                     <ChevronRight className="h-4 w-4" />
                     <Link href="/sme/training-ops/series" className="transition-colors hover:text-foreground">
-                        My Series
+                        My Programs
                     </Link>
                     <ChevronRight className="h-4 w-4" />
-                    <span className="font-medium text-foreground">Create Series</span>
+                    <span className="font-medium text-foreground">Create Program</span>
                 </nav>
 
                 <LearningSeriesForm
-                    title="Create Learning Series"
-                    description="Create a reusable series inside your SME domain scope, then attach events, courses, and exams under it."
+                    title="Create Learning Program"
+                    description="Create a reusable Program inside your SME Domain scope, then associate Events, Courses, and Exams from its workspace."
                     backHref="/sme/training-ops/series"
                     users={currentUser ? [currentUser] : []}
                     domains={domains}
                     value={form}
                     loading={loading || loadingOptions}
                     error={error}
-                    submitLabel="Create Series"
+                    submitLabel="Create Program"
                     allowEmptyDomain={false}
                     disableOwnerSelection
                     onChange={updateForm}

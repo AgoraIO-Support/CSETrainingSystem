@@ -37,7 +37,7 @@ function NewTrainingOpsSeriesPageContent() {
                     setForm((prev) => ({ ...prev, domainId: queryDomainId }))
                 }
             } catch (err) {
-                setError(err instanceof Error ? err.message : 'Failed to load learning series options')
+                setError(err instanceof Error ? err.message : 'Failed to load Learning Program options')
             } finally {
                 setLoadingOptions(false)
             }
@@ -60,7 +60,7 @@ function NewTrainingOpsSeriesPageContent() {
             setForm(learningSeriesToFormValue(response.data))
             router.push(`/admin/training-ops/series/${response.data.id}/edit`)
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to create learning series')
+            setError(err instanceof Error ? err.message : 'Failed to create Learning Program')
         } finally {
             setLoading(false)
         }
@@ -69,7 +69,7 @@ function NewTrainingOpsSeriesPageContent() {
     return (
         <DashboardLayout>
             <LearningSeriesForm
-                title="Create Learning Series"
+                title="Create Learning Program"
                 description="Create the reusable training program that events and exams can inherit from."
                 backHref="/admin/training-ops/series"
                 users={users}
@@ -77,7 +77,7 @@ function NewTrainingOpsSeriesPageContent() {
                 value={form}
                 loading={loading || loadingOptions}
                 error={error}
-                submitLabel="Create Series"
+                submitLabel="Create Program"
                 onChange={updateForm}
                 onSubmit={handleSubmit}
             />

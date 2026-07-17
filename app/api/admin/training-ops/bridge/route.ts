@@ -67,6 +67,7 @@ export const GET = withAdminAuth(async () => {
             badgeMilestones,
             badgeAwards,
             starAwards,
+            totalStars,
             badgeUsers,
             starUsers,
             recentExams,
@@ -154,6 +155,9 @@ export const GET = withAdminAuth(async () => {
             optionalCountQuery(
                 Prisma.sql`SELECT COUNT(*)::bigint AS count FROM "star_awards"`
             ),
+            optionalCountQuery(
+                Prisma.sql`SELECT COALESCE(SUM("stars"), 0)::bigint AS count FROM "star_awards"`
+            ),
             optionalUserIdsQuery(
                 Prisma.sql`SELECT DISTINCT "userId" FROM "badge_awards"`
             ),
@@ -238,7 +242,7 @@ export const GET = withAdminAuth(async () => {
                     Prisma.sql`
                         WITH star_counts AS (
                             SELECT sa."domainId",
-                                   COUNT(*)::bigint AS "starAwards",
+                                   COALESCE(SUM(sa."stars"), 0)::bigint AS "starAwards",
                                    COUNT(DISTINCT sa."userId")::bigint AS "starUsers"
                             FROM "star_awards" sa
                             GROUP BY sa."domainId"
@@ -276,7 +280,7 @@ export const GET = withAdminAuth(async () => {
                     Prisma.sql`
                         WITH star_counts AS (
                             SELECT sa."eventId",
-                                   COUNT(*)::bigint AS "starAwards",
+                                   COALESCE(SUM(sa."stars"), 0)::bigint AS "starAwards",
                                    COUNT(DISTINCT sa."userId")::bigint AS "starUsers"
                             FROM "star_awards" sa
                             WHERE sa."eventId" IS NOT NULL
@@ -455,6 +459,7 @@ export const GET = withAdminAuth(async () => {
                 badgeMilestones,
                 badgeAwards,
                 starAwards,
+                totalStars,
                 certificateExams: certificateExams.map((row) => ({
                     examId: row.examId,
                     title: row.title,

@@ -1,7 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowLeft, Loader2, Save } from 'lucide-react'
+import { Loader2, Save } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -111,11 +112,7 @@ export function BadgeMilestoneForm({
     return (
         <form onSubmit={onSubmit} className="space-y-6">
             <div className="flex items-center gap-4">
-                <Link href={backHref}>
-                    <Button variant="ghost" size="icon">
-                        <ArrowLeft className="h-4 w-4" />
-                    </Button>
-                </Link>
+                <BackButton fallbackHref={backHref} />
                 <div>
                     <h1 className="text-3xl font-bold">{title}</h1>
                     <p className="mt-1 text-muted-foreground">{description}</p>

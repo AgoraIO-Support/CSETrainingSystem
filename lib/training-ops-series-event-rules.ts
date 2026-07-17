@@ -56,32 +56,32 @@ export const SERIES_EVENT_FORMAT_RULES: Record<LearningSeriesTypeValue, SeriesEv
     CASE_STUDY: {
         primaryFormat: 'CASE_STUDY',
         allowedFormats: ['CASE_STUDY', 'QUIZ_REVIEW', 'WORKSHOP'],
-        guidance: 'Case-study series should stay anchored in case study sessions, optionally supported by quiz reviews or workshops.',
+        guidance: 'Case-study Programs should stay anchored in case study sessions, optionally supported by quiz reviews or workshops.',
     },
     KNOWLEDGE_SHARING: {
         primaryFormat: 'KNOWLEDGE_SHARING',
         allowedFormats: ['KNOWLEDGE_SHARING', 'WORKSHOP'],
-        guidance: 'Knowledge-sharing series should use knowledge-sharing sessions or workshops, not assessment-heavy formats.',
+        guidance: 'Knowledge-sharing Programs should use knowledge-sharing sessions or workshops, not assessment-heavy formats.',
     },
     FAQ_SHARE: {
         primaryFormat: 'FAQ_SHARE',
         allowedFormats: ['FAQ_SHARE', 'KNOWLEDGE_SHARING'],
-        guidance: 'FAQ-share series should focus on FAQ walkthroughs or adjacent knowledge-sharing sessions.',
+        guidance: 'FAQ-share Programs should focus on FAQ walkthroughs or adjacent knowledge-sharing sessions.',
     },
     RELEASE_READINESS: {
         primaryFormat: 'RELEASE_BRIEFING',
         allowedFormats: ['RELEASE_BRIEFING', 'QUIZ_REVIEW', 'WORKSHOP'],
-        guidance: 'Release-readiness series should stay in readiness-oriented formats such as release briefings, quiz reviews, or workshops.',
+        guidance: 'Release-readiness Programs should stay in readiness-oriented formats such as release briefings, quiz reviews, or workshops.',
     },
     QUARTERLY_FINAL: {
         primaryFormat: 'FINAL_EXAM',
         allowedFormats: ['FINAL_EXAM', 'QUIZ_REVIEW'],
-        guidance: 'Quarterly final series should center on final exams, with quiz reviews used only as supporting sessions.',
+        guidance: 'Quarterly final Programs should center on final exams, with quiz reviews used only as supporting sessions.',
     },
     YEAR_END_FINAL: {
         primaryFormat: 'FINAL_EXAM',
         allowedFormats: ['FINAL_EXAM', 'QUIZ_REVIEW'],
-        guidance: 'Year-end final series should center on final exams, with quiz reviews used only as supporting sessions.',
+        guidance: 'Year-end final Programs should center on final exams, with quiz reviews used only as supporting sessions.',
     },
 }
 

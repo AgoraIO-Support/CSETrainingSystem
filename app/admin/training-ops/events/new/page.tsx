@@ -3,7 +3,8 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, Loader2, Save } from 'lucide-react'
+import { Loader2, Save } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -187,11 +188,7 @@ function NewLearningEventPageContent() {
         <DashboardLayout>
             <div className="space-y-6">
                 <div className="flex items-center gap-4">
-                    <Link href="/admin/training-ops/events">
-                        <Button variant="ghost" size="icon">
-                            <ArrowLeft className="h-4 w-4" />
-                        </Button>
-                    </Link>
+                    <BackButton fallbackHref="/admin/training-ops/events" />
                     <div>
                         <h1 className="text-3xl font-bold">Create Learning Event</h1>
                         <p className="mt-1 text-muted-foreground">
@@ -245,7 +242,7 @@ function NewLearningEventPageContent() {
                                         </p>
                                     ) : (
                                         <p className="text-xs text-muted-foreground">
-                                            Select a learning series to narrow this list to the allowed session formats for that program type.
+                                            Select a Learning Program to narrow this list to the allowed session formats for that Program type.
                                         </p>
                                     )}
                                 </div>
@@ -302,7 +299,7 @@ function NewLearningEventPageContent() {
                                     </select>
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="seriesId">Learning Series</Label>
+                                    <Label htmlFor="seriesId">Learning Program</Label>
                                     <select
                                         id="seriesId"
                                         className="h-10 w-full rounded-md border bg-background px-3"
@@ -310,7 +307,7 @@ function NewLearningEventPageContent() {
                                         onChange={(e) => handleSeriesChange(e.target.value)}
                                         disabled={loadingOptions}
                                     >
-                                        <option value={EMPTY_OPTION}>No series assigned</option>
+                                        <option value={EMPTY_OPTION}>No Program assigned</option>
                                         {filteredSeries.map((item) => (
                                             <option key={item.id} value={item.id}>
                                                 {item.name}

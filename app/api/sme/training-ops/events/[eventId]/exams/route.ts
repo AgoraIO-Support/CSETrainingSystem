@@ -83,7 +83,7 @@ export const POST = withSmeOrAdminAuth(async (req: NextRequest, user, context: R
                         code: error.message,
                         message: error.message === 'EXAM_DOMAIN_MISMATCH'
                             ? 'Exam domain does not match the selected event scope'
-                            : 'Exam learning series does not match the selected event scope',
+                            : 'Exam Learning Program does not match the selected Event scope',
                     },
                 }, { status: 400 })
             }

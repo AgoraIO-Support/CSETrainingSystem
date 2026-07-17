@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
-import { ArrowLeft, FileJson, Loader2, Upload } from 'lucide-react'
+import { FileJson, Loader2, Upload } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -47,11 +47,7 @@ export default function ImportTrainingOpsBadgesPage() {
         <DashboardLayout>
             <div className="space-y-6">
                 <div className="flex items-center gap-4">
-                    <Link href="/admin/training-ops/badges">
-                        <Button variant="ghost" size="icon">
-                            <ArrowLeft className="h-4 w-4" />
-                        </Button>
-                    </Link>
+                    <BackButton fallbackHref="/admin/training-ops/badges" />
                     <div>
                         <h1 className="text-3xl font-bold">Import Badge Milestones</h1>
                         <p className="mt-1 text-muted-foreground">

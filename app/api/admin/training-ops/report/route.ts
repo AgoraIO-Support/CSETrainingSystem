@@ -3,7 +3,12 @@ import { CertificateStatus, ExamAttemptStatus, UserRole, UserStatus } from '@pri
 import { withAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
 import { TrainingOpsService } from '@/lib/services/training-ops.service'
-import { averageNumber, percentage, selectLatestEvidenceAttempts } from '@/lib/training-ops-report-metrics'
+import {
+    averageNumber,
+    countInvitedAssessmentsAttempted,
+    percentage,
+    selectLatestEvidenceAttempts,
+} from '@/lib/training-ops-report-metrics'
 import type { TrainingOpsAdminReport, TrainingOpsLearnerRiskStatus, TrainingOpsReportRange } from '@/types'
 
 const formatRange = (startDate: Date, endDate: Date) => {
@@ -67,7 +72,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     try {
         const { searchParams } = new URL(req.url)
         const range = resolveRange(searchParams.get('range'))
-        const includeAdmins = parseBoolean(searchParams.get('includeAdmins'), false)
+        const includeAdmins = parseBoolean(searchParams.get('includeAdmins'), true)
         const excludedUserIds = parseExcludedUserIds(searchParams.get('excludeUserIds'))
         const { startDate, endDate } = buildPeriod(range)
         const includedRoles = includeAdmins ? [UserRole.USER, UserRole.SME, UserRole.ADMIN] : [UserRole.USER, UserRole.SME]
@@ -96,9 +101,9 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
                     id: true,
                     name: true,
                     email: true,
+                    role: true,
                     department: true,
                     title: true,
-                    lastLoginAt: true,
                 },
                 orderBy: [{ department: 'asc' }, { name: 'asc' }],
             }),
@@ -120,15 +125,12 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
                     user: {
                         ...userFilter,
                     },
-                    enrolledAt: {
-                        gte: startDate,
-                        lte: endDate,
-                    },
                 },
                 select: {
                     userId: true,
                     status: true,
                     progress: true,
+                    enrolledAt: true,
                     completedAt: true,
                     lastAccessedAt: true,
                 },
@@ -141,14 +143,11 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
                     exam: {
                         status: 'PUBLISHED',
                     },
-                    createdAt: {
-                        gte: startDate,
-                        lte: endDate,
-                    },
                 },
                 select: {
                     userId: true,
                     examId: true,
+                    createdAt: true,
                     expiresAt: true,
                     exam: {
                         select: {
@@ -165,10 +164,6 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
                     },
                     status: {
                         in: [ExamAttemptStatus.SUBMITTED, ExamAttemptStatus.GRADED],
-                    },
-                    submittedAt: {
-                        gte: startDate,
-                        lte: endDate,
                     },
                 },
                 select: {
@@ -191,10 +186,6 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
             prisma.certificate.findMany({
                 where: {
                     status: CertificateStatus.ISSUED,
-                    issueDate: {
-                        gte: startDate,
-                        lte: endDate,
-                    },
                 },
                 select: {
                     userId: true,
@@ -240,7 +231,16 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
         const certificatesByUser = new Map<string, typeof certificates>()
         const starsByUser = new Map(starAwards.map((row) => [row.userId, row._sum.stars ?? 0]))
         const badgesByUser = new Map(badgeAwards.map((row) => [row.userId, row._count._all]))
+        const learnerIds = new Set(learners.map((learner) => learner.id))
         const now = new Date()
+        const isInPeriod = (value: Date | null | undefined) =>
+            Boolean(value && value >= startDate && value <= endDate)
+        const periodEnrollments = enrollments.filter((row) => isInPeriod(row.enrolledAt))
+        const periodInvitations = invitations.filter((row) => isInPeriod(row.createdAt))
+        const periodAttempts = attempts.filter((row) => isInPeriod(row.submittedAt ?? row.updatedAt))
+        const periodCertificates = certificates.filter(
+            (row) => learnerIds.has(row.userId) && isInPeriod(row.issueDate)
+        )
 
         enrollments.forEach((row) => {
             const current = enrollmentsByUser.get(row.userId) ?? []
@@ -268,10 +268,14 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
             const userInvitations = invitationsByUser.get(learner.id) ?? []
             const userAttempts = attemptsByUser.get(learner.id) ?? []
             const userCertificates = certificatesByUser.get(learner.id) ?? []
-            const gradedAttempts = userAttempts.filter((attempt) => attempt.status === ExamAttemptStatus.GRADED)
+            const latestAttempts = selectLatestEvidenceAttempts(userAttempts)
+            const gradedAttempts = selectLatestEvidenceAttempts(
+                userAttempts.filter((attempt) => attempt.status === ExamAttemptStatus.GRADED)
+            )
             const passedAttempts = gradedAttempts.filter((attempt) => attempt.passed === true)
             const failedAttempts = gradedAttempts.filter((attempt) => attempt.passed === false)
             const attemptedExamIds = new Set(userAttempts.map((attempt) => attempt.examId))
+            const examsAttempted = countInvitedAssessmentsAttempted(userInvitations, userAttempts)
             const attemptsByExam = new Map<string, number>()
 
             userAttempts.forEach((attempt) => {
@@ -284,7 +288,8 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
                 return !attemptedExamIds.has(invitation.examId)
             }).length
 
-            const retakeNeeded = failedAttempts.filter((attempt) => {
+            const retakeNeeded = latestAttempts.filter((attempt) => {
+                if (attempt.status !== ExamAttemptStatus.GRADED || attempt.passed !== false) return false
                 const dueAt = attempt.exam.deadline
                 const attemptsUsed = attemptsByExam.get(attempt.examId) ?? 0
                 return attemptsUsed < attempt.exam.maxAttempts && (!dueAt || dueAt >= now)
@@ -298,7 +303,6 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
                 .filter((value): value is Date => value instanceof Date)
             const lastCertificateActivity = userCertificates.map((entry) => entry.issueDate)
             const lastActivityAt = [
-                learner.lastLoginAt,
                 ...lastEnrollmentActivity,
                 ...lastAttemptActivity,
                 ...lastCertificateActivity,
@@ -320,7 +324,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
                 riskStatus = 'AT_RISK'
             } else if (
                 (courseAssigned > 0 && averageCourseProgress < 60) ||
-                (userInvitations.length > 0 && userAttempts.length === 0) ||
+                (userInvitations.length > 0 && examsAttempted === 0) ||
                 (gradedAttempts.length > 0 && passRate < 80)
             ) {
                 riskStatus = 'WATCH'
@@ -330,6 +334,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
                 userId: learner.id,
                 name: learner.name,
                 email: learner.email,
+                role: learner.role,
                 department: learner.department,
                 title: learner.title,
                 lastActivityAt,
@@ -338,6 +343,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
                 averageCourseProgress,
                 examInvitations: userInvitations.length,
                 examAttempts: userAttempts.length,
+                examsAttempted,
                 gradedAttempts: gradedAttempts.length,
                 passedAttempts: passedAttempts.length,
                 failedAttempts: failedAttempts.length,
@@ -354,9 +360,9 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
         })
 
         const learnersWithCertificates = learnerPerformance.filter((learner) => learner.certificates > 0)
-        const allGradedAttempts = attempts.filter((attempt) => attempt.status === ExamAttemptStatus.GRADED)
+        const allGradedAttempts = periodAttempts.filter((attempt) => attempt.status === ExamAttemptStatus.GRADED)
         const passedGradedAttempts = allGradedAttempts.filter((attempt) => attempt.passed === true)
-        const performanceInvitations = invitations.filter((invitation) => invitation.exam.countsTowardPerformance)
+        const performanceInvitations = periodInvitations.filter((invitation) => invitation.exam.countsTowardPerformance)
         const performanceEvidence = selectLatestEvidenceAttempts(
             allGradedAttempts.filter((attempt) => attempt.exam.countsTowardPerformance)
         )
@@ -365,22 +371,21 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
         const watchLearners = learnerPerformance.filter((learner) => learner.riskStatus === 'WATCH').length
         const retakeNeeded = learnerPerformance.reduce((sum, learner) => sum + learner.retakeNeeded, 0)
         const overdueLearners = learnerPerformance.filter((learner) => learner.overdueExams > 0).length
-        const courseAssignments = learnerPerformance.reduce((sum, learner) => sum + learner.courseAssigned, 0)
-        const courseStarted = enrollments.filter((enrollment) => enrollment.progress > 0).length
-        const courseCompleted = learnerPerformance.reduce((sum, learner) => sum + learner.courseCompleted, 0)
+        const courseAssignments = periodEnrollments.length
+        const courseStarted = periodEnrollments.filter((enrollment) => enrollment.progress > 0).length
+        const courseCompleted = periodEnrollments.filter(
+            (enrollment) => enrollment.status === 'COMPLETED' || enrollment.progress >= 100
+        ).length
         const activeLearnerIds = new Set([
-            ...enrollments.map((enrollment) => enrollment.userId),
-            ...attempts.map((attempt) => attempt.userId),
-            ...certificates.map((certificate) => certificate.userId),
-            ...learners
-                .filter((learner) => learner.lastLoginAt && learner.lastLoginAt >= startDate && learner.lastLoginAt <= endDate)
-                .map((learner) => learner.id),
+            ...periodEnrollments.map((enrollment) => enrollment.userId),
+            ...periodAttempts.map((attempt) => attempt.userId),
+            ...periodCertificates.map((certificate) => certificate.userId),
         ])
-        const invitedLearnerIds = new Set(invitations.map((invitation) => invitation.userId))
-        const participatingLearnerIds = new Set(attempts.map((attempt) => attempt.userId))
-        const invitationKeys = new Set(invitations.map((invitation) => `${invitation.userId}:${invitation.examId}`))
+        const invitedLearnerIds = new Set(periodInvitations.map((invitation) => invitation.userId))
+        const participatingLearnerIds = new Set(periodAttempts.map((attempt) => attempt.userId))
+        const invitationKeys = new Set(periodInvitations.map((invitation) => `${invitation.userId}:${invitation.examId}`))
         const invitationParticipatingLearnerIds = new Set(
-            attempts
+            periodAttempts
                 .filter((attempt) => invitationKeys.has(`${attempt.userId}:${attempt.examId}`))
                 .map((attempt) => attempt.userId)
         )
@@ -396,7 +401,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
             courseStarted,
             courseCompleted,
             courseCompletionRate: percentage(courseCompleted, courseAssignments),
-            examInvitations: invitations.length,
+            examInvitations: periodInvitations.length,
             assessmentLearners: assessmentLearnerIds.size,
             invitedLearners: invitedLearnerIds.size,
             invitationParticipatingLearners: invitationParticipatingLearnerIds.size,
@@ -443,7 +448,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
                 const reasons = []
                 if (learner.overdueExams > 0) reasons.push(`${learner.overdueExams} overdue exam${learner.overdueExams === 1 ? '' : 's'}`)
                 if (learner.retakeNeeded > 0) reasons.push(`${learner.retakeNeeded} retake${learner.retakeNeeded === 1 ? '' : 's'} needed`)
-                if (learner.examInvitations > 0 && learner.examAttempts === 0) reasons.push('no exam attempt yet')
+                if (learner.examInvitations > 0 && learner.examsAttempted === 0) reasons.push('no invited assessment attempted yet')
                 if (learner.courseAssigned > 0 && learner.averageCourseProgress < 60) reasons.push('course progress below 60%')
                 if (reasons.length === 0) reasons.push('performance below target')
 
@@ -451,10 +456,16 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
                     userId: learner.userId,
                     name: learner.name,
                     email: learner.email,
+                    role: learner.role,
+                    riskStatus: learner.riskStatus,
                     reason: reasons.join(' · '),
                     overdueExams: learner.overdueExams,
                     retakeNeeded: learner.retakeNeeded,
+                    courseAssigned: learner.courseAssigned,
                     averageCourseProgress: learner.averageCourseProgress,
+                    examInvitations: learner.examInvitations,
+                    examsAttempted: learner.examsAttempted,
+                    gradedAttempts: learner.gradedAttempts,
                     passRate: learner.passRate,
                     lastActivityAt: learner.lastActivityAt,
                 }

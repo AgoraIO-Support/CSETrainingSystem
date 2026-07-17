@@ -12,6 +12,7 @@ import type {
     TrainingOpsReportRange,
     SmeWorkspaceSummary,
     ProductDomainEffectivenessSummary,
+    ProductDomainEffectivenessAttempt,
     ProductDomainSummary,
     BadgeMilestoneSummary,
     TrainingOpsBadgeImportSummary,
@@ -727,6 +728,32 @@ export class ApiClient {
         return this.request('/admin/training-ops/effectiveness')
     }
 
+    static async getTrainingOpsEffectivenessAttempts(
+        domainId: string,
+        params: Record<string, string | number | undefined> = {}
+    ): Promise<{
+        success: boolean
+        data: {
+            domain: { id: string; name: string }
+            attempts: ProductDomainEffectivenessAttempt[]
+        }
+        pagination: {
+            page: number
+            limit: number
+            total: number
+            totalPages: number
+        }
+    }> {
+        const query = new URLSearchParams()
+        Object.entries(params).forEach(([key, value]) => {
+            if (value !== undefined && value !== null && value !== '') {
+                query.set(key, String(value))
+            }
+        })
+        const search = query.toString() ? `?${query.toString()}` : ''
+        return this.request(`/admin/training-ops/effectiveness/${domainId}/attempts${search}`)
+    }
+
     static async getTrainingOpsDomain(id: string): Promise<{
         success: boolean
         data: ProductDomainSummary
@@ -873,6 +900,24 @@ export class ApiClient {
     }> {
         return this.request(`/admin/training-ops/series/${id}`, {
             method: 'PATCH',
+            body: JSON.stringify(payload),
+        })
+    }
+
+    static async associateTrainingOpsProgramResource(programId: string, payload: {
+        resourceType: 'event' | 'course' | 'exam'
+        resourceId: string
+        eventId?: string
+    }): Promise<{
+        success: boolean
+        data: {
+            programId: string
+            resourceType: 'event' | 'course' | 'exam'
+            resourceId: string
+        }
+    }> {
+        return this.request(`/training-ops/programs/${programId}/associations`, {
+            method: 'POST',
             body: JSON.stringify(payload),
         })
     }
@@ -1213,6 +1258,21 @@ export class ApiClient {
         data: SmeWorkspaceSummary['learnerGaps']
     }> {
         return this.request('/sme/training-ops/learner-gaps')
+    }
+
+    static async getSmeLearnerGapDrilldown(params: {
+        kind: 'topic'
+        topic: string
+        domainId: string
+    } | {
+        kind: 'learner'
+        userId: string
+    }): Promise<{
+        success: boolean
+        data: import('@/types').SmeLearnerGapDrilldown
+    }> {
+        const query = new URLSearchParams(params)
+        return this.request(`/sme/training-ops/learner-gaps/drilldown?${query.toString()}`)
     }
 
     static async getSmeTrainingOpsHosts(): Promise<{

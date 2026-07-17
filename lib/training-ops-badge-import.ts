@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import prisma from '@/lib/prisma'
+import { TrainingOpsRewardService } from '@/lib/services/training-ops-reward.service'
 
 const badgeScopes = ['DOMAIN'] as const
 const badgeLevels = ['READY', 'PRACTITIONER', 'TROUBLESHOOTER', 'DOMAIN_SPECIALIST'] as const
@@ -183,6 +184,12 @@ export async function importTrainingOpsBadgeMilestones(
             thresholdStars: item.thresholdStars,
             action: options.apply ? 'upserted' : 'plan',
         })
+    }
+
+    if (options.apply) {
+        for (const domainId of scopedDomainIds) {
+            await TrainingOpsRewardService.reconcileBadgeAwardsForDomain(domainId)
+        }
     }
 
     return {

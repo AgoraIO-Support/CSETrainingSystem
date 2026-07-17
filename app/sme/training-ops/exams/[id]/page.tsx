@@ -3,7 +3,8 @@
 import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useSearchParams } from 'next/navigation'
-import { ArrowLeft, ChevronRight, Loader2 } from 'lucide-react'
+import { ChevronRight, Loader2 } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -76,14 +77,14 @@ function SmeTrainingOpsExamDetailPageContent() {
                             </Link>
                             <ChevronRight className="h-4 w-4" />
                             <Link href="/sme/training-ops/series" className="transition-colors hover:text-foreground">
-                                My Series
+                                My Programs
                             </Link>
                             <ChevronRight className="h-4 w-4" />
                             <Link
                                 href={`/sme/training-ops/series/${exam.series?.id ?? seriesContextId}`}
                                 className="transition-colors hover:text-foreground"
                             >
-                                {exam.series?.name ?? 'Series'}
+                                {exam.series?.name ?? 'Program'}
                             </Link>
                             <ChevronRight className="h-4 w-4" />
                         </>
@@ -110,11 +111,7 @@ function SmeTrainingOpsExamDetailPageContent() {
                 </nav>
 
                 <div className="flex items-center gap-4">
-                    <Link href={backHref}>
-                        <Button variant="ghost" size="icon">
-                            <ArrowLeft className="h-4 w-4" />
-                        </Button>
-                    </Link>
+                    <BackButton fallbackHref={backHref} />
                     <div>
                         <h1 className="text-3xl font-bold">{exam.title}</h1>
                         <p className="mt-1 text-muted-foreground">
@@ -164,7 +161,7 @@ function SmeTrainingOpsExamDetailPageContent() {
                                     ) : null}
                                     {(exam.series?.id || seriesContextId) ? (
                                         <Button asChild variant="outline" size="sm">
-                                            <Link href={`/sme/training-ops/series/${exam.series?.id ?? seriesContextId}`}>Open Series</Link>
+                                            <Link href={`/sme/training-ops/series/${exam.series?.id ?? seriesContextId}`}>Open Program</Link>
                                         </Button>
                                     ) : null}
                                 </div>

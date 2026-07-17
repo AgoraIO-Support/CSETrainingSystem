@@ -42,7 +42,7 @@ function NewSmeTrainingOpsBadgePageContent() {
                 setForm((prev) => ({ ...prev, domainId: resolvedDomainId }))
                 setError(
                     scopedDomains.length === 0
-                        ? 'No domains are available in your SME scope. Create or own a series under a domain first, or ask an admin to assign your SME scope.'
+                        ? 'No Domains are available in your SME scope. Create or own a Program under a Domain first, or ask an admin to assign your SME scope.'
                         : null
                 )
             } catch (err) {

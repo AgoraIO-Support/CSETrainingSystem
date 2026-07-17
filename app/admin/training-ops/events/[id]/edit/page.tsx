@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Loader2, Save } from 'lucide-react'
+import { Loader2, Save } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -198,11 +199,7 @@ export default function EditLearningEventPage() {
         <DashboardLayout>
             <div className="space-y-6">
                 <div className="flex items-center gap-4">
-                    <Link href={`/admin/training-ops/events/${params.id}`}>
-                        <Button variant="ghost" size="icon">
-                            <ArrowLeft className="h-4 w-4" />
-                        </Button>
-                    </Link>
+                    <BackButton fallbackHref={`/admin/training-ops/events/${params.id}`} />
                     <div>
                         <h1 className="text-3xl font-bold">{event ? `Edit Learning Event · ${event.title}` : 'Edit Learning Event'}</h1>
                         <p className="mt-1 text-muted-foreground">
@@ -215,7 +212,7 @@ export default function EditLearningEventPage() {
                     <Card>
                         <CardHeader>
                             <CardTitle>Event Basics</CardTitle>
-                            <CardDescription>Keep the event aligned with the right domain, series, and scheduling window.</CardDescription>
+                            <CardDescription>Keep the Event aligned with the right Domain, Program, and scheduling window.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
@@ -241,7 +238,7 @@ export default function EditLearningEventPage() {
                                         </p>
                                     ) : (
                                         <p className="text-xs text-muted-foreground">
-                                            Select a learning series to narrow this list to the allowed session formats for that program type.
+                                            Select a Learning Program to narrow this list to the allowed session formats for that Program type.
                                         </p>
                                     )}
                                 </div>
@@ -277,9 +274,9 @@ export default function EditLearningEventPage() {
                                     </select>
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="seriesId">Learning Series</Label>
+                                    <Label htmlFor="seriesId">Learning Program</Label>
                                     <select id="seriesId" className="h-10 w-full rounded-md border bg-background px-3" value={form.seriesId || EMPTY_OPTION} onChange={(e) => handleSeriesChange(e.target.value)} disabled={loadingOptions}>
-                                        <option value={EMPTY_OPTION}>No learning series assigned</option>
+                                        <option value={EMPTY_OPTION}>No Learning Program assigned</option>
                                         {filteredSeries.map((item) => (
                                             <option key={item.id} value={item.id}>{item.name}</option>
                                         ))}

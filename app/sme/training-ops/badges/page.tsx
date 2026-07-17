@@ -62,7 +62,7 @@ export default function SmeTrainingOpsBadgesPage() {
                         </Badge>
                         <h1 className="text-3xl font-bold">My Domain Badges</h1>
                         <p className="mt-1 text-muted-foreground">
-                            Configure badge thresholds for domains in your SME scope, including domains you reach through owned series.
+                            Configure badge thresholds for Domains in your SME scope, including Domains you reach through owned Programs.
                         </p>
                     </div>
                     <div className="flex gap-3">
@@ -183,7 +183,7 @@ export default function SmeTrainingOpsBadgesPage() {
                                     When a learner crosses a configured domain threshold, the matching badge unlocks automatically.
                                 </div>
                                 <div className="rounded-lg border p-4">
-                                    Domains visible in your SME workspace can be configured here, including domains you reach through owned series.
+                                    Domains visible in your SME workspace can be configured here, including Domains you reach through owned Programs.
                                 </div>
                             </CardContent>
                         </Card>

@@ -3,7 +3,8 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, ChevronRight, Loader2, Save } from 'lucide-react'
+import { ChevronRight, Loader2, Save } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -206,7 +207,7 @@ function NewSmeLearningEventPageContent() {
                             </Link>
                             <ChevronRight className="h-4 w-4" />
                             <Link href="/sme/training-ops/series" className="transition-colors hover:text-foreground">
-                                My Series
+                                My Programs
                             </Link>
                             <ChevronRight className="h-4 w-4" />
                             <Link href={`/sme/training-ops/series/${breadcrumbSeries.id}`} className="transition-colors hover:text-foreground">
@@ -226,15 +227,11 @@ function NewSmeLearningEventPageContent() {
                 </nav>
 
                 <div className="flex items-center gap-4">
-                    <Link href={backHref}>
-                        <Button variant="ghost" size="icon">
-                            <ArrowLeft className="h-4 w-4" />
-                        </Button>
-                    </Link>
+                    <BackButton fallbackHref={backHref} />
                     <div>
                         <h1 className="text-3xl font-bold">Create Learning Event</h1>
                         <p className="mt-1 text-muted-foreground">
-                            Create a scoped training session for the domains and series you own.
+                            Create a scoped training session for the Domains and Programs you own.
                         </p>
                     </div>
                 </div>
@@ -284,7 +281,7 @@ function NewSmeLearningEventPageContent() {
                                         </p>
                                     ) : (
                                         <p className="text-xs text-muted-foreground">
-                                            Select a learning series to narrow this list to the allowed session formats for that program type.
+                                            Select a Learning Program to narrow this list to the allowed session formats for that Program type.
                                         </p>
                                     )}
                                 </div>
@@ -341,7 +338,7 @@ function NewSmeLearningEventPageContent() {
                                     </select>
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="seriesId">Learning Series</Label>
+                                    <Label htmlFor="seriesId">Learning Program</Label>
                                     <select
                                         id="seriesId"
                                         className="h-10 w-full rounded-md border bg-background px-3"
@@ -349,7 +346,7 @@ function NewSmeLearningEventPageContent() {
                                         onChange={(e) => handleSeriesChange(e.target.value)}
                                         disabled={loadingOptions}
                                     >
-                                        <option value={EMPTY_OPTION}>No series assigned</option>
+                                        <option value={EMPTY_OPTION}>No Program assigned</option>
                                         {filteredSeries.map((item) => (
                                             <option key={item.id} value={item.id}>
                                                 {item.name}

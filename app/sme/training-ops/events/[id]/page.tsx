@@ -3,7 +3,8 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, ChevronRight, Link2, Loader2, Trash2, Unlink2 } from 'lucide-react'
+import { ChevronRight, Link2, Loader2, Trash2, Unlink2 } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -236,7 +237,7 @@ function SmeTrainingOpsEventDetailPageContent() {
                             </Link>
                             <ChevronRight className="h-4 w-4" />
                             <Link href="/sme/training-ops/series" className="transition-colors hover:text-foreground">
-                                My Series
+                                My Programs
                             </Link>
                             <ChevronRight className="h-4 w-4" />
                             <Link href={`/sme/training-ops/series/${seriesContextId}`} className="transition-colors hover:text-foreground">
@@ -256,11 +257,7 @@ function SmeTrainingOpsEventDetailPageContent() {
                 </nav>
 
                 <div className="flex items-center gap-4">
-                    <Link href={backHref}>
-                        <Button variant="ghost" size="icon">
-                            <ArrowLeft className="h-4 w-4" />
-                        </Button>
-                    </Link>
+                    <BackButton fallbackHref={backHref} />
                     <div>
                         <h1 className="text-3xl font-bold">{event.title}</h1>
                         <p className="mt-1 text-muted-foreground">
@@ -334,7 +331,7 @@ function SmeTrainingOpsEventDetailPageContent() {
                             <div className="flex flex-wrap gap-3">
                                 {event.series ? (
                                     <Link href={`/sme/training-ops/series/${event.series.id}`}>
-                                        <Button variant="outline">Open Series</Button>
+                                        <Button variant="outline">Open Program</Button>
                                     </Link>
                                 ) : null}
                                 <Link href={`/sme/training-ops/events/${event.id}/edit${seriesContextId ? `?seriesId=${seriesContextId}` : ''}`}>
@@ -349,7 +346,7 @@ function SmeTrainingOpsEventDetailPageContent() {
                                     Create Draft Exam
                                 </Button>
                                 <Link href={allEventsHref}>
-                                    <Button variant="outline">{seriesContextId ? 'Series Events' : 'All Events'}</Button>
+                                    <Button variant="outline">{seriesContextId ? 'Program Events' : 'All Events'}</Button>
                                 </Link>
                             </div>
                         </CardContent>

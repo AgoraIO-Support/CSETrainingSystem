@@ -12,7 +12,6 @@ import { Badge } from '@/components/ui/badge'
 import { RichTextContent } from '@/components/ui/rich-text-content'
 import { ApiClient } from '@/lib/api-client'
 import {
-    ArrowLeft,
     Loader2,
     Save,
     CheckCircle,
@@ -21,6 +20,7 @@ import {
     User,
     FileText,
 } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 import Link from 'next/link'
 import type {
     EssayAIGradingBreakdown,
@@ -328,11 +328,7 @@ function AttemptDetailPageContent({ params }: PageProps) {
             <div className="space-y-6">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                        <Link href={`/admin/exams/${examId}/attempts${isSmeMode ? '?sme=1' : ''}`}>
-                            <Button variant="ghost" size="icon">
-                                <ArrowLeft className="h-4 w-4" />
-                            </Button>
-                        </Link>
+                        <BackButton fallbackHref={`/admin/exams/${examId}/attempts${isSmeMode ? '?sme=1' : ''}`} />
                         <div>
                             <h1 className="text-3xl font-bold">Attempt Detail</h1>
                             <p className="text-muted-foreground mt-1">{attempt.exam?.title}</p>

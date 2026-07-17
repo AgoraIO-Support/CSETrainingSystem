@@ -3,6 +3,7 @@ import { Prisma, ProductDomainCategory, ProductTrack, SmeKpiMode, LearningSeries
 import { ExamService } from '@/lib/services/exam.service'
 import { CourseService } from '@/lib/services/course.service'
 import { CascadeDeleteService } from '@/lib/services/cascade-delete.service'
+import { TrainingOpsRewardService } from '@/lib/services/training-ops-reward.service'
 import { isEventFormatAllowedForSeriesType } from '@/lib/training-ops-series-event-rules'
 
 type TrainingOpsOperatorRole = 'USER' | 'SME' | 'ADMIN'
@@ -647,7 +648,7 @@ export class TrainingOpsService {
             prisma.$queryRaw<Array<{ domainId: string; starAwards: bigint | number; badgeAwards: bigint | number; recognizedLearners: bigint | number }>>(Prisma.sql`
                 WITH star_counts AS (
                     SELECT sa."domainId",
-                           COUNT(*)::bigint AS "starAwards",
+                           COALESCE(SUM(sa."stars"), 0)::bigint AS "starAwards",
                            COUNT(DISTINCT sa."userId")::bigint AS "starUsers"
                     FROM "star_awards" sa
                     WHERE sa."domainId" IS NOT NULL
@@ -1127,7 +1128,7 @@ export class TrainingOpsService {
                 ),
                 star_counts AS (
                     SELECT sel."seriesId",
-                           COUNT(sa."id")::bigint AS "starAwards",
+                           COALESCE(SUM(sa."stars"), 0)::bigint AS "starAwards",
                            COUNT(DISTINCT sa."userId")::bigint AS "starUsers"
                     FROM series_exam_links sel
                     JOIN "star_awards" sa ON sa."examId" = sel."examId"
@@ -1516,16 +1517,24 @@ export class TrainingOpsService {
         await this.assertUniqueDomainBadgeSlug(payload.domainId, payload.slug)
         await this.assertUniqueDomainBadgeThreshold(payload.domainId, payload.thresholdStars)
 
-        const badge = await prisma.badgeMilestone.create({
-            data: {
-                name: payload.name,
-                slug: payload.slug,
-                description: payload.description ?? null,
-                icon: payload.icon ?? null,
-                thresholdStars: payload.thresholdStars,
-                active: payload.active,
-                domainId: payload.domainId,
-            },
+        const badge = await prisma.$transaction(async (tx) => {
+            const created = await tx.badgeMilestone.create({
+                data: {
+                    name: payload.name,
+                    slug: payload.slug,
+                    description: payload.description ?? null,
+                    icon: payload.icon ?? null,
+                    thresholdStars: payload.thresholdStars,
+                    active: payload.active,
+                    domainId: payload.domainId,
+                },
+            })
+
+            if (created.active) {
+                await TrainingOpsRewardService.reconcileBadgeAwardsForDomain(payload.domainId, tx)
+            }
+
+            return created
         })
 
         return this.getBadgeMilestoneById(badge.id)
@@ -1593,17 +1602,23 @@ export class TrainingOpsService {
             await this.assertUniqueDomainBadgeSlug(nextDomainId, nextSlug, id)
         }
 
-        await prisma.badgeMilestone.update({
-            where: { id },
-            data: {
-                name: payload.name,
-                slug: payload.slug,
-                description: payload.description,
-                icon: payload.icon,
-                thresholdStars: payload.thresholdStars,
-                active: payload.active,
-                domainId: nextDomainId,
-            },
+        await prisma.$transaction(async (tx) => {
+            const updated = await tx.badgeMilestone.update({
+                where: { id },
+                data: {
+                    name: payload.name,
+                    slug: payload.slug,
+                    description: payload.description,
+                    icon: payload.icon,
+                    thresholdStars: payload.thresholdStars,
+                    active: payload.active,
+                    domainId: nextDomainId,
+                },
+            })
+
+            if (updated.active) {
+                await TrainingOpsRewardService.reconcileBadgeAwardsForDomain(nextDomainId, tx)
+            }
         })
 
         return this.getBadgeMilestoneById(id)
@@ -2507,7 +2522,7 @@ export class TrainingOpsService {
 
             await this.assertScopeAccess(user, { domainId: nextDomainId })
 
-            return this.updateLearningSeriesRecord(id, {
+        return this.updateLearningSeriesRecord(id, {
                 ...payload,
                 ownerId: existingSeries.owner?.id ?? null,
             })
@@ -2698,6 +2713,90 @@ export class TrainingOpsService {
             }
             return true
         })
+    }
+
+    static async associateScopedResourceToProgram(
+        user: TrainingOpsOperator,
+        programId: string,
+        input: {
+            resourceType: 'event' | 'course' | 'exam'
+            resourceId: string
+            eventId?: string
+        }
+    ) {
+        const program = await this.getScopedLearningSeriesById(user, programId)
+        const domainId = program.domain?.id ?? null
+
+        if (input.resourceType === 'event') {
+            const event = await this.getLearningEventById(input.resourceId)
+            if (event.series && event.series.id !== programId) {
+                throw new Error('EVENT_ALREADY_LINKED_TO_OTHER_PROGRAM')
+            }
+
+            await this.updateScopedLearningEventForUser(user, input.resourceId, {
+                seriesId: programId,
+                domainId,
+            })
+        } else if (input.resourceType === 'course') {
+            if (!input.eventId) {
+                throw new Error('PROGRAM_EVENT_REQUIRED')
+            }
+
+            const event = await this.getLearningEventById(input.eventId)
+            if (event.series?.id !== programId) {
+                throw new Error('PROGRAM_EVENT_MISMATCH')
+            }
+
+            await this.attachScopedCourseToEvent(user, event.id, input.resourceId)
+        } else {
+            await this.assertScopedExamAccess(user, input.resourceId)
+
+            const exam = await prisma.exam.findUnique({
+                where: { id: input.resourceId },
+                select: {
+                    id: true,
+                    status: true,
+                    productDomainId: true,
+                    learningSeriesId: true,
+                    learningEvent: {
+                        select: {
+                            id: true,
+                            domainId: true,
+                            seriesId: true,
+                        },
+                    },
+                },
+            })
+
+            if (!exam) throw new Error('EXAM_NOT_FOUND')
+            if (exam.status === 'ARCHIVED') throw new Error('EXAM_ARCHIVED')
+            if (exam.learningSeriesId && exam.learningSeriesId !== programId) {
+                throw new Error('EXAM_ALREADY_LINKED_TO_OTHER_PROGRAM')
+            }
+            if (domainId && exam.productDomainId && exam.productDomainId !== domainId) {
+                throw new Error('EXAM_DOMAIN_MISMATCH')
+            }
+            if (exam.learningEvent && exam.learningEvent.seriesId !== programId) {
+                throw new Error('EXAM_EVENT_PROGRAM_MISMATCH')
+            }
+            if (domainId && exam.learningEvent?.domainId && exam.learningEvent.domainId !== domainId) {
+                throw new Error('EXAM_DOMAIN_MISMATCH')
+            }
+
+            await prisma.exam.update({
+                where: { id: exam.id },
+                data: {
+                    learningSeriesId: programId,
+                    ...(domainId && !exam.productDomainId ? { productDomainId: domainId } : {}),
+                },
+            })
+        }
+
+        return {
+            programId,
+            resourceType: input.resourceType,
+            resourceId: input.resourceId,
+        }
     }
 
     static async getScopedEffectiveness(user: TrainingOpsOperator) {
@@ -3407,11 +3506,13 @@ export class TrainingOpsService {
                 topic: string | null
                 misses: bigint | number
                 answered: bigint | number
+                domainId: string | null
                 domainName: string | null
             }>>(Prisma.sql`
                 SELECT snap."topic" AS "topic",
                        COUNT(*) FILTER (WHERE ans."isCorrect" = false)::bigint AS "misses",
                        COUNT(*)::bigint AS "answered",
+                       COALESCE(snap."productDomainId", e."productDomainId") AS "domainId",
                        MAX(pd."name") AS "domainName"
                 FROM "exam_answers" ans
                 JOIN "exam_attempts" att ON att."id" = ans."attemptId"
@@ -3424,7 +3525,7 @@ export class TrainingOpsService {
                   AND ans."gradingStatus" IN ('AUTO_GRADED', 'MANUALLY_GRADED')
                   AND snap."topic" IS NOT NULL
                   AND snap."topic" <> ''
-                GROUP BY snap."topic"
+                GROUP BY snap."topic", COALESCE(snap."productDomainId", e."productDomainId")
                 HAVING COUNT(*) FILTER (WHERE ans."isCorrect" = false) > 0
                 ORDER BY "misses" DESC, "answered" DESC
                 LIMIT 8
@@ -3468,6 +3569,7 @@ export class TrainingOpsService {
                 topic: row.topic,
                 misses: Number(row.misses),
                 answered: Number(row.answered),
+                domainId: row.domainId,
                 domainName: row.domainName,
             })),
             learnerGaps: learnerGaps.map((row) => ({
@@ -3479,6 +3581,166 @@ export class TrainingOpsService {
                 failedAttempts: Number(row.failedAttempts),
                 passRate: Number(row.passRate),
                 lastSubmittedAt: row.lastSubmittedAt,
+            })),
+        }
+    }
+
+    static async getScopedLearnerGapDrilldown(
+        user: TrainingOpsOperator,
+        input: { kind: 'topic'; topic: string; domainId: string } | { kind: 'learner'; userId: string }
+    ) {
+        const { scope } = await this.getScopedSummary(user)
+        const allowedDomainIds = scope?.domainIds ?? (
+            await prisma.productDomain.findMany({ select: { id: true } })
+        ).map((row) => row.id)
+
+        if (input.kind === 'topic') {
+            if (!allowedDomainIds.includes(input.domainId)) {
+                throw new Error('TRAINING_OPS_SCOPE_FORBIDDEN')
+            }
+
+            const domain = await prisma.productDomain.findUnique({
+                where: { id: input.domainId },
+                select: { id: true, name: true },
+            })
+            if (!domain) throw new Error('PRODUCT_DOMAIN_NOT_FOUND')
+
+            const [stats, examples] = await Promise.all([
+                prisma.$queryRaw<Array<{ misses: bigint | number; answered: bigint | number }>>(Prisma.sql`
+                    SELECT COUNT(*) FILTER (WHERE ans."isCorrect" = false)::bigint AS "misses",
+                           COUNT(*)::bigint AS "answered"
+                    FROM "exam_answers" ans
+                    JOIN "exam_attempts" att ON att."id" = ans."attemptId"
+                    JOIN "exams" e ON e."id" = att."examId"
+                    JOIN "exam_attempt_question_snapshots" snap
+                      ON snap."attemptId" = att."id"
+                     AND snap."questionId" = ans."questionId"
+                    WHERE COALESCE(snap."productDomainId", e."productDomainId") = ${input.domainId}
+                      AND snap."topic" = ${input.topic}
+                      AND ans."gradingStatus" IN ('AUTO_GRADED', 'MANUALLY_GRADED')
+                `),
+                prisma.$queryRaw<Array<{
+                    attemptId: string
+                    examId: string
+                    examTitle: string
+                    userId: string
+                    learnerName: string
+                    learnerEmail: string
+                    question: string
+                    answer: string | null
+                    selectedOption: number | null
+                    correctAnswer: string | null
+                    explanation: string | null
+                    submittedAt: Date | null
+                }>>(Prisma.sql`
+                    SELECT att."id" AS "attemptId",
+                           e."id" AS "examId",
+                           e."title" AS "examTitle",
+                           u."id" AS "userId",
+                           u."name" AS "learnerName",
+                           u."email" AS "learnerEmail",
+                           snap."question",
+                           ans."answer",
+                           ans."selectedOption",
+                           snap."correctAnswer",
+                           snap."explanation",
+                           att."submittedAt"
+                    FROM "exam_answers" ans
+                    JOIN "exam_attempts" att ON att."id" = ans."attemptId"
+                    JOIN "exams" e ON e."id" = att."examId"
+                    JOIN "users" u ON u."id" = att."userId"
+                    JOIN "exam_attempt_question_snapshots" snap
+                      ON snap."attemptId" = att."id"
+                     AND snap."questionId" = ans."questionId"
+                    WHERE COALESCE(snap."productDomainId", e."productDomainId") = ${input.domainId}
+                      AND snap."topic" = ${input.topic}
+                      AND ans."isCorrect" = false
+                      AND ans."gradingStatus" IN ('AUTO_GRADED', 'MANUALLY_GRADED')
+                    ORDER BY att."submittedAt" DESC NULLS LAST
+                    LIMIT 25
+                `),
+            ])
+
+            return {
+                kind: 'topic' as const,
+                topic: input.topic,
+                domain,
+                misses: Number(stats[0]?.misses ?? 0),
+                answered: Number(stats[0]?.answered ?? 0),
+                examples,
+            }
+        }
+
+        const learner = await prisma.user.findUnique({
+            where: { id: input.userId },
+            select: { id: true, name: true, email: true },
+        })
+        if (!learner) throw new Error('USER_NOT_FOUND')
+
+        const [attempts, weakTopics] = await Promise.all([
+            prisma.examAttempt.findMany({
+                where: {
+                    userId: input.userId,
+                    status: 'GRADED',
+                    exam: { productDomainId: { in: allowedDomainIds } },
+                },
+                orderBy: { submittedAt: 'desc' },
+                take: 50,
+                select: {
+                    id: true,
+                    attemptNumber: true,
+                    submittedAt: true,
+                    percentageScore: true,
+                    passed: true,
+                    exam: { select: { id: true, title: true } },
+                },
+            }),
+            prisma.$queryRaw<Array<{
+                topic: string
+                domainName: string | null
+                misses: bigint | number
+                answered: bigint | number
+            }>>(Prisma.sql`
+                SELECT snap."topic" AS "topic",
+                       MAX(pd."name") AS "domainName",
+                       COUNT(*) FILTER (WHERE ans."isCorrect" = false)::bigint AS "misses",
+                       COUNT(*)::bigint AS "answered"
+                FROM "exam_answers" ans
+                JOIN "exam_attempts" att ON att."id" = ans."attemptId"
+                JOIN "exams" e ON e."id" = att."examId"
+                JOIN "exam_attempt_question_snapshots" snap
+                  ON snap."attemptId" = att."id"
+                 AND snap."questionId" = ans."questionId"
+                LEFT JOIN "product_domains" pd ON pd."id" = COALESCE(snap."productDomainId", e."productDomainId")
+                WHERE att."userId" = ${input.userId}
+                  AND e."productDomainId" IN (${Prisma.join(allowedDomainIds)})
+                  AND snap."topic" IS NOT NULL
+                  AND snap."topic" <> ''
+                  AND ans."gradingStatus" IN ('AUTO_GRADED', 'MANUALLY_GRADED')
+                GROUP BY snap."topic"
+                HAVING COUNT(*) FILTER (WHERE ans."isCorrect" = false) > 0
+                ORDER BY "misses" DESC, "answered" DESC
+                LIMIT 8
+            `),
+        ])
+
+        return {
+            kind: 'learner' as const,
+            learner,
+            attempts: attempts.map((attempt) => ({
+                id: attempt.id,
+                examId: attempt.exam.id,
+                examTitle: attempt.exam.title,
+                attemptNumber: attempt.attemptNumber,
+                submittedAt: attempt.submittedAt,
+                percentageScore: attempt.percentageScore,
+                passed: attempt.passed,
+            })),
+            weakTopics: weakTopics.map((topic) => ({
+                topic: topic.topic,
+                domainName: topic.domainName,
+                misses: Number(topic.misses),
+                answered: Number(topic.answered),
             })),
         }
     }

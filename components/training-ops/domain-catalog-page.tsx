@@ -9,7 +9,8 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { ApiClient } from '@/lib/api-client'
 import type { ProductDomainSummary } from '@/types'
-import { ArrowLeft, FileJson, Loader2, Plus } from 'lucide-react'
+import { FileJson, Loader2, Plus } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 
 type DomainCatalogView = 'admin' | 'sme'
 
@@ -56,11 +57,7 @@ export function DomainCatalogPage({ view }: DomainCatalogPageProps) {
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <div className={isAdmin ? 'flex items-center gap-4' : ''}>
                         {isAdmin ? (
-                            <Link href="/admin/training-ops">
-                                <Button variant="ghost" size="icon">
-                                    <ArrowLeft className="h-4 w-4" />
-                                </Button>
-                            </Link>
+                            <BackButton fallbackHref="/admin/training-ops" />
                         ) : null}
                         <div>
                             <h1 className="text-3xl font-bold">
@@ -177,7 +174,7 @@ export function DomainCatalogPage({ view }: DomainCatalogPageProps) {
                                                         <Button variant="outline">Overview</Button>
                                                     </Link>
                                                     <Link href={`/admin/training-ops/series/new?domainId=${domain.id}`}>
-                                                        <Button variant="outline">Create Series</Button>
+                                                        <Button variant="outline">Create Program</Button>
                                                     </Link>
                                                     <Link href={`/admin/training-ops/domains/${domain.id}/edit`}>
                                                         <Button variant="outline">Edit</Button>
@@ -186,10 +183,10 @@ export function DomainCatalogPage({ view }: DomainCatalogPageProps) {
                                             ) : (
                                                 <>
                                                     <Link href={`/sme/training-ops/series/new?domainId=${domain.id}`}>
-                                                        <Button>Create Series</Button>
+                                                        <Button>Create Program</Button>
                                                     </Link>
                                                     <Link href="/sme/training-ops/series">
-                                                        <Button variant="outline">View Series</Button>
+                                                        <Button variant="outline">View Programs</Button>
                                                     </Link>
                                                     <Link href="/sme/training-ops/effectiveness">
                                                         <Button variant="outline">Effectiveness</Button>
@@ -202,7 +199,7 @@ export function DomainCatalogPage({ view }: DomainCatalogPageProps) {
                                         <div>Baseline: {domain.baselinePassRate ?? '—'}%</div>
                                         <div>Target: {domain.targetPassRate ?? '—'}%</div>
                                         <div>Challenge: {domain.challengeThreshold ?? '—'}%</div>
-                                        <div>{domain.counts.learningSeries} series · {domain.counts.exams} exams</div>
+                                        <div>{domain.counts.learningSeries} Programs · {domain.counts.exams} Exams</div>
                                     </div>
                                     <div className="mt-3 grid gap-3 md:grid-cols-2 text-sm text-muted-foreground">
                                         <div>

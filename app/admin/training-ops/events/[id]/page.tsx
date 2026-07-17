@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { ArrowLeft, CalendarDays, Link2, Loader2, Unlink2 } from 'lucide-react'
+import { CalendarDays, Link2, Loader2, Unlink2 } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -148,11 +149,7 @@ export default function TrainingOpsEventDetailPage() {
         <DashboardLayout>
             <div className="space-y-6">
                 <div className="flex items-center gap-4">
-                    <Link href="/admin/training-ops/events">
-                        <Button variant="ghost" size="icon">
-                            <ArrowLeft className="h-4 w-4" />
-                        </Button>
-                    </Link>
+                    <BackButton fallbackHref="/admin/training-ops/events" />
                     <div>
                         <h1 className="text-3xl font-bold">{event.title}</h1>
                         <p className="mt-1 text-muted-foreground">

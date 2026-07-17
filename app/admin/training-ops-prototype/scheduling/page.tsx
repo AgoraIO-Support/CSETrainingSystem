@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button'
 import { ApiClient } from '@/lib/api-client'
 import type { TrainingOpsBridge } from '@/types'
 import {
-    ArrowLeft,
     ArrowRight,
     BrainCircuit,
     CalendarClock,
@@ -19,6 +18,7 @@ import {
     Flag,
     UserRound,
 } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 
 const weeklyGrid = [
     {
@@ -170,12 +170,14 @@ export default function TrainingOpsSchedulingPrototypePage() {
                                 Create Learning Event
                             </Button>
                         </Link>
-                        <Link href="/admin/training-ops-prototype">
-                            <Button variant="outline" className="border-slate-200 bg-slate-50 text-slate-700 hover:border-[#b8ecff] hover:bg-[#f8fdff] hover:text-[#006688]">
-                                <ArrowLeft className="mr-2 h-4 w-4" />
-                                Back to Prototype
-                            </Button>
-                        </Link>
+                        <BackButton
+                            fallbackHref="/admin/training-ops-prototype"
+                            variant="outline"
+                            size="default"
+                            className="border-slate-200 bg-slate-50 text-slate-700 hover:border-[#b8ecff] hover:bg-[#f8fdff] hover:text-[#006688]"
+                        >
+                            Back to Prototype
+                        </BackButton>
                     </div>
                 </div>
 

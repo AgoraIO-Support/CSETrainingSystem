@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
-import { ArrowLeft, FileJson, Loader2, Upload } from 'lucide-react'
+import { FileJson, Loader2, Upload } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -47,15 +47,11 @@ export default function ImportTrainingOpsBootstrapPage() {
         <DashboardLayout>
             <div className="space-y-6">
                 <div className="flex items-center gap-4">
-                    <Link href="/admin/training-ops">
-                        <Button variant="ghost" size="icon">
-                            <ArrowLeft className="h-4 w-4" />
-                        </Button>
-                    </Link>
+                    <BackButton fallbackHref="/admin/training-ops" />
                     <div>
                         <h1 className="text-3xl font-bold">Bootstrap Import</h1>
                         <p className="mt-1 text-muted-foreground">
-                            Import product domains, learning series, and badge milestones in one ordered operation.
+                            Import Product Domains, Learning Programs, and badge milestones in one ordered operation.
                         </p>
                     </div>
                 </div>
@@ -126,7 +122,7 @@ export default function ImportTrainingOpsBootstrapPage() {
                                     <p className="mt-2 text-2xl font-semibold">{summary.domains.totals.processed}</p>
                                 </div>
                                 <div className="rounded-lg border p-4">
-                                    <p className="text-sm text-muted-foreground">Series</p>
+                                    <p className="text-sm text-muted-foreground">Programs</p>
                                     <p className="mt-2 text-2xl font-semibold">{summary.series.totals.processed}</p>
                                 </div>
                                 <div className="rounded-lg border p-4">
@@ -147,7 +143,7 @@ export default function ImportTrainingOpsBootstrapPage() {
                                     </div>
                                 </div>
                                 <div className="rounded-xl border p-4">
-                                    <p className="font-semibold">Learning Series</p>
+                                    <p className="font-semibold">Learning Programs</p>
                                     <div className="mt-3 space-y-2 text-sm text-muted-foreground">
                                         {summary.series.items.map((item) => (
                                             <div key={item.slug}>

@@ -11,7 +11,6 @@ import { RichTextContent } from '@/components/ui/rich-text-content'
 import { LearningAgentCard } from '@/components/learning/learning-agent-card'
 import { ApiClient } from '@/lib/api-client'
 import {
-    ArrowLeft,
     Loader2,
     CheckCircle,
     XCircle,
@@ -22,6 +21,7 @@ import {
     RotateCcw,
     AlertCircle,
 } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 import Link from 'next/link'
 import type { ExamQuestionType } from '@/types'
 
@@ -205,11 +205,7 @@ function ExamResultPageContent({ params }: PageProps) {
         <DashboardLayout>
             <div className="space-y-6 max-w-4xl mx-auto">
                 <div className="flex items-center gap-4">
-                    <Link href="/exams">
-                        <Button variant="ghost" size="icon">
-                            <ArrowLeft className="h-4 w-4" />
-                        </Button>
-                    </Link>
+                    <BackButton fallbackHref="/exams" />
                     <div>
                         <h1 className="text-3xl font-bold">Exam Results</h1>
                         <p className="text-muted-foreground mt-1">{result.examTitle}</p>
@@ -555,12 +551,9 @@ function ExamResultPageContent({ params }: PageProps) {
 
                 {/* Actions */}
                 <div className="flex items-center justify-center gap-4 pt-4">
-                    <Link href="/exams">
-                        <Button variant="outline" size="lg">
-                            <ArrowLeft className="h-4 w-4 mr-2" />
-                            Back to Exams
-                        </Button>
-                    </Link>
+                    <BackButton fallbackHref="/exams" variant="outline" size="lg">
+                        Back to Exams
+                    </BackButton>
 
                     {result.rewardOutcome.certificate.issued && result.rewardOutcome.certificate.id && (
                         <Link href="/certificates">

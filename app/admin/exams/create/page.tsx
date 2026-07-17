@@ -11,7 +11,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { ApiClient } from '@/lib/api-client'
 import { getBrowserTimeZone, getExamTimeZoneOptions } from '@/lib/exam-timezone'
-import { ArrowLeft, Loader2, Save } from 'lucide-react'
+import { Loader2, Save } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 import Link from 'next/link'
 import type { TrainingOpsCourseSummary } from '@/types'
 
@@ -291,11 +292,7 @@ function CreateExamPageContent() {
         <DashboardLayout>
             <div className="space-y-6">
                 <div className="flex items-center gap-4">
-                    <Link href="/admin/exams">
-                        <Button variant="ghost" size="icon">
-                            <ArrowLeft className="h-4 w-4" />
-                        </Button>
-                    </Link>
+                    <BackButton fallbackHref="/admin/exams" />
                     <div>
                         <h1 className="text-3xl font-bold">Create Exam</h1>
                         <p className="text-muted-foreground mt-1">

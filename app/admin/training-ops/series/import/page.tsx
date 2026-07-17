@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
-import { ArrowLeft, FileJson, Loader2, Upload } from 'lucide-react'
+import { FileJson, Loader2, Upload } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -37,7 +37,7 @@ export default function ImportTrainingOpsSeriesPage() {
             setSummary(response.data)
         } catch (err) {
             setSummary(null)
-            setError(err instanceof Error ? err.message : 'Failed to import learning series')
+            setError(err instanceof Error ? err.message : 'Failed to import Learning Programs')
         } finally {
             setLoading(false)
         }
@@ -47,15 +47,11 @@ export default function ImportTrainingOpsSeriesPage() {
         <DashboardLayout>
             <div className="space-y-6">
                 <div className="flex items-center gap-4">
-                    <Link href="/admin/training-ops/series">
-                        <Button variant="ghost" size="icon">
-                            <ArrowLeft className="h-4 w-4" />
-                        </Button>
-                    </Link>
+                    <BackButton fallbackHref="/admin/training-ops/series" />
                     <div>
-                        <h1 className="text-3xl font-bold">Import Learning Series</h1>
+                        <h1 className="text-3xl font-bold">Import Learning Programs</h1>
                         <p className="mt-1 text-muted-foreground">
-                            Paste a learning-series seed JSON file, preview the upserts, then apply it in one step.
+                            Paste a Learning Program seed JSON file, preview the upserts, then apply it in one step.
                         </p>
                     </div>
                 </div>
@@ -64,7 +60,7 @@ export default function ImportTrainingOpsSeriesPage() {
                     <CardHeader>
                         <CardTitle>Import Source</CardTitle>
                         <CardDescription>
-                            Use the seed-data JSON structure created for training-ops learning series.
+                            Use the seed-data JSON structure created for Training Ops Programs.
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
@@ -95,7 +91,7 @@ export default function ImportTrainingOpsSeriesPage() {
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="rawJson">Learning Series Seed JSON</Label>
+                            <Label htmlFor="rawJson">Learning Program Seed JSON</Label>
                             <Textarea
                                 id="rawJson"
                                 value={rawJson}

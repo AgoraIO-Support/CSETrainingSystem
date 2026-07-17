@@ -1,14 +1,17 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { ArrowLeft, Award, CalendarDays, Loader2 } from 'lucide-react'
+import { Award, CalendarDays, Loader2 } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ApiClient } from '@/lib/api-client'
+import { ProgramAssociationManager } from '@/components/training-ops/program-association-manager'
+import { ProgramSettingsCard } from '@/components/training-ops/program-settings-card'
 import type { BadgeMilestoneSummary, Exam, LearningEventSummary, LearningSeriesSummary } from '@/types'
 
 export default function TrainingOpsSeriesDetailPage() {
@@ -20,33 +23,33 @@ export default function TrainingOpsSeriesDetailPage() {
     const [exams, setExams] = useState<Exam[]>([])
     const [badges, setBadges] = useState<BadgeMilestoneSummary[]>([])
 
-    useEffect(() => {
-        const loadData = async () => {
-            try {
-                setLoading(true)
-                const [seriesRes, eventsRes, examsRes] = await Promise.all([
-                    ApiClient.getTrainingOpsSeriesById(params.id),
-                    ApiClient.getTrainingOpsEvents({ limit: 100, seriesId: params.id }),
-                    ApiClient.getAdminExams({ limit: 200 }),
-                ])
-                const badgesRes = seriesRes.data.domain?.id
-                    ? await ApiClient.getTrainingOpsBadgeMilestones({ limit: 100, domainId: seriesRes.data.domain.id })
-                    : { data: [] }
+    const loadData = useCallback(async () => {
+        try {
+            setLoading(true)
+            const [seriesRes, eventsRes, examsRes] = await Promise.all([
+                ApiClient.getTrainingOpsSeriesById(params.id),
+                ApiClient.getTrainingOpsEvents({ limit: 100, seriesId: params.id }),
+                ApiClient.getAdminExams({ limit: 200 }),
+            ])
+            const badgesRes = seriesRes.data.domain?.id
+                ? await ApiClient.getTrainingOpsBadgeMilestones({ limit: 100, domainId: seriesRes.data.domain.id })
+                : { data: [] }
 
-                setSeries(seriesRes.data)
-                setEvents(eventsRes.data)
-                setExams(examsRes.data.filter((exam) => exam.learningSeriesId === params.id))
-                setBadges(badgesRes.data)
-                setError(null)
-            } catch (err) {
-                setError(err instanceof Error ? err.message : 'Failed to load learning series overview')
-            } finally {
-                setLoading(false)
-            }
+            setSeries(seriesRes.data)
+            setEvents(eventsRes.data)
+            setExams(examsRes.data.filter((exam) => exam.learningSeriesId === params.id))
+            setBadges(badgesRes.data)
+            setError(null)
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to load learning Program workspace')
+        } finally {
+            setLoading(false)
         }
-
-        void loadData()
     }, [params.id])
+
+    useEffect(() => {
+        void loadData()
+    }, [loadData])
 
     const recentEvents = useMemo(
         () =>
@@ -61,7 +64,7 @@ export default function TrainingOpsSeriesDetailPage() {
             <DashboardLayout>
                 <div className="flex h-[40vh] items-center justify-center text-muted-foreground">
                     <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                    Loading learning series...
+                    Loading learning Program...
                 </div>
             </DashboardLayout>
         )
@@ -71,7 +74,7 @@ export default function TrainingOpsSeriesDetailPage() {
         return (
             <DashboardLayout>
                 <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                    {error || 'Learning series not found'}
+                    {error || 'Learning Program not found'}
                 </div>
             </DashboardLayout>
         )
@@ -82,22 +85,21 @@ export default function TrainingOpsSeriesDetailPage() {
             <div className="space-y-6">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
-                        <Link href="/admin/training-ops/series">
-                            <Button variant="ghost" size="icon">
-                                <ArrowLeft className="h-4 w-4" />
-                            </Button>
-                        </Link>
+                        <BackButton fallbackHref="/admin/training-ops/series" />
                         <div>
                             <h1 className="text-3xl font-bold">{series.name}</h1>
-                            <p className="mt-1 text-muted-foreground">Series overview for cadence, event execution, linked exams, and inherited reward behavior.</p>
+                            <p className="mt-1 text-muted-foreground">One workspace for Program settings, content association, execution, and outcomes.</p>
                         </div>
                     </div>
                     <div className="flex flex-wrap gap-3">
                         <Link href={`/admin/training-ops/events/new?seriesId=${series.id}`}>
                             <Button>Create Event</Button>
                         </Link>
-                        <Link href={`/admin/training-ops/series/${series.id}/edit`}>
-                            <Button variant="outline">Edit Series</Button>
+                        <Link href="#associations">
+                            <Button variant="outline">Associate Existing</Button>
+                        </Link>
+                        <Link href="#settings">
+                            <Button variant="outline">Program Settings</Button>
                         </Link>
                     </div>
                 </div>
@@ -107,8 +109,8 @@ export default function TrainingOpsSeriesDetailPage() {
                 <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
                     <Card>
                         <CardHeader>
-                            <CardTitle>Series Overview</CardTitle>
-                            <CardDescription>Default rules that events and exams inherit from this training series.</CardDescription>
+                            <CardTitle>Program Overview</CardTitle>
+                            <CardDescription>Default rules inherited by Events and Exams in this Program.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="flex flex-wrap gap-2">
@@ -137,7 +139,7 @@ export default function TrainingOpsSeriesDetailPage() {
                     <Card>
                         <CardHeader>
                             <CardTitle>Reward Output</CardTitle>
-                            <CardDescription>Recognition activity associated with this series inside its owning domain.</CardDescription>
+                            <CardDescription>Recognition activity associated with this Program inside its owning Domain.</CardDescription>
                         </CardHeader>
                         <CardContent>
                             <div className="rounded-lg border p-4 text-sm text-muted-foreground">
@@ -152,21 +154,37 @@ export default function TrainingOpsSeriesDetailPage() {
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    <Card><CardHeader className="pb-2"><CardDescription>Events</CardDescription><CardTitle className="text-3xl">{events.length}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Events currently in this series.</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2"><CardDescription>Linked Exams</CardDescription><CardTitle className="text-3xl">{exams.length}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Exams inheriting this series mapping.</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2"><CardDescription>Domain Badges</CardDescription><CardTitle className="text-3xl">{badges.length}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Badges inherited from this series&apos;s domain.</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2"><CardDescription>Last Reward Output</CardDescription><CardTitle className="text-3xl">{series.rewards?.recognizedLearners ?? 0}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Learners recognized through this series.</p></CardContent></Card>
+                    <Card><CardHeader className="pb-2"><CardDescription>Events</CardDescription><CardTitle className="text-3xl">{events.length}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Events currently in this Program.</p></CardContent></Card>
+                    <Card><CardHeader className="pb-2"><CardDescription>Linked Exams</CardDescription><CardTitle className="text-3xl">{exams.length}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Exams inheriting this Program mapping.</p></CardContent></Card>
+                    <Card><CardHeader className="pb-2"><CardDescription>Domain Badges</CardDescription><CardTitle className="text-3xl">{badges.length}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Badges inherited from the Program&apos;s Domain.</p></CardContent></Card>
+                    <Card><CardHeader className="pb-2"><CardDescription>Last Reward Output</CardDescription><CardTitle className="text-3xl">{series.rewards?.recognizedLearners ?? 0}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Learners recognized through this Program.</p></CardContent></Card>
                 </div>
+
+                <ProgramAssociationManager
+                    view="admin"
+                    program={series}
+                    programEvents={events}
+                    onAssociated={loadData}
+                />
+
+                <ProgramSettingsCard
+                    view="admin"
+                    program={series}
+                    onSaved={(updated) => {
+                        setSeries(updated)
+                        void loadData()
+                    }}
+                />
 
                 <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
                     <Card>
                         <CardHeader>
                             <CardTitle>Recent Events</CardTitle>
-                            <CardDescription>Latest sessions scheduled under this series.</CardDescription>
+                            <CardDescription>Latest sessions scheduled under this Program.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">
                             {recentEvents.length === 0 ? (
-                                <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">No events scheduled for this series yet.</div>
+                                <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">No Events scheduled for this Program yet.</div>
                             ) : recentEvents.map((event) => (
                                 <div key={event.id} className="rounded-lg border p-4">
                                     <div className="flex items-start justify-between gap-4">
@@ -187,7 +205,7 @@ export default function TrainingOpsSeriesDetailPage() {
                     <Card>
                         <CardHeader>
                             <CardTitle>Relevant Domain Badges and Exams</CardTitle>
-                            <CardDescription>Recognition rules inherited from this series&apos;s domain alongside aligned exam assets.</CardDescription>
+                            <CardDescription>Recognition rules inherited from this Program&apos;s Domain alongside aligned Exam assets.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">
                             {badges.slice(0, 3).map((badge) => (
@@ -215,7 +233,7 @@ export default function TrainingOpsSeriesDetailPage() {
                                 </div>
                             ))}
                             {badges.length === 0 && exams.length === 0 ? (
-                                <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">No domain badges or exams linked to this series yet.</div>
+                                <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">No Domain badges or Exams linked to this Program yet.</div>
                             ) : null}
                         </CardContent>
                     </Card>

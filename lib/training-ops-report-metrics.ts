@@ -38,3 +38,15 @@ export const averageNumber = (values: Array<number | null | undefined>) => {
     if (valid.length === 0) return 0
     return Math.round(valid.reduce((sum, value) => sum + value, 0) / valid.length)
 }
+
+export const countInvitedAssessmentsAttempted = (
+    invitations: Array<{ examId: string }>,
+    attempts: Array<{ examId: string }>
+) => {
+    const invitedExamIds = new Set(invitations.map((invitation) => invitation.examId))
+    return new Set(
+        attempts
+            .filter((attempt) => invitedExamIds.has(attempt.examId))
+            .map((attempt) => attempt.examId)
+    ).size
+}

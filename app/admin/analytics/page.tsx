@@ -11,6 +11,8 @@ import { Progress } from '@/components/ui/progress'
 import { ApiClient } from '@/lib/api-client'
 import type { AdminAnalyticsSummary } from '@/types'
 import { formatDate } from '@/lib/utils'
+import { hasRecordedAnalyticsActivity } from '@/lib/analytics-activity'
+import { filterLearnerProgress, paginateLearnerProgress } from '@/lib/analytics-learner-progress'
 import { Loader2, Users, Activity, BookOpen, Target, RefreshCcw, Laptop, Cpu, Search } from 'lucide-react'
 import {
     ResponsiveContainer,
@@ -30,6 +32,8 @@ const RANGE_OPTIONS = [
     { label: '30 days', value: '30' },
 ]
 
+const LEARNERS_PER_PAGE = 10
+
 export default function AdminAnalyticsPage() {
     const [summary, setSummary] = useState<AdminAnalyticsSummary | null>(null)
     const [range, setRange] = useState('14')
@@ -37,6 +41,8 @@ export default function AdminAnalyticsPage() {
     const [error, setError] = useState<string | null>(null)
     const [refreshIndex, setRefreshIndex] = useState(0)
     const [learnerSearch, setLearnerSearch] = useState('')
+    const [selectedLearnerId, setSelectedLearnerId] = useState('all')
+    const [learnerPage, setLearnerPage] = useState(1)
 
     useEffect(() => {
         let cancelled = false
@@ -114,20 +120,25 @@ export default function AdminAnalyticsPage() {
         [normalizedActivity]
     )
 
-    const latestActivity = recentActivityData[0]
+    const recordedActivityData = useMemo(
+        () => recentActivityData.filter(hasRecordedAnalyticsActivity),
+        [recentActivityData]
+    )
+    const latestActivity = recordedActivityData[0]
     const filteredLearnerProgress = useMemo(() => {
-        const learnerProgress = summary?.learnerProgress ?? []
-        const query = learnerSearch.trim().toLowerCase()
-        if (!query) return learnerProgress
-
-        return learnerProgress.filter((learner) => {
-            const userMatch =
-                learner.name.toLowerCase().includes(query) ||
-                learner.email.toLowerCase().includes(query)
-            const courseMatch = learner.courses.some((course) => course.title.toLowerCase().includes(query))
-            return userMatch || courseMatch
+        return filterLearnerProgress(summary?.learnerProgress ?? [], {
+            query: learnerSearch,
+            userId: selectedLearnerId,
         })
-    }, [summary?.learnerProgress, learnerSearch])
+    }, [summary?.learnerProgress, learnerSearch, selectedLearnerId])
+    const learnerPagination = useMemo(
+        () => paginateLearnerProgress(filteredLearnerProgress, learnerPage, LEARNERS_PER_PAGE),
+        [filteredLearnerProgress, learnerPage]
+    )
+
+    useEffect(() => {
+        setLearnerPage(1)
+    }, [learnerSearch, selectedLearnerId])
 
     const handleRefresh = () => {
         setRefreshIndex(prev => prev + 1)
@@ -292,8 +303,8 @@ export default function AdminAnalyticsPage() {
                                 <CardHeader>
                                     <div className="flex items-center justify-between">
                                         <div>
-                                            <CardTitle className="text-slate-950">Latest Snapshot</CardTitle>
-                                            <CardDescription className="text-slate-500">Most recent analytics record</CardDescription>
+                                            <CardTitle className="text-slate-950">Latest Active Day</CardTitle>
+                                            <CardDescription className="text-slate-500">Most recent day with recorded activity in this range</CardDescription>
                                         </div>
                                         {latestActivity && (
                                             <p className="text-xs text-slate-500">{formatDate(latestActivity.date)}</p>
@@ -340,7 +351,7 @@ export default function AdminAnalyticsPage() {
                                             </div>
                                         </div>
                                     ) : (
-                                        <p className="text-sm text-muted-foreground">No analytics entries recorded yet.</p>
+                                        <p className="text-sm text-muted-foreground">No learning activity was recorded in the selected range.</p>
                                     )}
                                 </CardContent>
                             </Card>
@@ -352,7 +363,7 @@ export default function AdminAnalyticsPage() {
                                 </CardHeader>
                                 <CardContent>
                                     <div className="space-y-3 max-h-72 overflow-y-auto pr-2">
-                                        {recentActivityData.map(entry => (
+                                        {recordedActivityData.map(entry => (
                                             <div
                                                 key={entry.id}
                                                 className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm"
@@ -372,8 +383,8 @@ export default function AdminAnalyticsPage() {
                                                 </div>
                                             </div>
                                         ))}
-                                        {!recentActivityData.length && (
-                                            <p className="text-sm text-muted-foreground">No analytics records found.</p>
+                                        {!recordedActivityData.length && (
+                                            <p className="text-sm text-muted-foreground">No learning activity was recorded in the selected range.</p>
                                         )}
                                     </div>
                                 </CardContent>
@@ -382,21 +393,36 @@ export default function AdminAnalyticsPage() {
 
                         <Card className="border border-slate-200 bg-white shadow-sm">
                             <CardHeader>
-                                <div className="flex items-center justify-between gap-4 flex-wrap">
+                                <div className="flex items-start justify-between gap-4 flex-wrap">
                                     <div>
                                         <CardTitle className="text-slate-950">Learner Progress</CardTitle>
                                         <CardDescription className="text-slate-500">
-                                            Review each learner&apos;s enrolled courses and per-course completion progress
+                                            Review enrolled courses and progress across all user roles
                                         </CardDescription>
                                     </div>
-                                    <div className="relative w-full sm:w-80">
-                                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                                        <Input
-                                            value={learnerSearch}
-                                            onChange={(event) => setLearnerSearch(event.target.value)}
-                                            placeholder="Search learner or course"
-                                            className="border-slate-200 bg-slate-50 pl-9"
-                                        />
+                                    <div className="grid w-full gap-3 sm:w-auto sm:grid-cols-[16rem_20rem]">
+                                        <Select value={selectedLearnerId} onValueChange={setSelectedLearnerId}>
+                                            <SelectTrigger className="border-slate-200 bg-slate-50" aria-label="Filter learner">
+                                                <SelectValue placeholder="All users" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">All users</SelectItem>
+                                                {(summary?.learnerProgress ?? []).map((learner) => (
+                                                    <SelectItem key={learner.userId} value={learner.userId}>
+                                                        {learner.name} · {learner.role}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <div className="relative">
+                                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                                            <Input
+                                                value={learnerSearch}
+                                                onChange={(event) => setLearnerSearch(event.target.value)}
+                                                placeholder="Search learner or course"
+                                                className="border-slate-200 bg-slate-50 pl-9"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             </CardHeader>
@@ -407,7 +433,7 @@ export default function AdminAnalyticsPage() {
                                     </div>
                                 ) : (
                                     <div className="space-y-4">
-                                        {filteredLearnerProgress.map((learner) => (
+                                        {learnerPagination.items.map((learner) => (
                                             <details
                                                 key={learner.userId}
                                                 className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4"
@@ -418,6 +444,7 @@ export default function AdminAnalyticsPage() {
                                                         <div className="space-y-1">
                                                             <div className="flex items-center gap-2 flex-wrap">
                                                                 <p className="font-semibold text-slate-950">{learner.name}</p>
+                                                                <Badge variant="outline" className="border-cyan-200 bg-cyan-50 text-[#006688]">{learner.role}</Badge>
                                                                 <Badge variant="outline" className="border-slate-200 bg-white text-slate-600">{learner.status}</Badge>
                                                             </div>
                                                             <p className="text-sm text-slate-500">{learner.email}</p>
@@ -481,6 +508,32 @@ export default function AdminAnalyticsPage() {
                                                 </div>
                                             </details>
                                         ))}
+                                        <div className="flex flex-col gap-3 border-t border-slate-200 pt-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+                                            <p className="text-slate-500">
+                                                Showing {learnerPagination.startItem}-{learnerPagination.endItem} of {learnerPagination.totalItems} users
+                                            </p>
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-xs font-medium text-slate-500">
+                                                    Page {learnerPagination.page} of {learnerPagination.totalPages}
+                                                </span>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    disabled={learnerPagination.page === 1}
+                                                    onClick={() => setLearnerPage(learnerPagination.page - 1)}
+                                                >
+                                                    Previous
+                                                </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    disabled={learnerPagination.page === learnerPagination.totalPages}
+                                                    onClick={() => setLearnerPage(learnerPagination.page + 1)}
+                                                >
+                                                    Next
+                                                </Button>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                             </CardContent>

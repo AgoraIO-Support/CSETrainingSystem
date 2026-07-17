@@ -12,6 +12,7 @@ import { ApiClient } from '@/lib/api-client'
 import type { ProductDomainEffectivenessSummary, SmeWorkspaceSummary } from '@/types'
 import {
     AlertTriangle,
+    ArrowUpRight,
     BarChart3,
     BookOpen,
     CalendarClock,
@@ -313,15 +314,18 @@ export default function SmeDashboardPage() {
                                             <div className="rounded-xl border border-dashed p-5 text-sm text-slate-500">No weak topic signals are available.</div>
                                         ) : weakTopics.map((topic) => {
                                             const missRate = Math.round((topic.misses / topic.answered) * 100)
-                                            return (
-                                                <div key={`${topic.domainName}-${topic.topic}`} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                                            const content = (
+                                                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 transition-colors hover:border-[#006688]/40 hover:bg-[#f2fbfd]">
                                                     <div className="flex items-start justify-between gap-4">
                                                         <div><p className="font-semibold text-slate-950">{topic.topic || 'Unlabeled topic'}</p><p className="text-sm text-slate-500">{topic.domainName ?? 'Unmapped domain'}</p></div>
                                                         <Badge variant="outline" className={missRate >= 40 ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-amber-200 bg-amber-50 text-amber-700'}>{missRate}% miss rate</Badge>
                                                     </div>
-                                                    <p className="mt-3 text-xs text-slate-500">{topic.misses} misses across {topic.answered} answered items</p>
+                                                    <div className="mt-3 flex items-center justify-between text-xs text-slate-500"><span>{topic.misses} misses across {topic.answered} answered items</span><span className="inline-flex items-center font-medium text-[#006688]">View examples <ArrowUpRight className="ml-1 h-3.5 w-3.5" /></span></div>
                                                 </div>
                                             )
+                                            return topic.domainId && topic.topic
+                                                ? <Link key={`${topic.domainId}-${topic.topic}`} href={`/sme/training-ops/knowledge-gaps?kind=topic&topic=${encodeURIComponent(topic.topic)}&domainId=${topic.domainId}`}>{content}</Link>
+                                                : <div key={`${topic.domainName}-${topic.topic}`}>{content}</div>
                                         })}
                                     </CardContent>
                                 </Card>
@@ -332,10 +336,12 @@ export default function SmeDashboardPage() {
                                         {learnerGaps.length === 0 ? (
                                             <div className="rounded-xl border border-dashed p-5 text-sm text-slate-500">No learners are currently below the watch threshold.</div>
                                         ) : learnerGaps.map((learner) => (
-                                            <div key={learner.userId} className="flex flex-col justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 sm:flex-row sm:items-center">
+                                            <Link key={learner.userId} href={`/sme/training-ops/knowledge-gaps?kind=learner&userId=${learner.userId}`} className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#006688]">
+                                            <div className="flex flex-col justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 transition-colors hover:border-[#006688]/40 hover:bg-[#f2fbfd] sm:flex-row sm:items-center">
                                                 <div><p className="font-semibold text-slate-950">{learner.name}</p><p className="text-sm text-slate-500">{learner.email}</p><p className="mt-1 text-xs text-slate-500">{learner.gradedAttempts} graded · {learner.failedAttempts} failed</p></div>
-                                                <Badge variant="outline" className="w-fit border-rose-200 bg-rose-50 text-rose-700">{learner.passRate}% pass</Badge>
+                                                <div className="flex items-center gap-3"><Badge variant="outline" className="w-fit border-rose-200 bg-rose-50 text-rose-700">{learner.passRate}% pass</Badge><ArrowUpRight className="h-4 w-4 text-[#006688]" /></div>
                                             </div>
+                                            </Link>
                                         ))}
                                     </CardContent>
                                 </Card>

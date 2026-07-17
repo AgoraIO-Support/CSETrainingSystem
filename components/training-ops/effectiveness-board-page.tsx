@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -9,7 +9,8 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { ApiClient } from '@/lib/api-client'
 import type { ProductDomainEffectivenessSummary } from '@/types'
-import { AlertTriangle, ArrowLeft, Loader2, Target, TrendingUp } from 'lucide-react'
+import { AlertCircle, AlertTriangle, Loader2, Target, TrendingUp } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 
 const statusTone: Record<ProductDomainEffectivenessSummary['status'], string> = {
     ON_TRACK: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -22,6 +23,26 @@ type EffectivenessView = 'admin' | 'sme'
 
 interface EffectivenessBoardPageProps {
     view: EffectivenessView
+}
+
+function MetricInfoTip({ label, children }: { label: string; children: ReactNode }) {
+    return (
+        <span className="group/metric-tip relative inline-flex">
+            <button
+                type="button"
+                aria-label={`How ${label} is calculated`}
+                className="inline-flex h-5 w-5 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-white hover:text-[#006688] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#006688]/40"
+            >
+                <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+            <span
+                role="tooltip"
+                className="pointer-events-none absolute left-1/2 top-7 z-30 hidden w-72 -translate-x-1/2 rounded-lg bg-slate-950 px-3 py-2 text-xs font-normal leading-relaxed text-white shadow-xl group-hover/metric-tip:block group-focus-within/metric-tip:block"
+            >
+                {children}
+            </span>
+        </span>
+    )
 }
 
 export function EffectivenessBoardPage({ view }: EffectivenessBoardPageProps) {
@@ -78,11 +99,7 @@ export function EffectivenessBoardPage({ view }: EffectivenessBoardPageProps) {
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <div className={isAdmin ? 'flex items-center gap-4' : ''}>
                         {isAdmin ? (
-                            <Link href="/admin/training-ops">
-                                <Button variant="ghost" size="icon">
-                                    <ArrowLeft className="h-4 w-4" />
-                                </Button>
-                            </Link>
+                            <BackButton fallbackHref="/admin/training-ops" />
                         ) : null}
                         <div>
                             <h1 className="text-3xl font-bold">
@@ -102,7 +119,7 @@ export function EffectivenessBoardPage({ view }: EffectivenessBoardPageProps) {
                                     <Button variant="outline">All Domains</Button>
                                 </Link>
                                 <Link href="/admin/training-ops/series">
-                                    <Button variant="outline">All Series</Button>
+                                    <Button variant="outline">All Programs</Button>
                                 </Link>
                                 <Link href="/admin/training-ops/events">
                                     <Button variant="outline">All Events</Button>
@@ -200,6 +217,9 @@ export function EffectivenessBoardPage({ view }: EffectivenessBoardPageProps) {
                                             <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
                                                 <TrendingUp className="h-4 w-4 text-[#006688]" />
                                                 Current pass rate
+                                                <MetricInfoTip label="current pass rate">
+                                                    Passed graded attempts / all graded attempts for exams mapped to this domain x 100. Every graded submission is counted.
+                                                </MetricInfoTip>
                                             </div>
                                             <p className="mt-3 text-3xl font-semibold">{row.currentPassRate}%</p>
                                         </div>
@@ -207,6 +227,9 @@ export function EffectivenessBoardPage({ view }: EffectivenessBoardPageProps) {
                                             <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
                                                 <Target className="h-4 w-4 text-[#006688]" />
                                                 Baseline / target
+                                                <MetricInfoTip label="baseline and target">
+                                                    Baseline is the configured reference pass rate; target is the desired pass rate. Delta = current pass rate - baseline.
+                                                </MetricInfoTip>
                                             </div>
                                             <p className="mt-3 text-xl font-semibold">
                                                 {row.baselinePassRate ?? '—'}% / {row.targetPassRate ?? '—'}%
@@ -219,9 +242,16 @@ export function EffectivenessBoardPage({ view }: EffectivenessBoardPageProps) {
                                             <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
                                                 <AlertTriangle className="h-4 w-4 text-[#006688]" />
                                                 Target gap
+                                                <MetricInfoTip label="target gap">
+                                                    Target gap = target pass rate - current pass rate. A positive gap is below target; a negative gap is above target.
+                                                </MetricInfoTip>
                                             </div>
                                             <p className="mt-3 text-xl font-semibold">
-                                                {row.targetGap === null ? '—' : `${row.targetGap > 0 ? '-' : '+'}${Math.abs(row.targetGap)}%`}
+                                                {row.targetGap === null
+                                                    ? '—'
+                                                    : row.targetGap === 0
+                                                        ? 'On target'
+                                                        : `${Math.abs(row.targetGap)} pts ${row.targetGap > 0 ? 'below' : 'above'} target`}
                                             </p>
                                             <p className="mt-2 text-sm text-muted-foreground">
                                                 Challenge threshold {row.challengeThreshold ?? '—'}%
@@ -229,9 +259,27 @@ export function EffectivenessBoardPage({ view }: EffectivenessBoardPageProps) {
                                         </div>
                                         <div className="rounded-lg border bg-slate-50 p-4">
                                             <div className="text-sm font-medium text-slate-700">Attempts</div>
-                                            <p className="mt-3 text-xl font-semibold">
-                                                {row.passedAttempts} passed / {row.failedAttempts} failed
-                                            </p>
+                                            {isAdmin ? (
+                                                <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xl font-semibold">
+                                                    <Link
+                                                        href={`/admin/training-ops/effectiveness/${row.id}/attempts?result=passed`}
+                                                        className="text-emerald-700 underline decoration-emerald-300 underline-offset-4 transition-colors hover:text-emerald-900"
+                                                    >
+                                                        {row.passedAttempts} passed
+                                                    </Link>
+                                                    <span className="text-slate-300" aria-hidden="true">/</span>
+                                                    <Link
+                                                        href={`/admin/training-ops/effectiveness/${row.id}/attempts?result=failed`}
+                                                        className="text-rose-700 underline decoration-rose-300 underline-offset-4 transition-colors hover:text-rose-900"
+                                                    >
+                                                        {row.failedAttempts} failed
+                                                    </Link>
+                                                </div>
+                                            ) : (
+                                                <p className="mt-3 text-xl font-semibold">
+                                                    {row.passedAttempts} passed / {row.failedAttempts} failed
+                                                </p>
+                                            )}
                                             <p className="mt-2 text-sm text-muted-foreground">
                                                 Performance exams: {row.performanceExamCount}
                                             </p>

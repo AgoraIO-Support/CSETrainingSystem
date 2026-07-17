@@ -9,7 +9,6 @@ import { Badge } from '@/components/ui/badge'
 import { ApiClient } from '@/lib/api-client'
 import { buildExamScheduleDisplay } from '@/lib/exam-timezone'
 import {
-    ArrowLeft,
     Loader2,
     Clock,
     FileQuestion,
@@ -23,6 +22,7 @@ import {
     Info,
     Award,
 } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 import Link from 'next/link'
 import type { Exam } from '@/types'
 
@@ -171,11 +171,7 @@ export default function ExamIntroPage({ params }: PageProps) {
         <DashboardLayout>
             <div className="space-y-6 max-w-4xl mx-auto">
                 <div className="flex items-center gap-4">
-                    <Link href="/exams">
-                        <Button variant="ghost" size="icon">
-                            <ArrowLeft className="h-4 w-4" />
-                        </Button>
-                    </Link>
+                    <BackButton fallbackHref="/exams" />
                     <div className="flex-1">
                         <div className="flex items-center gap-3">
                             <h1 className="text-3xl font-bold">{exam.title}</h1>

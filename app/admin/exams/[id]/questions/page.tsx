@@ -16,7 +16,6 @@ import { ApiClient } from '@/lib/api-client'
 import { resolveUploadedFileContentType } from '@/lib/file-upload'
 import { stripRichTextToPlainText } from '@/lib/rich-text'
 import {
-    ArrowLeft,
     Loader2,
     Plus,
     Trash2,
@@ -32,6 +31,7 @@ import {
     Paperclip,
     ExternalLink,
 } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 import Link from 'next/link'
 import type { Exam, ExamQuestion, ExamQuestionType, EssayGradingCriterion } from '@/types'
 
@@ -853,11 +853,7 @@ function ExamQuestionsPageContent({ params }: PageProps) {
             <div className="space-y-6">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                        <Link href={isSmeMode ? `/admin/exams/${examId}/edit?sme=1` : '/admin/exams'}>
-                            <Button variant="ghost" size="icon">
-                                <ArrowLeft className="h-4 w-4" />
-                            </Button>
-                        </Link>
+                        <BackButton fallbackHref={isSmeMode ? `/admin/exams/${examId}/edit?sme=1` : '/admin/exams'} />
                         <div>
                             <h1 className="text-3xl font-bold">Question Management</h1>
                             <p className="text-muted-foreground mt-1">{exam.title}</p>

@@ -3,7 +3,8 @@
 import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useSearchParams } from 'next/navigation'
-import { ArrowLeft, ChevronRight, Loader2, PencilLine } from 'lucide-react'
+import { ChevronRight, Loader2, PencilLine } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -76,11 +77,11 @@ function SmeTrainingOpsCourseDetailPageContent() {
                             </Link>
                             <ChevronRight className="h-4 w-4" />
                             <Link href="/sme/training-ops/series" className="transition-colors hover:text-foreground">
-                                My Series
+                                My Programs
                             </Link>
                             <ChevronRight className="h-4 w-4" />
                             <Link href={`/sme/training-ops/series/${seriesContextId}`} className="transition-colors hover:text-foreground">
-                                Series
+                                Program
                             </Link>
                             <ChevronRight className="h-4 w-4" />
                         </>
@@ -107,11 +108,7 @@ function SmeTrainingOpsCourseDetailPageContent() {
                 </nav>
 
                 <div className="flex items-center gap-4">
-                    <Link href={backHref}>
-                        <Button variant="ghost" size="icon">
-                            <ArrowLeft className="h-4 w-4" />
-                        </Button>
-                    </Link>
+                    <BackButton fallbackHref={backHref} />
                     <div>
                         <h1 className="text-3xl font-bold">{course.title}</h1>
                         <p className="mt-1 text-muted-foreground">
@@ -164,7 +161,7 @@ function SmeTrainingOpsCourseDetailPageContent() {
                                         </Button>
                                         {seriesContextId ? (
                                             <Button asChild variant="outline" size="sm">
-                                                <Link href={`/sme/training-ops/series/${seriesContextId}`}>Open Series</Link>
+                                                <Link href={`/sme/training-ops/series/${seriesContextId}`}>Open Program</Link>
                                             </Button>
                                         ) : null}
                                     </div>

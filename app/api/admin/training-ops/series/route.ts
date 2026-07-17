@@ -57,7 +57,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
                 success: false,
                 error: {
                     code: 'SYSTEM_001',
-                    message: 'Failed to load learning series',
+                    message: 'Failed to load Learning Programs',
                 },
             },
             { status: 500 }
@@ -80,12 +80,12 @@ export const POST = withAdminAuth(async (req: NextRequest) => {
 
         const message =
             error instanceof Error && error.message === 'LEARNING_SERIES_SLUG_EXISTS'
-                ? 'A learning series with this slug already exists'
+                ? 'A Learning Program with this slug already exists'
                 : error instanceof Error && error.message === 'PRODUCT_DOMAIN_NOT_FOUND'
                     ? 'Selected product domain no longer exists'
                     : error instanceof Error && error.message === 'SERIES_OWNER_NOT_FOUND'
-                        ? 'Series owner must be an active user'
-                        : 'Failed to create learning series'
+                        ? 'Program owner must be an active user'
+                        : 'Failed to create Learning Program'
 
         return NextResponse.json(
             {

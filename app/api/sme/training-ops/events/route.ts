@@ -101,7 +101,7 @@ export const POST = withSmeOrAdminAuth(async (req: NextRequest, user) => {
                 success: false,
                 error: {
                     code: 'SME_001',
-                    message: 'SME events must be scoped to an owned domain or series.',
+                    message: 'SME Events must be scoped to an owned Domain or Program.',
                 },
             }, { status: 400 })
         }
@@ -111,7 +111,7 @@ export const POST = withSmeOrAdminAuth(async (req: NextRequest, user) => {
                 success: false,
                 error: {
                     code: 'AUTH_003',
-                    message: 'You can only create events for your owned domains or series.',
+                    message: 'You can only create Events for your owned Domains or Programs.',
                 },
             }, { status: 403 })
         }
@@ -121,7 +121,7 @@ export const POST = withSmeOrAdminAuth(async (req: NextRequest, user) => {
                 success: false,
                 error: {
                     code: 'VALIDATION_ERROR',
-                    message: 'Selected event format is not allowed for the chosen learning series type.',
+                    message: 'Selected Event format is not allowed for the chosen Program type.',
                 },
             }, { status: 400 })
         }

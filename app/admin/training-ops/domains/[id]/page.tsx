@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { ArrowLeft, CalendarDays, Loader2, TrendingUp } from 'lucide-react'
+import { CalendarDays, Loader2, TrendingUp } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -83,11 +84,7 @@ export default function TrainingOpsDomainDetailPage() {
             <div className="space-y-6">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
-                        <Link href="/admin/training-ops/domains">
-                            <Button variant="ghost" size="icon">
-                                <ArrowLeft className="h-4 w-4" />
-                            </Button>
-                        </Link>
+                        <BackButton fallbackHref="/admin/training-ops/domains" />
                         <div>
                             <h1 className="text-3xl font-bold">{domain.name}</h1>
                             <p className="mt-1 text-muted-foreground">Domain overview for SME ownership, scheduling cadence, reward output, and assessment performance.</p>
@@ -95,7 +92,7 @@ export default function TrainingOpsDomainDetailPage() {
                     </div>
                     <div className="flex flex-wrap gap-3">
                         <Link href={`/admin/training-ops/series/new?domainId=${domain.id}`}>
-                            <Button>Create Series</Button>
+                            <Button>Create Program</Button>
                         </Link>
                         <Link href={`/admin/training-ops/domains/${domain.id}/edit`}>
                             <Button variant="outline">Edit Domain</Button>
@@ -174,7 +171,7 @@ export default function TrainingOpsDomainDetailPage() {
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    <Card><CardHeader className="pb-2"><CardDescription>Learning Series</CardDescription><CardTitle className="text-3xl">{domain.counts.learningSeries}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Series attached to this domain.</p></CardContent></Card>
+                    <Card><CardHeader className="pb-2"><CardDescription>Learning Programs</CardDescription><CardTitle className="text-3xl">{domain.counts.learningSeries}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Programs attached to this Domain.</p></CardContent></Card>
                     <Card><CardHeader className="pb-2"><CardDescription>Learning Events</CardDescription><CardTitle className="text-3xl">{events.length}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Events currently mapped to this domain.</p></CardContent></Card>
                     <Card><CardHeader className="pb-2"><CardDescription>Linked Exams</CardDescription><CardTitle className="text-3xl">{exams.length}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Existing exams using this domain mapping.</p></CardContent></Card>
                     <Card><CardHeader className="pb-2"><CardDescription>Badge Milestones</CardDescription><CardTitle className="text-3xl">{badges.length}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">{domain.rewards?.starAwards ?? 0} stars · {domain.rewards?.badgeAwards ?? 0} badges awarded</p></CardContent></Card>
@@ -195,7 +192,7 @@ export default function TrainingOpsDomainDetailPage() {
                                         <div>
                                             <p className="font-medium">{event.title}</p>
                                             <p className="mt-1 text-sm text-muted-foreground">
-                                                {event.series?.name || 'No series'} · {event.format}
+                                                {event.series?.name || 'No Program'} · {event.format}
                                             </p>
                                             <p className="mt-2 text-sm text-muted-foreground">
                                                 <CalendarDays className="mr-1 inline h-4 w-4" />

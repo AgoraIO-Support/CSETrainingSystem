@@ -69,13 +69,15 @@ const exportLearnersCsv = (report: TrainingOpsAdminReport) => {
     const headers = [
         'Name',
         'Email',
+        'Role',
         'Department',
         'Risk',
         'Course Assigned',
         'Course Completed',
         'Course Progress',
-        'Exam Invitations',
-        'Exam Attempts',
+        'Invited Assessments',
+        'Invited Assessments Attempted',
+        'Total Submissions',
         'Pass Rate',
         'Average Score',
         'Best Score',
@@ -87,12 +89,14 @@ const exportLearnersCsv = (report: TrainingOpsAdminReport) => {
     const rows = report.learnerPerformance.map((learner) => [
         learner.name,
         learner.email,
+        learner.role,
         learner.department ?? '',
         learner.riskStatus,
         learner.courseAssigned,
         learner.courseCompleted,
         `${learner.averageCourseProgress}%`,
         learner.examInvitations,
+        learner.examsAttempted,
         learner.examAttempts,
         `${learner.passRate}%`,
         `${learner.averageScore}%`,
@@ -120,7 +124,7 @@ export default function TrainingOpsDashboardPage() {
     const [error, setError] = useState<string | null>(null)
     const [learnerSearch, setLearnerSearch] = useState('')
     const [range, setRange] = useState<TrainingOpsReportRange>('30d')
-    const [includeAdmins, setIncludeAdmins] = useState(false)
+    const [includeAdmins, setIncludeAdmins] = useState(true)
     const [excludedUserIds, setExcludedUserIds] = useState<string[]>([])
     const [filterDialogOpen, setFilterDialogOpen] = useState(false)
 
@@ -152,6 +156,7 @@ export default function TrainingOpsDashboardPage() {
         return report.learnerPerformance.filter((learner) =>
             learner.name.toLowerCase().includes(query) ||
             learner.email.toLowerCase().includes(query) ||
+            learner.role.toLowerCase().includes(query) ||
             learner.department?.toLowerCase().includes(query) ||
             learner.title?.toLowerCase().includes(query) ||
             learner.riskStatus.toLowerCase().includes(query)
@@ -163,14 +168,14 @@ export default function TrainingOpsDashboardPage() {
         return {
             overdue: learners.filter((learner) => learner.overdueExams > 0).length,
             retake: learners.filter((learner) => learner.retakeNeeded > 0).length,
-            noAttempt: learners.filter((learner) => learner.examInvitations > 0 && learner.examAttempts === 0).length,
+            noAttempt: learners.filter((learner) => learner.examInvitations > 0 && learner.examsAttempted === 0).length,
             lowProgress: learners.filter((learner) => learner.courseAssigned > 0 && learner.averageCourseProgress < 60).length,
         }
     }, [report])
 
     const measuredDomains = report?.domainProgress.filter((domain) => domain.gradedAttempts > 0) ?? []
     const unmeasuredDomains = report?.domainProgress.filter((domain) => domain.gradedAttempts === 0) ?? []
-    const activeFilterCount = (includeAdmins ? 1 : 0) + excludedUserIds.length
+    const activeFilterCount = (includeAdmins ? 0 : 1) + excludedUserIds.length
 
     const toggleExcludedUser = (userId: string, checked: boolean) => {
         setExcludedUserIds((prev) => checked ? [...prev, userId] : prev.filter((id) => id !== userId))
@@ -183,7 +188,7 @@ export default function TrainingOpsDashboardPage() {
                     eyebrow="Admin · Training Ops"
                     title="Team learning health, without the reporting fog."
                     description="See whether the team is participating, completing required work, building verified capability, and where intervention is needed next."
-                    scope={includeAdmins ? 'All active users' : 'Learners & SMEs'}
+                    scope={includeAdmins ? 'All active learning roles' : 'Learners & SMEs only'}
                     meta={report ? `${report.period.label} · generated ${formatDate(report.generatedAt)}` : 'Loading current period'}
                     actions={(
                         <>
@@ -207,13 +212,13 @@ export default function TrainingOpsDashboardPage() {
                                 <DialogContent className="max-w-2xl">
                                     <DialogHeader>
                                         <DialogTitle>Report scope</DialogTitle>
-                                        <DialogDescription>Keep test accounts and administrative users out of team learning signals.</DialogDescription>
+                                        <DialogDescription>Choose which active roles count as learners, then exclude test or service accounts individually.</DialogDescription>
                                     </DialogHeader>
                                     <div className="space-y-6">
                                         <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-4">
                                             <div className="space-y-1">
-                                                <Label htmlFor="include-admins">Include admin users</Label>
-                                                <p className="text-sm text-slate-500">Off by default so the dashboard represents the learning team.</p>
+                                                <Label htmlFor="include-admins">Include Admin-role learners</Label>
+                                                <p className="text-sm text-slate-500">On by default because Admin users can also receive courses and exams.</p>
                                             </div>
                                             <Switch id="include-admins" checked={includeAdmins} onCheckedChange={setIncludeAdmins} />
                                         </div>
@@ -283,10 +288,10 @@ export default function TrainingOpsDashboardPage() {
                     <>
                         <section aria-label="Team health signals" className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                             <SignalCard
-                                label="Active learners"
+                                label="Learning-active users"
                                 value={report.summary.activeLearners}
                                 denominator={`/ ${report.summary.teamMembers}`}
-                                hint="Team members with recorded activity in the selected scope."
+                                hint="Users with course, assessment, or certificate activity in the selected period; login alone does not count."
                                 icon={Users}
                                 tone="positive"
                             />
@@ -348,7 +353,7 @@ export default function TrainingOpsDashboardPage() {
                             <div className="grid gap-6 xl:grid-cols-2">
                                 <FunnelCard
                                     title="Required learning flow"
-                                    description="Content completion shows exposure, not verified mastery."
+                                    description="Assignments created in the selected period. Content completion shows exposure, not verified mastery."
                                     icon={BookOpen}
                                     steps={[
                                         { label: 'Assigned course records', value: report.summary.courseAssignments },
@@ -359,7 +364,7 @@ export default function TrainingOpsDashboardPage() {
                                 />
                                 <FunnelCard
                                     title="Assessment coverage"
-                                    description="Learner-level coverage, with performance evidence isolated from practice activity."
+                                    description="Invitations and submissions in the selected period, with performance evidence isolated from practice activity."
                                     icon={FileText}
                                     steps={[
                                         { label: 'Learners in assessment scope', value: report.summary.assessmentLearners, note: `${report.summary.invitedLearners} received invitations in this period.` },
@@ -375,7 +380,7 @@ export default function TrainingOpsDashboardPage() {
                             <SectionHeading
                                 eyebrow="Intervention"
                                 title="Action Center"
-                                description="Prioritize overdue work, available retakes, missing attempts, and stalled learning instead of scanning the full learner table."
+                                description="Current open obligations across all assignments, ordered by overdue work, retakes, missing attempts, and stalled learning."
                             />
                             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                                 {[
@@ -396,7 +401,7 @@ export default function TrainingOpsDashboardPage() {
                                     <CardTitle className="flex items-center gap-2 text-xl text-slate-950">
                                         <AlertTriangle className="h-5 w-5 text-rose-600" />Priority queue
                                     </CardTitle>
-                                    <CardDescription>Highest-priority learners in the current report scope.</CardDescription>
+                                    <CardDescription>Current follow-up needs. The selected date range affects trend metrics, not open obligations.</CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     {report.riskQueue.length === 0 ? (
@@ -404,15 +409,27 @@ export default function TrainingOpsDashboardPage() {
                                     ) : (
                                         <div className="grid gap-3 lg:grid-cols-2">
                                             {report.riskQueue.slice(0, 8).map((item) => (
-                                                <div key={item.userId} className="flex flex-col justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 sm:flex-row sm:items-center">
+                                                <div key={item.userId} className="flex flex-col justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                                                     <div className="min-w-0">
-                                                        <p className="font-semibold text-slate-950">{item.name}</p>
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <p className="font-semibold text-slate-950">{item.name}</p>
+                                                            <Badge variant="outline" className={riskTone[item.riskStatus]}>{formatStatus(item.riskStatus)}</Badge>
+                                                            <Badge variant="outline" className="bg-white">{item.role}</Badge>
+                                                        </div>
                                                         <p className="truncate text-sm text-slate-500">{item.email}</p>
                                                         <p className="mt-2 text-sm leading-6 text-slate-700">{item.reason}</p>
                                                     </div>
-                                                    <div className="flex shrink-0 gap-2 text-xs">
-                                                        <Badge variant="outline">Progress {item.averageCourseProgress}%</Badge>
-                                                        <Badge variant="outline">Pass {item.passRate}%</Badge>
+                                                    <div className="flex flex-wrap gap-2 text-xs">
+                                                        {item.courseAssigned > 0 ? (
+                                                            <Badge variant="outline" className="bg-white">Learning {item.averageCourseProgress}%</Badge>
+                                                        ) : null}
+                                                        {item.examInvitations > 0 ? (
+                                                            <Badge variant="outline" className="bg-white">Assessments {item.examsAttempted}/{item.examInvitations}</Badge>
+                                                        ) : null}
+                                                        <Badge variant="outline" className="bg-white">
+                                                            {item.gradedAttempts > 0 ? `Pass ${item.passRate}%` : 'No graded evidence'}
+                                                        </Badge>
+                                                        <Badge variant="outline" className="bg-white">Last learning activity: {formatDate(item.lastActivityAt)}</Badge>
                                                     </div>
                                                 </div>
                                             ))}
@@ -468,7 +485,7 @@ export default function TrainingOpsDashboardPage() {
                             <SectionHeading
                                 eyebrow="Drill-down"
                                 title="Learner evidence"
-                                description="Use the table for investigation and export; the Action Center remains the default intervention view."
+                                description="Current cumulative assignments and assessment evidence. Use the table for investigation and export; the Action Center remains the intervention view."
                             />
                             <Card className="border-slate-200 bg-white shadow-sm">
                                 <CardHeader>
@@ -503,23 +520,46 @@ export default function TrainingOpsDashboardPage() {
                                                         <td className="px-4 py-4">
                                                             <p className="font-semibold text-slate-950">{learner.name}</p>
                                                             <p className="text-xs text-slate-500">{learner.email}</p>
+                                                            <Badge variant="outline" className="mt-2 bg-white">{learner.role}</Badge>
                                                         </td>
                                                         <td className="px-4 py-4"><Badge variant="outline" className={riskTone[learner.riskStatus]}>{formatStatus(learner.riskStatus)}</Badge></td>
                                                         <td className="px-4 py-4">
-                                                            <p className="font-medium text-slate-800">{learner.courseCompleted}/{learner.courseAssigned} complete</p>
-                                                            <p className="text-xs text-slate-500">{learner.averageCourseProgress}% average progress</p>
+                                                            {learner.courseAssigned > 0 ? (
+                                                                <>
+                                                                    <p className="font-medium text-slate-800">{learner.courseCompleted}/{learner.courseAssigned} complete</p>
+                                                                    <p className="text-xs text-slate-500">{learner.averageCourseProgress}% average progress</p>
+                                                                </>
+                                                            ) : (
+                                                                <p className="text-slate-500">No course assignment</p>
+                                                            )}
                                                         </td>
                                                         <td className="px-4 py-4">
-                                                            <p className="font-medium text-slate-800">{learner.examAttempts}/{learner.examInvitations} attempts</p>
-                                                            <p className="text-xs text-slate-500">{learner.gradedAttempts} graded</p>
+                                                            {learner.examInvitations > 0 ? (
+                                                                <p className="font-medium text-slate-800">{learner.examsAttempted}/{learner.examInvitations} assessments attempted</p>
+                                                            ) : (
+                                                                <p className="text-slate-500">No exam invitation</p>
+                                                            )}
+                                                            <p className="text-xs text-slate-500">{learner.examAttempts} submissions · {learner.gradedAttempts} current graded results</p>
                                                         </td>
                                                         <td className="px-4 py-4">
-                                                            <p className="font-medium text-slate-800">{learner.passRate}% pass · {learner.averageScore}% avg</p>
-                                                            <p className="text-xs text-slate-500">Best {learner.bestScore}%</p>
+                                                            {learner.gradedAttempts > 0 ? (
+                                                                <>
+                                                                    <p className="font-medium text-slate-800">{learner.passRate}% pass · {learner.averageScore}% avg</p>
+                                                                    <p className="text-xs text-slate-500">Best {learner.bestScore}%</p>
+                                                                </>
+                                                            ) : (
+                                                                <p className="text-slate-500">No graded evidence</p>
+                                                            )}
                                                         </td>
                                                         <td className="px-4 py-4">
-                                                            <p className={learner.overdueExams > 0 ? 'font-medium text-rose-700' : 'text-slate-600'}>{learner.overdueExams} overdue</p>
-                                                            <p className={learner.retakeNeeded > 0 ? 'text-amber-700' : 'text-xs text-slate-500'}>{learner.retakeNeeded} retakes</p>
+                                                            {learner.overdueExams === 0 && learner.retakeNeeded === 0 ? (
+                                                                <p className="text-slate-500">No open follow-up</p>
+                                                            ) : (
+                                                                <>
+                                                                    <p className={learner.overdueExams > 0 ? 'font-medium text-rose-700' : 'text-slate-600'}>{learner.overdueExams} overdue</p>
+                                                                    <p className={learner.retakeNeeded > 0 ? 'text-amber-700' : 'text-xs text-slate-500'}>{learner.retakeNeeded} retakes</p>
+                                                                </>
+                                                            )}
                                                         </td>
                                                         <td className="whitespace-nowrap px-4 py-4 text-slate-500">{formatDate(learner.lastActivityAt)}</td>
                                                     </tr>

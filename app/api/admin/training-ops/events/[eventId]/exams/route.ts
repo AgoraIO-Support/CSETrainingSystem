@@ -47,7 +47,7 @@ export const POST = withAdminAuth(async (req: NextRequest, _user, context: Route
                 EXAM_ARCHIVED: { status: 400, message: 'Archived exams cannot be linked to learning events' },
                 EXAM_ALREADY_LINKED_TO_OTHER_EVENT: { status: 409, message: 'Exam is already linked to another learning event' },
                 EXAM_DOMAIN_MISMATCH: { status: 400, message: 'Exam product domain conflicts with the selected learning event' },
-                EXAM_SERIES_MISMATCH: { status: 400, message: 'Exam learning series conflicts with the selected learning event' },
+                EXAM_SERIES_MISMATCH: { status: 400, message: 'Exam Learning Program conflicts with the selected Event' },
             }
 
             const match = mapped[error.message]

@@ -80,7 +80,7 @@ export const PATCH = withSmeOrAdminAuth(async (req: NextRequest, user, context: 
                 success: false,
                 error: {
                     code: 'VALIDATION_ERROR',
-                    message: 'Selected event format is not allowed for the chosen learning series type.',
+                    message: 'Selected Event format is not allowed for the chosen Program type.',
                 },
             }, { status: 400 })
         }

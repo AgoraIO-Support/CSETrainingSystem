@@ -1,7 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowLeft, Loader2, Save } from 'lucide-react'
+import { Loader2, Save } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -81,6 +82,7 @@ export function LearningSeriesForm({
     submitLabel,
     allowEmptyDomain = true,
     disableOwnerSelection = false,
+    embedded = false,
     onChange,
     onSubmit,
 }: {
@@ -95,27 +97,26 @@ export function LearningSeriesForm({
     submitLabel: string
     allowEmptyDomain?: boolean
     disableOwnerSelection?: boolean
+    embedded?: boolean
     onChange: <K extends keyof LearningSeriesFormValue>(key: K, nextValue: LearningSeriesFormValue[K]) => void
     onSubmit: (event: React.FormEvent<HTMLFormElement>) => void
 }) {
     return (
         <form onSubmit={onSubmit} className="space-y-6">
-            <div className="flex items-center gap-4">
-                <Link href={backHref}>
-                    <Button variant="ghost" size="icon">
-                        <ArrowLeft className="h-4 w-4" />
-                    </Button>
-                </Link>
-                <div>
-                    <h1 className="text-3xl font-bold">{title}</h1>
-                    <p className="mt-1 text-muted-foreground">{description}</p>
+            {!embedded ? (
+                <div className="flex items-center gap-4">
+                    <BackButton fallbackHref={backHref} />
+                    <div>
+                        <h1 className="text-3xl font-bold">{title}</h1>
+                        <p className="mt-1 text-muted-foreground">{description}</p>
+                    </div>
                 </div>
-            </div>
+            ) : null}
 
-            <Card>
+            <Card id={embedded ? 'settings' : undefined}>
                 <CardHeader>
-                    <CardTitle>Series Configuration</CardTitle>
-                    <CardDescription>Define the long-running training program that events and exams can inherit from.</CardDescription>
+                    <CardTitle>{embedded ? title : 'Program Configuration'}</CardTitle>
+                    <CardDescription>{embedded ? description : 'Define the long-running learning program that events and exams can inherit from.'}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     {error ? (
@@ -155,7 +156,7 @@ export function LearningSeriesForm({
 
                     <div className="grid gap-4 md:grid-cols-3">
                         <div className="space-y-2">
-                            <Label htmlFor="type">Series Type *</Label>
+                            <Label htmlFor="type">Program Type *</Label>
                             <select
                                 id="type"
                                 className="h-10 w-full rounded-md border bg-background px-3"
@@ -188,7 +189,7 @@ export function LearningSeriesForm({
                             </select>
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="ownerId">Series Owner</Label>
+                            <Label htmlFor="ownerId">Program Owner</Label>
                             <select
                                 id="ownerId"
                                 className="h-10 w-full rounded-md border bg-background px-3"
@@ -224,7 +225,7 @@ export function LearningSeriesForm({
                             id="description"
                             value={value.description}
                             onChange={(event) => onChange('description', event.target.value)}
-                            placeholder="Describe the purpose of this learning series and how it should be used."
+                            placeholder="Describe the purpose of this learning program and how it should be used."
                             rows={5}
                         />
                     </div>
@@ -242,11 +243,13 @@ export function LearningSeriesForm({
             </Card>
 
             <div className="flex justify-end gap-3">
-                <Link href={backHref}>
-                    <Button type="button" variant="outline">
-                        Cancel
-                    </Button>
-                </Link>
+                {!embedded ? (
+                    <Link href={backHref}>
+                        <Button type="button" variant="outline">
+                            Cancel
+                        </Button>
+                    </Link>
+                ) : null}
                 <Button type="submit" disabled={loading}>
                     {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                     {submitLabel}

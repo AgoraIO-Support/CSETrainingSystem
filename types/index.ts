@@ -40,6 +40,7 @@ export interface SmeWorkspaceSummary {
         topic: string | null
         misses: number
         answered: number
+        domainId: string | null
         domainName: string | null
     }>
     learnerGaps: Array<{
@@ -53,6 +54,48 @@ export interface SmeWorkspaceSummary {
         lastSubmittedAt: string | Date | null
     }>
 }
+
+export type SmeLearnerGapDrilldown =
+    | {
+        kind: 'topic'
+        topic: string
+        domain: { id: string; name: string }
+        misses: number
+        answered: number
+        examples: Array<{
+            attemptId: string
+            examId: string
+            examTitle: string
+            userId: string
+            learnerName: string
+            learnerEmail: string
+            question: string
+            answer: string | null
+            selectedOption: number | null
+            correctAnswer: string | null
+            explanation: string | null
+            submittedAt: string | Date | null
+        }>
+    }
+    | {
+        kind: 'learner'
+        learner: { id: string; name: string; email: string }
+        attempts: Array<{
+            id: string
+            examId: string
+            examTitle: string
+            attemptNumber: number
+            submittedAt: string | Date | null
+            percentageScore: number | null
+            passed: boolean | null
+        }>
+        weakTopics: Array<{
+            topic: string
+            domainName: string | null
+            misses: number
+            answered: number
+        }>
+    }
 
 export interface SmeBadgeLadderOverview {
     domains: Array<{
@@ -148,6 +191,7 @@ export interface AdminAnalyticsSummary {
         userId: string
         name: string
         email: string
+        role: 'USER' | 'SME' | 'ADMIN'
         status: 'ACTIVE' | 'SUSPENDED' | 'DELETED'
         lastLoginAt: string | Date | null
         enrollmentCount: number
@@ -213,6 +257,7 @@ export interface TrainingOpsBridge {
         badgeMilestones: number | null
         badgeAwards: number | null
         starAwards: number | null
+        totalStars: number | null
         certificateExams: Array<{
             examId: string
             title: string
@@ -350,6 +395,28 @@ export interface ProductDomainEffectivenessSummary {
     } | null
 }
 
+export interface ProductDomainEffectivenessAttempt {
+    id: string
+    attemptNumber: number
+    status: 'GRADED'
+    startedAt: string | Date
+    submittedAt?: string | Date | null
+    rawScore?: number | null
+    percentageScore?: number | null
+    passed: boolean | null
+    user: {
+        id: string
+        name: string
+        email: string
+    }
+    exam: {
+        id: string
+        title: string
+        totalScore: number
+        passingScore: number
+    }
+}
+
 export type TrainingOpsLearnerRiskStatus = 'ON_TRACK' | 'WATCH' | 'AT_RISK' | 'NO_ASSIGNMENT'
 export type TrainingOpsReportRange = '30d' | '90d' | '180d' | '365d' | 'ytd' | 'all'
 
@@ -417,6 +484,7 @@ export interface TrainingOpsAdminReport {
         userId: string
         name: string
         email: string
+        role: 'USER' | 'SME' | 'ADMIN'
         department: string | null
         title: string | null
         lastActivityAt: string | Date | null
@@ -425,6 +493,7 @@ export interface TrainingOpsAdminReport {
         averageCourseProgress: number
         examInvitations: number
         examAttempts: number
+        examsAttempted: number
         gradedAttempts: number
         passedAttempts: number
         failedAttempts: number
@@ -442,10 +511,16 @@ export interface TrainingOpsAdminReport {
         userId: string
         name: string
         email: string
+        role: 'USER' | 'SME' | 'ADMIN'
+        riskStatus: TrainingOpsLearnerRiskStatus
         reason: string
         overdueExams: number
         retakeNeeded: number
+        courseAssigned: number
         averageCourseProgress: number
+        examInvitations: number
+        examsAttempted: number
+        gradedAttempts: number
         passRate: number
         lastActivityAt: string | Date | null
     }>

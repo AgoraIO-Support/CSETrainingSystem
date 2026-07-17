@@ -34,6 +34,8 @@
         "cleanup:test-data:direct": "tsx scripts/cleanup-test-data.ts",
         "cleanup:test-data:direct:apply": "tsx scripts/cleanup-test-data.ts --scope=all --apply --confirm=WIPE_LOCAL_TEST_DATA",
         "audit:randomized-mc-attempts": "tsx scripts/audit-randomized-multiple-choice-attempts.ts",
+        "rewards:reconcile": "tsx scripts/reconcile-training-ops-rewards.ts",
+        "rewards:reconcile:apply": "tsx scripts/reconcile-training-ops-rewards.ts --apply --confirm=BACKFILL_TRAINING_OPS_REWARDS",
         "test:podman": "bash scripts/podman/test.sh"
     },
     "dependencies": {

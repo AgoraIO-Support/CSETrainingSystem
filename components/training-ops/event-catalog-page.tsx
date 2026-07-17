@@ -11,7 +11,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ApiClient } from '@/lib/api-client'
 import type { LearningEventSummary, LearningSeriesSummary } from '@/types'
-import { ArrowLeft, CalendarDays, Loader2, Plus } from 'lucide-react'
+import { CalendarDays, Loader2, Plus } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 
 const EMPTY_OPTION = '__all__'
 
@@ -148,11 +149,7 @@ function EventCatalogPageContent({ view }: EventCatalogPageProps) {
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <div className={isAdmin ? 'flex items-center gap-4' : ''}>
                         {isAdmin ? (
-                            <Link href="/admin/training-ops">
-                                <Button variant="ghost" size="icon">
-                                    <ArrowLeft className="h-4 w-4" />
-                                </Button>
-                            </Link>
+                            <BackButton fallbackHref="/admin/training-ops" />
                         ) : null}
                         <div>
                             <h1 className="text-3xl font-bold">
@@ -188,7 +185,7 @@ function EventCatalogPageContent({ view }: EventCatalogPageProps) {
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    <Card><CardHeader className="pb-2"><CardDescription>Total Events</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.total}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">{isAdmin ? 'Current list after global filters are applied.' : 'Scoped to your owned domains and series.'}</p></CardContent></Card>
+                    <Card><CardHeader className="pb-2"><CardDescription>Total Events</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.total}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">{isAdmin ? 'Current list after global filters are applied.' : 'Scoped to your owned Domains and Programs.'}</p></CardContent></Card>
                     <Card><CardHeader className="pb-2"><CardDescription>Scheduled</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.scheduled}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">{isAdmin ? 'Events with a fixed calendar slot.' : 'Upcoming events already on the calendar.'}</p></CardContent></Card>
                     <Card><CardHeader className="pb-2"><CardDescription>Linked Exams</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.linkedExams}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">{isAdmin ? 'Existing exams currently attached to events.' : 'Existing exams attached to your events.'}</p></CardContent></Card>
                     <Card><CardHeader className="pb-2"><CardDescription>Performance Events</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.performanceEvents}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">{isAdmin ? 'Sessions that count toward formal assessment.' : 'Sessions mapped to formal performance tracking.'}</p></CardContent></Card>
@@ -197,10 +194,10 @@ function EventCatalogPageContent({ view }: EventCatalogPageProps) {
                 {selectedSeries ? (
                     <div className="flex flex-wrap items-center gap-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
                         <span>
-                            Showing events for series: <span className="font-semibold">{selectedSeries.name}</span>
+                            Showing Events for Program: <span className="font-semibold">{selectedSeries.name}</span>
                         </span>
                         <Button variant="outline" size="sm" onClick={() => updateSeriesFilter(EMPTY_OPTION)}>
-                            Clear Series Filter
+                            Clear Program Filter
                         </Button>
                     </div>
                 ) : null}
@@ -208,7 +205,7 @@ function EventCatalogPageContent({ view }: EventCatalogPageProps) {
                 <Card>
                     <CardHeader>
                         <CardTitle>Filters</CardTitle>
-                        <CardDescription>Search by title or narrow the list by series, status, and format.</CardDescription>
+                        <CardDescription>Search by title or narrow the list by Program, status, and format.</CardDescription>
                     </CardHeader>
                     <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                         <div className="space-y-2">
@@ -221,7 +218,7 @@ function EventCatalogPageContent({ view }: EventCatalogPageProps) {
                             />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="seriesId">Series</Label>
+                            <Label htmlFor="seriesId">Learning Program</Label>
                             <select
                                 id="seriesId"
                                 className="h-10 w-full rounded-md border bg-background px-3"
@@ -229,7 +226,7 @@ function EventCatalogPageContent({ view }: EventCatalogPageProps) {
                                 onChange={(e) => updateSeriesFilter(e.target.value)}
                                 disabled={seriesLoading}
                             >
-                                <option value={EMPTY_OPTION}>All series</option>
+                                <option value={EMPTY_OPTION}>All Programs</option>
                                 {seriesOptions.map((series) => (
                                     <option key={series.id} value={series.id}>
                                         {series.name}
@@ -329,7 +326,7 @@ function EventCatalogPageContent({ view }: EventCatalogPageProps) {
                                                             <Link href={linkedSeriesHref} className="font-medium text-[#006688] hover:underline">
                                                                 {event.series?.name}
                                                             </Link>
-                                                        ) : 'No learning series'}
+                                                        ) : 'No Learning Program'}
                                                         {event.host ? ` · Host ${event.host.name}` : ' · No host assigned'}
                                                     </p>
                                                 </div>

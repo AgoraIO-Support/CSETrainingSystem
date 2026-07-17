@@ -21,7 +21,7 @@ export const GET = withAdminAuth(async (_req: NextRequest, _user, context: Route
                 success: false,
                 error: {
                     code: 'SYSTEM_001',
-                    message: 'Failed to load learning series',
+                    message: 'Failed to load Learning Program',
                 },
             },
             { status: 500 }
@@ -45,14 +45,14 @@ export const PATCH = withAdminAuth(async (req: NextRequest, _user, context: Rout
 
         const message =
             error instanceof Error && error.message === 'LEARNING_SERIES_NOT_FOUND'
-                ? 'Learning series no longer exists'
+                ? 'Learning Program no longer exists'
                 : error instanceof Error && error.message === 'LEARNING_SERIES_SLUG_EXISTS'
-                    ? 'A learning series with this slug already exists'
+                    ? 'A Learning Program with this slug already exists'
                     : error instanceof Error && error.message === 'PRODUCT_DOMAIN_NOT_FOUND'
                         ? 'Selected product domain no longer exists'
                         : error instanceof Error && error.message === 'SERIES_OWNER_NOT_FOUND'
-                            ? 'Series owner must be an active user'
-                            : 'Failed to update learning series'
+                            ? 'Program owner must be an active user'
+                            : 'Failed to update Learning Program'
 
         return NextResponse.json(
             {

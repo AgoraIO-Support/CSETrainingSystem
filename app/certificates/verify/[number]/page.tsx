@@ -13,10 +13,10 @@ import {
     Calendar,
     User,
     FileText,
-    ArrowLeft,
     Shield,
     AlertTriangle,
 } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 import Link from 'next/link'
 
 interface VerificationResult {
@@ -85,10 +85,14 @@ export default function CertificateVerifyResultPage({ params }: PageProps) {
             <main className="container mx-auto px-4 py-12">
                 <div className="max-w-2xl mx-auto">
                     {/* Back Link */}
-                    <Link href="/certificates/verify" className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6">
-                        <ArrowLeft className="h-4 w-4" />
+                    <BackButton
+                        fallbackHref="/certificates/verify"
+                        variant="link"
+                        size="default"
+                        className="mb-6 h-auto px-0 text-muted-foreground hover:text-foreground"
+                    >
                         Back to Verification
-                    </Link>
+                    </BackButton>
 
                     {/* Loading State */}
                     {loading && (
@@ -233,12 +237,9 @@ export default function CertificateVerifyResultPage({ params }: PageProps) {
                                         Please check the certificate number and try again. If you believe this is an error,
                                         please contact support.
                                     </p>
-                                    <Link href="/certificates/verify">
-                                        <Button>
-                                            <ArrowLeft className="h-4 w-4 mr-2" />
-                                            Try Another Number
-                                        </Button>
-                                    </Link>
+                                    <BackButton fallbackHref="/certificates/verify">
+                                        Try Another Number
+                                    </BackButton>
                                 </div>
                             </CardContent>
                         </Card>

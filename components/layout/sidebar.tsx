@@ -45,7 +45,6 @@ const adminNavGroups: NavGroup[] = [
         items: [
             { title: 'Admin Home', href: '/admin', icon: LayoutDashboard },
             { title: 'Team Learning Health', href: '/admin/training-ops', icon: CalendarClock },
-            { title: 'Action Center', href: '/admin/training-ops#action-center', icon: FileText },
         ],
     },
     {

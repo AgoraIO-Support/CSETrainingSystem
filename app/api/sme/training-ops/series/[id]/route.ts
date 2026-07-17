@@ -24,10 +24,10 @@ export const GET = withSmeOrAdminAuth(async (_req: NextRequest, user, context: R
                 code: 'SYSTEM_001',
                 message:
                     error instanceof Error && error.message === 'LEARNING_SERIES_NOT_FOUND'
-                        ? 'Learning series no longer exists'
+                        ? 'Learning Program no longer exists'
                         : error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN'
-                            ? 'You do not have access to this learning series'
-                            : 'Failed to load SME learning series',
+                            ? 'You do not have access to this Learning Program'
+                            : 'Failed to load SME Learning Program',
             },
         }, { status: error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN' ? 403 : 500 })
     }
@@ -60,16 +60,16 @@ export const PATCH = withSmeOrAdminAuth(async (req: NextRequest, user, context: 
 
         const message =
             error instanceof Error && error.message === 'LEARNING_SERIES_NOT_FOUND'
-                ? 'Learning series no longer exists'
+                ? 'Learning Program no longer exists'
                 : error instanceof Error && error.message === 'LEARNING_SERIES_SLUG_EXISTS'
-                    ? 'A learning series with this slug already exists'
+                    ? 'A Learning Program with this slug already exists'
                     : error instanceof Error && error.message === 'PRODUCT_DOMAIN_NOT_FOUND'
                         ? 'Selected product domain no longer exists'
                         : error instanceof Error && error.message === 'SME_SERIES_DOMAIN_REQUIRED'
-                            ? 'SME series must remain under a domain in your scope.'
+                            ? 'SME Program must remain under a Domain in your scope.'
                             : error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN'
-                                ? 'You can only update series within your SME scope.'
-                                : 'Failed to update SME learning series'
+                                ? 'You can only update Programs within your SME scope.'
+                                : 'Failed to update SME Learning Program'
 
         return NextResponse.json({
             success: false,

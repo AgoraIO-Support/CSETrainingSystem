@@ -19,7 +19,7 @@ export const GET = withSmeOrAdminAuth(async (_req, user) => {
             success: false,
             error: {
                 code: 'SYSTEM_001',
-                message: 'Failed to load SME learning series',
+                message: 'Failed to load SME Learning Programs',
             },
         }, { status: error instanceof Error && error.message === 'TRAINING_OPS_FORBIDDEN' ? 403 : 500 })
     }
@@ -54,7 +54,7 @@ export const POST = withSmeOrAdminAuth(async (req: NextRequest, user) => {
                 success: false,
                 error: {
                     code: 'SME_001',
-                    message: 'SME series must be created under a domain in your scope.',
+                    message: 'SME Programs must be created under a Domain in your scope.',
                 },
             }, { status: 400 })
         }
@@ -64,7 +64,7 @@ export const POST = withSmeOrAdminAuth(async (req: NextRequest, user) => {
                 success: false,
                 error: {
                     code: 'AUTH_003',
-                    message: 'You can only create series for domains in your SME scope.',
+                    message: 'You can only create Programs for Domains in your SME scope.',
                 },
             }, { status: 403 })
         }
@@ -75,10 +75,10 @@ export const POST = withSmeOrAdminAuth(async (req: NextRequest, user) => {
                 code: 'SYSTEM_001',
                 message:
                     error instanceof Error && error.message === 'LEARNING_SERIES_SLUG_EXISTS'
-                        ? 'A learning series with this slug already exists'
+                        ? 'A Learning Program with this slug already exists'
                         : error instanceof Error && error.message === 'PRODUCT_DOMAIN_NOT_FOUND'
                             ? 'Selected product domain no longer exists'
-                            : 'Failed to create SME learning series',
+                            : 'Failed to create SME Learning Program',
             },
         }, { status: 500 })
     }

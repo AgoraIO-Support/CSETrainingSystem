@@ -11,6 +11,7 @@ export interface AnalyticsSummary {
         userId: string
         name: string
         email: string
+        role: 'USER' | 'SME' | 'ADMIN'
         status: 'ACTIVE' | 'SUSPENDED' | 'DELETED'
         lastLoginAt: Date | null
         enrollmentCount: number
@@ -210,11 +211,11 @@ export class AnalyticsService {
             prisma.enrollment.count(),
             prisma.enrollment.count({ where: { status: 'COMPLETED' } }),
             prisma.user.findMany({
-                where: { role: 'USER' },
                 select: {
                     id: true,
                     name: true,
                     email: true,
+                    role: true,
                     status: true,
                     lastLoginAt: true,
                     enrollments: {
@@ -270,6 +271,7 @@ export class AnalyticsService {
                     userId: user.id,
                     name: user.name,
                     email: user.email,
+                    role: user.role,
                     status: user.status,
                     lastLoginAt: user.lastLoginAt,
                     enrollmentCount,

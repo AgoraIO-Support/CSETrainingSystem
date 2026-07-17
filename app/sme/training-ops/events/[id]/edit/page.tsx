@@ -3,7 +3,8 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, ChevronRight, Loader2, Save } from 'lucide-react'
+import { ChevronRight, Loader2, Save } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -238,7 +239,7 @@ function EditSmeLearningEventPageContent() {
                             </Link>
                             <ChevronRight className="h-4 w-4" />
                             <Link href="/sme/training-ops/series" className="transition-colors hover:text-foreground">
-                                My Series
+                                My Programs
                             </Link>
                             <ChevronRight className="h-4 w-4" />
                             <Link href={`/sme/training-ops/series/${breadcrumbSeries.id}`} className="transition-colors hover:text-foreground">
@@ -262,11 +263,7 @@ function EditSmeLearningEventPageContent() {
                 </nav>
 
                 <div className="flex items-center gap-4">
-                    <Link href={detailHref}>
-                        <Button variant="ghost" size="icon">
-                            <ArrowLeft className="h-4 w-4" />
-                        </Button>
-                    </Link>
+                    <BackButton fallbackHref={detailHref} />
                     <div>
                         <h1 className="text-3xl font-bold">Edit Learning Event</h1>
                         <p className="mt-1 text-muted-foreground">
@@ -279,7 +276,7 @@ function EditSmeLearningEventPageContent() {
                     <Card>
                         <CardHeader>
                             <CardTitle>Event Basics</CardTitle>
-                            <CardDescription>Update event title, series alignment, and presenter details.</CardDescription>
+                            <CardDescription>Update Event title, Program alignment, and presenter details.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             {error ? (
@@ -309,7 +306,7 @@ function EditSmeLearningEventPageContent() {
                                         </p>
                                     ) : (
                                         <p className="text-xs text-muted-foreground">
-                                            Select a learning series to narrow this list to the allowed session formats for that program type.
+                                            Select a Learning Program to narrow this list to the allowed session formats for that Program type.
                                         </p>
                                     )}
                                 </div>
@@ -345,9 +342,9 @@ function EditSmeLearningEventPageContent() {
                                     </select>
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="seriesId">Learning Series</Label>
+                                    <Label htmlFor="seriesId">Learning Program</Label>
                                     <select id="seriesId" className="h-10 w-full rounded-md border bg-background px-3" value={form.seriesId || EMPTY_OPTION} onChange={(e) => handleSeriesChange(e.target.value)} disabled={loadingOptions}>
-                                        <option value={EMPTY_OPTION}>No series assigned</option>
+                                        <option value={EMPTY_OPTION}>No Program assigned</option>
                                         {filteredSeries.map((item) => (
                                             <option key={item.id} value={item.id}>{item.name}</option>
                                         ))}

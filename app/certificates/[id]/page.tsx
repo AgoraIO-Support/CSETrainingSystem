@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ApiClient } from '@/lib/api-client'
 import {
-    ArrowLeft,
     Loader2,
     Award,
     Share2,
@@ -21,6 +20,7 @@ import {
     XCircle,
     ExternalLink,
 } from 'lucide-react'
+import { BackButton } from '@/components/ui/back-button'
 import Link from 'next/link'
 
 interface Certificate {
@@ -123,11 +123,7 @@ export default function CertificateDetailPage({ params }: PageProps) {
         <DashboardLayout>
             <div className="space-y-6 max-w-4xl mx-auto">
                 <div className="flex items-center gap-4">
-                    <Link href="/certificates">
-                        <Button variant="ghost" size="icon">
-                            <ArrowLeft className="h-4 w-4" />
-                        </Button>
-                    </Link>
+                    <BackButton fallbackHref="/certificates" />
                     <div>
                         <h1 className="text-3xl font-bold">Certificate Details</h1>
                         <p className="text-muted-foreground mt-1">{certificate.examTitle}</p>
@@ -310,12 +306,9 @@ export default function CertificateDetailPage({ params }: PageProps) {
 
                 {/* Back Button */}
                 <div className="flex justify-center pt-4">
-                    <Link href="/certificates">
-                        <Button variant="outline" size="lg">
-                            <ArrowLeft className="h-4 w-4 mr-2" />
-                            Back to Certificates
-                        </Button>
-                    </Link>
+                    <BackButton fallbackHref="/certificates" variant="outline" size="lg">
+                        Back to Certificates
+                    </BackButton>
                 </div>
             </div>
         </DashboardLayout>
