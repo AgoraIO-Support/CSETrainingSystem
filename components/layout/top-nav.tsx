@@ -1,6 +1,6 @@
 'use client'
 
-import { LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { LogOut, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import type { AuthUser } from '@/lib/auth-middleware'
@@ -15,15 +15,27 @@ interface TopNavProps {
     onLogout: () => void
     showSidebar?: boolean
     onToggleSidebar?: () => void
+    onOpenMobileNav?: () => void
 }
 
-export function TopNav({ user, onLogout, showSidebar = true, onToggleSidebar }: TopNavProps) {
+export function TopNav({ user, onLogout, showSidebar = true, onToggleSidebar, onOpenMobileNav }: TopNavProps) {
     const displayName = user?.name || user?.email || 'User'
     const initials = displayName.charAt(0)?.toUpperCase() || 'U'
 
     return (
         <div className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-slate-200/70 bg-white/80 px-4 shadow-sm shadow-[#006688]/5 backdrop-blur-xl md:px-6 xl:px-8">
             <div className="flex items-center gap-3">
+                {onOpenMobileNav ? (
+                    <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={onOpenMobileNav}
+                        className="border-slate-200 bg-slate-50 text-slate-700 hover:border-[#b8ecff] hover:bg-[#f8fdff] hover:text-[#006688] lg:hidden"
+                        aria-label="Open navigation"
+                    >
+                        <Menu className="h-4 w-4" />
+                    </Button>
+                ) : null}
                 {onToggleSidebar ? (
                     <Button
                         variant="outline"

@@ -62,12 +62,12 @@ export function SeriesCatalogPage({ view }: SeriesCatalogPageProps) {
                         ) : null}
                         <div>
                             <h1 className="text-3xl font-bold">
-                                {isAdmin ? 'Series Governance' : 'My Series'}
+                                Learning Programs
                             </h1>
                             <p className="mt-1 text-muted-foreground">
                                 {isAdmin
-                                    ? 'Manage reusable training programs across all domains, including ownership, cadence, and schedulable state.'
-                                    : 'Training series inside your SME scope, including cadence and downstream event or exam activity.'}
+                                    ? 'Manage reusable learning programs across all domains, including ownership, cadence, and schedulable state.'
+                                    : 'Programs in your SME scope, including cadence and downstream event or exam activity.'}
                             </p>
                         </div>
                     </div>
@@ -86,14 +86,14 @@ export function SeriesCatalogPage({ view }: SeriesCatalogPageProps) {
                                 <Link href="/admin/training-ops/series/new">
                                     <Button>
                                         <Plus className="mr-2 h-4 w-4" />
-                                        Create Series
+                                        Create Program
                                     </Button>
                                 </Link>
                             </>
                         ) : (
                             <>
                                 <Link href="/sme/training-ops/series/new">
-                                    <Button>Create Series</Button>
+                                    <Button>Create Program</Button>
                                 </Link>
                                 <Link href="/sme/training-ops/events/new">
                                     <Button variant="outline">Create Event</Button>
@@ -107,38 +107,38 @@ export function SeriesCatalogPage({ view }: SeriesCatalogPageProps) {
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
-                    <Card><CardHeader className="pb-2"><CardDescription>Total</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.total}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">{isAdmin ? 'Configured learning series.' : 'Series in your SME scope.'}</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2"><CardDescription>Active</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.active}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">{isAdmin ? 'Available for current scheduling.' : 'Currently schedulable series.'}</p></CardContent></Card>
+                    <Card><CardHeader className="pb-2"><CardDescription>Total</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.total}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Configured learning programs.</p></CardContent></Card>
+                    <Card><CardHeader className="pb-2"><CardDescription>Active</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.active}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Available for current scheduling.</p></CardContent></Card>
                 </div>
 
                 {isAdmin ? (
                     <Card>
                         <CardHeader>
-                            <CardTitle>Search Series</CardTitle>
-                            <CardDescription>Search by series name, slug, or description.</CardDescription>
+                            <CardTitle>Search Programs</CardTitle>
+                            <CardDescription>Search by program name, slug, or description.</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search learning series..." />
+                            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search learning programs..." />
                         </CardContent>
                     </Card>
                 ) : null}
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>{isAdmin ? 'All Series' : 'Scoped Series'}</CardTitle>
+                        <CardTitle>{isAdmin ? 'All Programs' : 'Scoped Programs'}</CardTitle>
                         <CardDescription>
                             {isAdmin
-                                ? 'Open a learning series to govern cadence, owner assignment, and downstream event or exam creation.'
-                                : 'Use these series as the base for weekly drills, case studies, release readiness work, and final assessments.'}
+                                ? 'Open a learning program to govern cadence, owner assignment, and downstream event or exam creation.'
+                                : 'Use programs as reusable operating templates for weekly drills, case studies, release readiness work, and final assessments.'}
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-3">
                         {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
                         {loading ? (
-                            <div className="flex h-32 items-center justify-center text-muted-foreground"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Loading learning series...</div>
+                            <div className="flex h-32 items-center justify-center text-muted-foreground"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Loading learning programs...</div>
                         ) : series.length === 0 ? (
                             <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-                                {isAdmin ? 'No learning series found.' : 'No learning series are currently assigned to your SME scope.'}
+                                {isAdmin ? 'No learning programs found.' : 'No learning programs are currently assigned to your SME scope.'}
                             </div>
                         ) : (
                             series.map((item) => (
@@ -178,10 +178,10 @@ export function SeriesCatalogPage({ view }: SeriesCatalogPageProps) {
                                             ) : (
                                                 <>
                                                     <Link href={`/sme/training-ops/series/${item.id}`}>
-                                                        <Button variant="outline">Open Series</Button>
+                                                        <Button variant="outline">Open Program</Button>
                                                     </Link>
                                                     <Link href={`/sme/training-ops/series/${item.id}/edit`}>
-                                                        <Button variant="outline">Edit Series</Button>
+                                                        <Button variant="outline">Edit Program</Button>
                                                     </Link>
                                                     <Link href={`/sme/training-ops/events?seriesId=${item.id}`}>
                                                         <Button variant="outline">View Events</Button>

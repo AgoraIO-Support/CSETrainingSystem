@@ -526,6 +526,12 @@ export function AIChatPanel({
                             placeholder="Ask anything about this lesson..."
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key !== 'Enter' || e.shiftKey) return
+                                e.preventDefault()
+                                if (!input.trim() || chatDisabled || isAssistantTyping) return
+                                void handleSend()
+                            }}
                             rows={2}
                             className="max-h-40 min-h-[44px] flex-1 resize-y"
                             disabled={chatDisabled}

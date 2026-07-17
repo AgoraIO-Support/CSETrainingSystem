@@ -110,7 +110,7 @@ function EventCatalogPageContent({ view }: EventCatalogPageProps) {
     )
 
     const stats = useMemo(() => {
-        const scheduled = events.filter((event) => event.status === 'SCHEDULED').length
+        const scheduled = events.filter((event) => event.status === 'SCHEDULED' && event.scheduledAt).length
         const linkedExams = events.reduce((count, event) => count + event.exams.length, 0)
         const performanceEvents = events.filter((event) => event.countsTowardPerformance).length
 

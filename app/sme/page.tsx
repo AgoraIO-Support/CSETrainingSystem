@@ -6,26 +6,47 @@ import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
+import { OpsHero, SectionHeading, SignalCard } from '@/components/training-ops/overview-primitives'
 import { ApiClient } from '@/lib/api-client'
-import type { ProductDomainEffectivenessSummary, SmeBadgeLadderOverview, SmeWorkspaceSummary } from '@/types'
-import { AlertTriangle, Award, CalendarClock, GraduationCap, Loader2, TrendingUp, Users } from 'lucide-react'
+import type { ProductDomainEffectivenessSummary, SmeWorkspaceSummary } from '@/types'
+import {
+    AlertTriangle,
+    BarChart3,
+    BookOpen,
+    CalendarClock,
+    FileText,
+    GraduationCap,
+    Loader2,
+    Target,
+    Users,
+} from 'lucide-react'
+
+const formatDateTime = (value: string | Date | null | undefined) => {
+    if (!value) return 'Date not set'
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return 'Date not set'
+    return date.toLocaleString()
+}
+
+const effectivenessTone: Record<ProductDomainEffectivenessSummary['status'], string> = {
+    ON_TRACK: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    MONITOR: 'border-amber-200 bg-amber-50 text-amber-700',
+    AT_RISK: 'border-rose-200 bg-rose-50 text-rose-700',
+    INSUFFICIENT_DATA: 'border-slate-200 bg-slate-100 text-slate-700',
+}
 
 export default function SmeDashboardPage() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [overview, setOverview] = useState<SmeWorkspaceSummary | null>(null)
-    const [badgeOverview, setBadgeOverview] = useState<SmeBadgeLadderOverview | null>(null)
 
     useEffect(() => {
         const loadData = async () => {
             try {
                 setLoading(true)
-                const [overviewResponse, badgeResponse] = await Promise.all([
-                    ApiClient.getSmeTrainingOpsOverview(),
-                    ApiClient.getSmeTrainingOpsBadges(),
-                ])
-                setOverview(overviewResponse.data)
-                setBadgeOverview(badgeResponse.data)
+                const response = await ApiClient.getSmeTrainingOpsOverview()
+                setOverview(response.data)
                 setError(null)
             } catch (err) {
                 setError(err instanceof Error ? err.message : 'Failed to load SME workspace')
@@ -42,378 +63,292 @@ export default function SmeDashboardPage() {
         const series = overview?.series ?? []
         const events = overview?.events ?? []
         const effectiveness = overview?.effectiveness ?? []
+        const meaningfulLearnerGaps = (overview?.learnerGaps ?? []).filter((learner) => learner.passRate < 80)
 
         return {
             domains: domains.length,
-            series: series.length,
-            events: events.length,
-            scheduledEvents: events.filter((item) => item.status === 'SCHEDULED').length,
+            programs: series.filter((item) => item.isActive).length,
+            scheduledEvents: events.filter((item) => item.status === 'SCHEDULED' && item.scheduledAt).length,
+            needsScheduling: events.filter((item) => item.status === 'SCHEDULED' && !item.scheduledAt).length,
             atRiskDomains: effectiveness.filter((item) => item.status === 'AT_RISK').length,
-            weakTopics: overview?.weakTopics.length ?? 0,
-            learnerGaps: overview?.learnerGaps.length ?? 0,
+            learnerGaps: meaningfulLearnerGaps.length,
+            attentionItems:
+                events.filter((item) => item.status === 'SCHEDULED' && !item.scheduledAt).length +
+                meaningfulLearnerGaps.length +
+                effectiveness.filter((item) => item.status === 'AT_RISK').length,
         }
     }, [overview])
 
-    const spotlightDomains = (overview?.effectiveness ?? []).slice(0, 4)
-    const badgeLadders = badgeOverview?.domainLadders ?? []
-    const badgeUnlocks = badgeOverview?.recentUnlocks ?? []
-    const recentEvents = (overview?.events ?? []).slice(0, 6)
-    const weakTopics = overview?.weakTopics ?? []
-    const learnerGaps = overview?.learnerGaps ?? []
-    const badgeSummary = useMemo(() => {
-        const ladders = badgeOverview?.domainLadders ?? []
-
-        return {
-            domains: ladders.length,
-            milestones: ladders.reduce((sum, ladder) => sum + ladder.milestones.length, 0),
-            unlocks: ladders.reduce((sum, ladder) => sum + ladder.totalUnlocks, 0),
-            learners: ladders.reduce((sum, ladder) => sum + ladder.recognizedLearners, 0),
-        }
-    }, [badgeOverview])
+    const domainHealth = overview?.effectiveness ?? []
+    const recentEvents = (overview?.events ?? []).slice(0, 5)
+    const activePrograms = (overview?.series ?? []).filter((item) => item.isActive).slice(0, 4)
+    const weakTopics = (overview?.weakTopics ?? []).filter((topic) => topic.answered > 0).slice(0, 5)
+    const learnerGaps = (overview?.learnerGaps ?? []).filter((learner) => learner.passRate < 80).slice(0, 5)
 
     return (
         <DashboardLayout>
-            <div className="space-y-6">
-                <div className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
-                    <Card className="border border-slate-200 bg-white shadow-sm">
-                        <CardContent className="space-y-5 p-7 md:p-8">
-                            <Badge className="w-fit rounded-full border border-[#b8ecff] bg-[#effbff] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#006688]">
-                                SME Workspace
-                            </Badge>
-                            <div className="space-y-3">
-                                <h1 className="text-3xl font-semibold tracking-[-0.04em] text-slate-950 md:text-4xl">
-                                    Manage your domains, schedule training, and monitor learning impact
-                                </h1>
-                                <p className="max-w-3xl text-sm leading-7 text-slate-600 md:text-base">
-                                    This workspace is scoped to the product domains and learning series you own. Use it to
-                                    keep cadence on track, organize events, and watch pass-rate movement in the areas you support.
-                                </p>
-                            </div>
-                            <div className="flex flex-wrap gap-3">
-                                <Link href="/sme/training-ops/domains"><Button variant="outline">My Domains</Button></Link>
-                                <Link href="/sme/training-ops/series"><Button variant="outline">My Series</Button></Link>
-                                <Link href="#domain-badges"><Button variant="outline">Domain Badge Overview</Button></Link>
-                                <Link href="/sme/training-ops/events"><Button>My Events</Button></Link>
-                                <Link href="/sme/training-ops/effectiveness"><Button variant="outline">Effectiveness</Button></Link>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card className="border border-slate-200 bg-white shadow-sm">
-                        <CardHeader>
-                            <CardTitle className="text-xl text-slate-950">Operating Goals</CardTitle>
-                            <CardDescription className="text-slate-500">
-                                Keep these three signals visible every week.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-3 text-sm text-slate-600">
-                            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                <p className="font-semibold text-slate-900">Keep event cadence</p>
-                                <p className="mt-1">Maintain weekly or release-driven learning sessions for your owned products.</p>
-                            </div>
-                            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                <p className="font-semibold text-slate-900">Move pass rates</p>
-                                <p className="mt-1">Use case study and knowledge sharing sessions to improve effectiveness over time.</p>
-                            </div>
-                            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                <p className="font-semibold text-slate-900">Close knowledge gaps</p>
-                                <p className="mt-1">Watch weak topics and struggling learners before they show up in formal assessments.</p>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
+            <div className="space-y-8 pb-8">
+                <OpsHero
+                    eyebrow="SME · Training Ops"
+                    title="Operate your learning scope from one clear workspace."
+                    description="Keep programs moving, resolve unscheduled sessions, and act on capability gaps across the product domains you own."
+                    scope={loading ? 'Loading owned domains' : `${summary.domains} owned domains`}
+                    meta="Ownership-scoped view"
+                    actions={(
+                        <>
+                            <Link href="/sme/training-ops/events/new">
+                                <Button className="bg-[#00b7df] text-[#05202a] hover:bg-[#67dcf3]"><CalendarClock className="mr-2 h-4 w-4" />Create event</Button>
+                            </Link>
+                            <Link href="/sme/training-ops/series">
+                                <Button variant="outline" className="border-white/20 bg-white/10 text-white hover:bg-white hover:text-slate-950"><GraduationCap className="mr-2 h-4 w-4" />Learning programs</Button>
+                            </Link>
+                        </>
+                    )}
+                />
 
                 {error ? (
                     <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-                        {error}
+                        SME workspace data is unavailable: {error}
                     </div>
                 ) : null}
 
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    <Card><CardHeader className="pb-2"><CardDescription>Owned Domains</CardDescription><CardTitle className="text-3xl">{loading ? '...' : summary.domains}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Domains currently in your SME scope.</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2"><CardDescription>Active Series</CardDescription><CardTitle className="text-3xl">{loading ? '...' : summary.series}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Series you own directly or inherit through domain ownership.</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2"><CardDescription>Scheduled Events</CardDescription><CardTitle className="text-3xl">{loading ? '...' : summary.scheduledEvents}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Upcoming sessions already placed on the calendar.</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2"><CardDescription>At-Risk Domains</CardDescription><CardTitle className="text-3xl">{loading ? '...' : summary.atRiskDomains}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Domains currently below challenge threshold.</p></CardContent></Card>
-                </div>
-
-                <div className="grid gap-6 xl:grid-cols-[1.08fr_0.92fr]">
-                    <Card className="border border-slate-200 bg-white shadow-sm">
-                        <CardHeader>
-                            <CardTitle className="text-2xl text-slate-950">My Domain Snapshot</CardTitle>
-                            <CardDescription className="text-slate-500">
-                                Effectiveness summary for the domains you directly influence.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            {loading ? (
-                                <div className="flex h-32 items-center justify-center text-muted-foreground">
-                                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                                    Loading workspace snapshot...
-                                </div>
-                            ) : spotlightDomains.length === 0 ? (
-                                <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-                                    No domains are currently assigned to your SME scope.
-                                </div>
-                            ) : (
-                                spotlightDomains.map((row: ProductDomainEffectivenessSummary) => (
-                                    <div key={row.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                        <div className="flex flex-wrap items-center justify-between gap-3">
-                                            <div>
-                                                <p className="font-semibold text-slate-950">{row.name}</p>
-                                                <p className="mt-1 text-sm text-slate-500">
-                                                    {row.track} · {row.kpiMode} · {row.gradedAttempts} graded attempts
-                                                </p>
-                                            </div>
-                                            <Badge variant="outline">{row.status.replaceAll('_', ' ')}</Badge>
-                                        </div>
-                                        <div className="mt-4 grid gap-3 md:grid-cols-3 text-sm">
-                                            <div>
-                                                <p className="text-slate-500">Current</p>
-                                                <p className="mt-1 text-lg font-semibold text-slate-950">{row.currentPassRate}%</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-slate-500">Baseline / Target</p>
-                                                <p className="mt-1 text-lg font-semibold text-slate-950">{row.baselinePassRate ?? '—'}% / {row.targetPassRate ?? '—'}%</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-slate-500">Delta</p>
-                                                <p className="mt-1 text-lg font-semibold text-slate-950">
-                                                    {row.deltaFromBaseline === null ? '—' : `${row.deltaFromBaseline > 0 ? '+' : ''}${row.deltaFromBaseline}%`}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
+                {loading || !overview ? (
+                    <Card className="border-slate-200 bg-white shadow-sm">
+                        <CardContent className="flex h-72 items-center justify-center text-slate-500">
+                            <Loader2 className="mr-2 h-5 w-5 animate-spin" />Loading your learning scope...
                         </CardContent>
                     </Card>
+                ) : (
+                    <>
+                        <section aria-label="SME operating signals" className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                            <SignalCard
+                                label="Owned domains"
+                                value={summary.domains}
+                                hint="Your governance and effectiveness scope."
+                                icon={Target}
+                            />
+                            <SignalCard
+                                label="Active programs"
+                                value={summary.programs}
+                                hint="Recurring or release-driven learning programs in your scope."
+                                icon={GraduationCap}
+                                tone="positive"
+                            />
+                            <SignalCard
+                                label="Calendar ready"
+                                value={summary.scheduledEvents}
+                                denominator={`${summary.needsScheduling} need dates`}
+                                hint="Only scheduled events with an actual date count as calendar ready."
+                                icon={CalendarClock}
+                                tone={summary.needsScheduling > 0 ? 'warning' : 'positive'}
+                            />
+                            <SignalCard
+                                label="Needs attention"
+                                value={summary.attentionItems}
+                                denominator={`${summary.atRiskDomains} domain risk`}
+                                hint={`${summary.learnerGaps} learners below the 80% watch threshold.`}
+                                icon={AlertTriangle}
+                                tone={summary.attentionItems > 0 ? 'risk' : 'positive'}
+                            />
+                        </section>
 
-                    <Card className="border border-slate-200 bg-white shadow-sm">
-                        <CardHeader>
-                            <CardTitle className="text-xl text-slate-950">Quick Actions</CardTitle>
-                            <CardDescription className="text-slate-500">
-                                Common SME actions for weekly execution.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="grid gap-3">
-                            <Link href="/sme/training-ops/domains"><Button variant="outline" className="w-full justify-start"><Users className="mr-2 h-4 w-4" />Open My Domains</Button></Link>
-                            <Link href="/sme/training-ops/series"><Button variant="outline" className="w-full justify-start"><GraduationCap className="mr-2 h-4 w-4" />Open My Series</Button></Link>
-                            <Link href="/sme/training-ops/badges/new"><Button variant="outline" className="w-full justify-start"><Award className="mr-2 h-4 w-4" />Create Domain Badge</Button></Link>
-                            <Link href="#domain-badges"><Button variant="outline" className="w-full justify-start"><Award className="mr-2 h-4 w-4" />Review Badge Overview</Button></Link>
-                            <Link href="/sme/training-ops/events/new"><Button className="w-full justify-start"><CalendarClock className="mr-2 h-4 w-4" />Create Learning Event</Button></Link>
-                            <Link href="/sme/training-ops/events"><Button variant="outline" className="w-full justify-start"><GraduationCap className="mr-2 h-4 w-4" />Review My Events</Button></Link>
-                            <Link href="/sme/training-ops/effectiveness"><Button variant="outline" className="w-full justify-start"><TrendingUp className="mr-2 h-4 w-4" />Open Effectiveness View</Button></Link>
-                        </CardContent>
-                    </Card>
-                </div>
+                        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-cyan-200 bg-cyan-50/70 px-5 py-4">
+                            <span className="mr-2 text-sm font-semibold text-slate-800">Current scope</span>
+                            {overview.domains.map((domain) => (
+                                <Badge key={domain.id} variant="outline" className="border-cyan-200 bg-white text-[#006688]">{domain.name}</Badge>
+                            ))}
+                            <Link href="/sme/training-ops/domains" className="ml-auto text-sm font-semibold text-[#006688] hover:underline">Review ownership</Link>
+                        </div>
 
-                <div id="domain-badges" className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-                    <Card className="border border-slate-200 bg-white shadow-sm">
-                        <CardHeader>
-                            <div className="flex flex-wrap items-start justify-between gap-4">
-                                <div>
-                                    <CardTitle className="text-2xl text-slate-950">Domain Badge Overview</CardTitle>
-                                    <CardDescription className="text-slate-500">
-                                        Badge ladders now live inside the SME dashboard alongside your domain health signals.
-                                    </CardDescription>
-                                </div>
-                                <div className="flex gap-3">
-                                    <Link href="/sme/training-ops/badges/new">
-                                        <Button variant="outline">Create Domain Badge</Button>
-                                    </Link>
-                                    <Link href="/sme/training-ops/badges">
-                                        <Button variant="outline">Open Full Badge Page</Button>
-                                    </Link>
-                                </div>
+                        <section className="space-y-5">
+                            <SectionHeading
+                                eyebrow="Weekly operating board"
+                                title="What needs your attention now"
+                                description="The workspace prioritizes executable gaps instead of repeating long-term operating guidance on every visit."
+                            />
+                            <div className="grid gap-5 lg:grid-cols-3">
+                                <Card className="border-amber-200 bg-amber-50/40 shadow-sm">
+                                    <CardHeader>
+                                        <CardTitle className="text-lg text-slate-950">Events missing dates</CardTitle>
+                                        <CardDescription>Marked scheduled but not actually on the calendar.</CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <p className="text-4xl font-semibold tracking-[-0.05em] text-amber-800">{summary.needsScheduling}</p>
+                                        <Link href="/sme/training-ops/events"><Button variant="outline" className="mt-5 w-full border-amber-200 bg-white">Review events</Button></Link>
+                                    </CardContent>
+                                </Card>
+                                <Card className="border-rose-200 bg-rose-50/40 shadow-sm">
+                                    <CardHeader>
+                                        <CardTitle className="text-lg text-slate-950">Learner gaps</CardTitle>
+                                        <CardDescription>Scoped learners currently below 80% pass rate.</CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <p className="text-4xl font-semibold tracking-[-0.05em] text-rose-800">{summary.learnerGaps}</p>
+                                        <Link href="#knowledge-gaps"><Button variant="outline" className="mt-5 w-full border-rose-200 bg-white">Review gaps</Button></Link>
+                                    </CardContent>
+                                </Card>
+                                <Card className="border-slate-200 bg-white shadow-sm">
+                                    <CardHeader>
+                                        <CardTitle className="text-lg text-slate-950">Capability health</CardTitle>
+                                        <CardDescription>Domains currently below their configured threshold.</CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <p className="text-4xl font-semibold tracking-[-0.05em] text-slate-950">{summary.atRiskDomains}</p>
+                                        <Link href="/sme/training-ops/effectiveness"><Button variant="outline" className="mt-5 w-full">Open effectiveness</Button></Link>
+                                    </CardContent>
+                                </Card>
                             </div>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                    <p className="text-sm text-slate-500">Domains</p>
-                                    <p className="mt-2 text-3xl font-semibold text-slate-950">{loading ? '...' : badgeSummary.domains}</p>
-                                </div>
-                                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                    <p className="text-sm text-slate-500">Milestones</p>
-                                    <p className="mt-2 text-3xl font-semibold text-slate-950">{loading ? '...' : badgeSummary.milestones}</p>
-                                </div>
-                                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                    <p className="text-sm text-slate-500">Unlocks</p>
-                                    <p className="mt-2 text-3xl font-semibold text-slate-950">{loading ? '...' : badgeSummary.unlocks}</p>
-                                </div>
-                                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                    <p className="text-sm text-slate-500">Recognized Learners</p>
-                                    <p className="mt-2 text-3xl font-semibold text-slate-950">{loading ? '...' : badgeSummary.learners}</p>
-                                </div>
-                            </div>
-                            {loading ? (
-                                <div className="flex h-28 items-center justify-center text-muted-foreground">
-                                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                                    Loading badge overview...
-                                </div>
-                            ) : badgeLadders.length === 0 ? (
-                                <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-                                    No domain badge ladders are available in your SME scope yet.
-                                </div>
+                        </section>
+
+                        <section className="space-y-5">
+                            <SectionHeading
+                                eyebrow="Capability"
+                                title="Domain health"
+                                description="The same effectiveness language used by Admin, restricted to the domains you own."
+                                action={<Link href="/sme/training-ops/effectiveness"><Button variant="outline"><BarChart3 className="mr-2 h-4 w-4" />Full effectiveness</Button></Link>}
+                            />
+                            {domainHealth.length === 0 ? (
+                                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">No domain effectiveness data is available in your scope.</div>
                             ) : (
-                                badgeLadders.slice(0, 3).map((ladder) => (
-                                    <div key={ladder.domain.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                        <div className="flex flex-wrap items-center justify-between gap-3">
-                                            <div>
-                                                <div className="flex flex-wrap items-center gap-2">
-                                                    <p className="font-semibold text-slate-950">{ladder.domain.name}</p>
-                                                    <Badge className="bg-emerald-600 hover:bg-emerald-600">Manageable</Badge>
+                                <div className="grid gap-4 lg:grid-cols-2">
+                                    {domainHealth.map((row) => (
+                                        <Card key={row.id} className="border-slate-200 bg-white shadow-sm">
+                                            <CardContent className="p-5">
+                                                <div className="flex flex-wrap items-start justify-between gap-4">
+                                                    <div>
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <h3 className="font-semibold text-slate-950">{row.name}</h3>
+                                                            <Badge variant="outline" className={effectivenessTone[row.status]}>{row.status.replaceAll('_', ' ')}</Badge>
+                                                        </div>
+                                                        <p className="mt-1 text-sm text-slate-500">{row.track} · {row.gradedAttempts} graded attempts</p>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-3xl font-semibold tracking-[-0.04em] text-slate-950">{row.gradedAttempts > 0 ? `${row.currentPassRate}%` : 'No data'}</p>
+                                                        <p className="text-xs text-slate-500">Target {row.targetPassRate ?? 'N/A'}%</p>
+                                                    </div>
                                                 </div>
-                                                <p className="mt-1 text-sm text-slate-500">
-                                                    {ladder.totalUnlocks} unlocks · {ladder.recognizedLearners} recognized learners
-                                                </p>
-                                            </div>
-                                            <Link href={`/sme/training-ops/badges/new?domainId=${ladder.domain.id}`}>
-                                                <Button size="sm" variant="outline">Add Badge</Button>
-                                            </Link>
-                                        </div>
-                                        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                                            {ladder.milestones.slice(0, 3).map((milestone) => (
-                                                <div key={milestone.id} className="rounded-xl border border-slate-200 bg-white p-4">
-                                                    <p className="font-medium text-slate-950">{milestone.name}</p>
-                                                    <p className="mt-1 text-xs uppercase tracking-[0.16em] text-slate-500">
-                                                        {milestone.thresholdStars} stars
-                                                    </p>
-                                                    <p className="mt-3 text-2xl font-semibold text-slate-950">{milestone.awardCount}</p>
-                                                    <p className="text-sm text-slate-500">unlocks</p>
+                                                {row.gradedAttempts > 0 ? <Progress value={row.currentPassRate} className="mt-5 h-2" /> : null}
+                                                <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
+                                                    <div><p className="text-slate-400">Baseline</p><p className="font-semibold text-slate-800">{row.baselinePassRate ?? 'N/A'}%</p></div>
+                                                    <div><p className="text-slate-400">Delta</p><p className="font-semibold text-slate-800">{row.deltaFromBaseline === null ? 'N/A' : `${row.deltaFromBaseline > 0 ? '+' : ''}${row.deltaFromBaseline}%`}</p></div>
+                                                    <div><p className="text-slate-400">Target gap</p><p className="font-semibold text-slate-800">{row.targetGap === null ? 'N/A' : `${row.targetGap > 0 ? '+' : ''}${row.targetGap}%`}</p></div>
                                                 </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </CardContent>
-                    </Card>
-
-                    <Card className="border border-slate-200 bg-white shadow-sm">
-                        <CardHeader>
-                            <CardTitle className="text-xl text-slate-950">Recent Badge Unlocks</CardTitle>
-                            <CardDescription className="text-slate-500">
-                                Latest badge recognition activity across your scoped domains.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                            {loading ? (
-                                <div className="flex h-28 items-center justify-center text-muted-foreground">
-                                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                                    Loading badge unlocks...
-                                </div>
-                            ) : badgeUnlocks.length === 0 ? (
-                                <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-                                    No badge unlocks have been recorded yet.
-                                </div>
-                            ) : (
-                                badgeUnlocks.slice(0, 5).map((unlock) => (
-                                    <div key={unlock.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                                        <p className="font-medium text-slate-950">{unlock.badge.name}</p>
-                                        <p className="mt-1 text-sm text-slate-500">
-                                            {unlock.domain.name} · {unlock.user.name}
-                                        </p>
-                                        <p className="mt-2 text-sm text-slate-600">
-                                            {unlock.event ? `Event: ${unlock.event.title}` : unlock.exam ? `Exam: ${unlock.exam.title}` : 'Domain reward'}
-                                        </p>
-                                    </div>
-                                ))
-                            )}
-                        </CardContent>
-                    </Card>
-                </div>
-
-                <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
-                    <Card className="border border-slate-200 bg-white shadow-sm">
-                        <CardHeader>
-                            <CardTitle className="text-2xl text-slate-950">Recent Events</CardTitle>
-                            <CardDescription className="text-slate-500">
-                                Your most recent or upcoming scoped training events.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                            {loading ? (
-                                <div className="flex h-24 items-center justify-center text-muted-foreground">
-                                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                                    Loading events...
-                                </div>
-                            ) : recentEvents.length === 0 ? (
-                                <div className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">
-                                    No scoped events available yet.
-                                </div>
-                            ) : (
-                                recentEvents.map((event) => (
-                                    <div key={event.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                                        <div className="flex items-start justify-between gap-4">
-                                            <div>
-                                                <p className="font-medium text-slate-950">{event.title}</p>
-                                                <p className="mt-1 text-sm text-slate-500">
-                                                    {event.domain?.name ?? 'No domain'} · {event.series?.name ?? 'No series'}
-                                                </p>
-                                            </div>
-                                            <Badge variant="outline">{event.status}</Badge>
-                                        </div>
-                                        <div className="mt-3 flex flex-wrap gap-2 text-sm text-slate-600">
-                                            <span>{event.scheduledAt ? new Date(event.scheduledAt).toLocaleString() : 'Not scheduled'}</span>
-                                            <span>·</span>
-                                            <span>{event.exams.length} linked exam{event.exams.length === 1 ? '' : 's'}</span>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </CardContent>
-                    </Card>
-
-                    <Card className="border border-slate-200 bg-white shadow-sm">
-                        <CardHeader>
-                            <CardTitle className="text-2xl text-slate-950">Knowledge Gaps</CardTitle>
-                            <CardDescription className="text-slate-500">
-                                Topic-level misses and learner groups that need follow-up.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                                <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                                    <AlertTriangle className="h-4 w-4 text-[#006688]" />
-                                    Weak topics
-                                </div>
-                                <div className="mt-3 space-y-2">
-                                    {weakTopics.length === 0 ? (
-                                        <p className="text-sm text-muted-foreground">No weak topics surfaced yet.</p>
-                                    ) : weakTopics.slice(0, 5).map((topic) => (
-                                        <div key={`${topic.domainName}-${topic.topic}`} className="flex items-center justify-between text-sm">
-                                            <div>
-                                                <p className="font-medium text-slate-900">{topic.topic || 'Unlabeled topic'}</p>
-                                                <p className="text-slate-500">{topic.domainName ?? 'Unmapped domain'}</p>
-                                            </div>
-                                            <Badge variant="outline">{topic.misses}/{topic.answered}</Badge>
-                                        </div>
+                                            </CardContent>
+                                        </Card>
                                     ))}
                                 </div>
-                            </div>
-                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                                <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                                    <Users className="h-4 w-4 text-[#006688]" />
-                                    Learner gap watchlist
-                                </div>
-                                <div className="mt-3 space-y-2">
-                                    {learnerGaps.length === 0 ? (
-                                        <p className="text-sm text-muted-foreground">No learner gap signals yet.</p>
-                                    ) : learnerGaps.slice(0, 5).map((learner) => (
-                                        <div key={learner.userId} className="flex items-center justify-between text-sm">
-                                            <div>
-                                                <p className="font-medium text-slate-900">{learner.name}</p>
-                                                <p className="text-slate-500">{learner.email}</p>
+                            )}
+                        </section>
+
+                        <section className="space-y-5">
+                            <SectionHeading
+                                eyebrow="Operations"
+                                title="Programs and sessions"
+                                description="Learning Programs define cadence; Events represent individual sessions. Courses and exams remain reusable content assets."
+                            />
+                            <div className="grid gap-6 xl:grid-cols-2">
+                                <Card className="border-slate-200 bg-white shadow-sm">
+                                    <CardHeader className="flex flex-row items-start justify-between gap-4">
+                                        <div><CardTitle className="text-xl text-slate-950">Learning Programs</CardTitle><CardDescription>Active programs in your ownership scope.</CardDescription></div>
+                                        <Link href="/sme/training-ops/series"><Button size="sm" variant="outline">View all</Button></Link>
+                                    </CardHeader>
+                                    <CardContent className="space-y-3">
+                                        {activePrograms.length === 0 ? (
+                                            <div className="rounded-xl border border-dashed p-5 text-sm text-slate-500">No active learning programs are assigned.</div>
+                                        ) : activePrograms.map((program) => (
+                                            <div key={program.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                                    <div>
+                                                        <p className="font-semibold text-slate-950">{program.name}</p>
+                                                        <p className="mt-1 text-sm text-slate-500">{program.domain?.name ?? 'No domain'} · {program.cadence ?? 'Cadence not set'}</p>
+                                                    </div>
+                                                    <Badge variant="outline">{program.type.replaceAll('_', ' ')}</Badge>
+                                                </div>
+                                                <p className="mt-3 text-sm text-slate-600">{program.counts.events} events · {program.counts.exams} exams</p>
                                             </div>
-                                            <Badge variant="outline">{learner.passRate}% pass</Badge>
-                                        </div>
-                                    ))}
-                                </div>
+                                        ))}
+                                    </CardContent>
+                                </Card>
+
+                                <Card className="border-slate-200 bg-white shadow-sm">
+                                    <CardHeader className="flex flex-row items-start justify-between gap-4">
+                                        <div><CardTitle className="text-xl text-slate-950">Recent Events</CardTitle><CardDescription>Sessions and scheduling state in your scope.</CardDescription></div>
+                                        <Link href="/sme/training-ops/events"><Button size="sm" variant="outline">View all</Button></Link>
+                                    </CardHeader>
+                                    <CardContent className="space-y-3">
+                                        {recentEvents.length === 0 ? (
+                                            <div className="rounded-xl border border-dashed p-5 text-sm text-slate-500">No scoped events are available.</div>
+                                        ) : recentEvents.map((event) => (
+                                            <div key={event.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                                                <div className="flex items-start justify-between gap-4">
+                                                    <div>
+                                                        <p className="font-semibold text-slate-950">{event.title}</p>
+                                                        <p className="mt-1 text-sm text-slate-500">{event.domain?.name ?? 'No domain'} · {event.series?.name ?? 'Standalone event'}</p>
+                                                    </div>
+                                                    <Badge variant="outline" className={event.status === 'SCHEDULED' && !event.scheduledAt ? 'border-amber-200 bg-amber-50 text-amber-700' : ''}>
+                                                        {event.status === 'SCHEDULED' && !event.scheduledAt ? 'NEEDS DATE' : event.status}
+                                                    </Badge>
+                                                </div>
+                                                <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-600">
+                                                    <span>{formatDateTime(event.scheduledAt)}</span><span>·</span><span>{event.exams.length} exams</span><span>·</span><span>{event.courses.length} courses</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </CardContent>
+                                </Card>
                             </div>
-                        </CardContent>
-                    </Card>
-                </div>
+                        </section>
+
+                        <section id="knowledge-gaps" className="scroll-mt-24 space-y-5">
+                            <SectionHeading
+                                eyebrow="Intervention"
+                                title="Knowledge gaps"
+                                description="Miss rates are labeled explicitly, and the learner watchlist excludes people already at or above the 80% threshold."
+                            />
+                            <div className="grid gap-6 xl:grid-cols-2">
+                                <Card className="border-slate-200 bg-white shadow-sm">
+                                    <CardHeader><CardTitle className="flex items-center gap-2 text-xl"><FileText className="h-5 w-5 text-[#006688]" />Weak topics</CardTitle><CardDescription>Topic misses within your owned domains.</CardDescription></CardHeader>
+                                    <CardContent className="space-y-3">
+                                        {weakTopics.length === 0 ? (
+                                            <div className="rounded-xl border border-dashed p-5 text-sm text-slate-500">No weak topic signals are available.</div>
+                                        ) : weakTopics.map((topic) => {
+                                            const missRate = Math.round((topic.misses / topic.answered) * 100)
+                                            return (
+                                                <div key={`${topic.domainName}-${topic.topic}`} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                                                    <div className="flex items-start justify-between gap-4">
+                                                        <div><p className="font-semibold text-slate-950">{topic.topic || 'Unlabeled topic'}</p><p className="text-sm text-slate-500">{topic.domainName ?? 'Unmapped domain'}</p></div>
+                                                        <Badge variant="outline" className={missRate >= 40 ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-amber-200 bg-amber-50 text-amber-700'}>{missRate}% miss rate</Badge>
+                                                    </div>
+                                                    <p className="mt-3 text-xs text-slate-500">{topic.misses} misses across {topic.answered} answered items</p>
+                                                </div>
+                                            )
+                                        })}
+                                    </CardContent>
+                                </Card>
+
+                                <Card className="border-slate-200 bg-white shadow-sm">
+                                    <CardHeader><CardTitle className="flex items-center gap-2 text-xl"><Users className="h-5 w-5 text-[#006688]" />Learner watchlist</CardTitle><CardDescription>People below the 80% pass threshold in your scope.</CardDescription></CardHeader>
+                                    <CardContent className="space-y-3">
+                                        {learnerGaps.length === 0 ? (
+                                            <div className="rounded-xl border border-dashed p-5 text-sm text-slate-500">No learners are currently below the watch threshold.</div>
+                                        ) : learnerGaps.map((learner) => (
+                                            <div key={learner.userId} className="flex flex-col justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 sm:flex-row sm:items-center">
+                                                <div><p className="font-semibold text-slate-950">{learner.name}</p><p className="text-sm text-slate-500">{learner.email}</p><p className="mt-1 text-xs text-slate-500">{learner.gradedAttempts} graded · {learner.failedAttempts} failed</p></div>
+                                                <Badge variant="outline" className="w-fit border-rose-200 bg-rose-50 text-rose-700">{learner.passRate}% pass</Badge>
+                                            </div>
+                                        ))}
+                                    </CardContent>
+                                </Card>
+                            </div>
+                        </section>
+
+                        <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-6">
+                            <Link href="/sme/training-ops/courses"><Button variant="outline"><BookOpen className="mr-2 h-4 w-4" />Courses</Button></Link>
+                            <Link href="/sme/training-ops/exams"><Button variant="outline"><FileText className="mr-2 h-4 w-4" />Exams</Button></Link>
+                            <Link href="/sme/training-ops/badges"><Button variant="outline"><Target className="mr-2 h-4 w-4" />Recognition rules</Button></Link>
+                        </div>
+                    </>
+                )}
             </div>
         </DashboardLayout>
     )

@@ -69,7 +69,7 @@ export function DomainCatalogPage({ view }: DomainCatalogPageProps) {
                             <p className="mt-1 text-muted-foreground">
                                 {isAdmin
                                     ? 'Govern product-domain ownership, cadence rules, KPI thresholds, and cross-domain reward signals.'
-                                    : 'Domains currently in your SME scope, with cadence, baseline, and reward signals. Create series under a domain first, then schedule events from those series.'}
+                                    : 'Domains define your ownership scope and effectiveness targets. Programs and events can then be filtered to the domains you support.'}
                             </p>
                         </div>
                     </div>
@@ -98,10 +98,10 @@ export function DomainCatalogPage({ view }: DomainCatalogPageProps) {
                         ) : (
                             <>
                                 <Link href="/sme/training-ops/series/new">
-                                    <Button>Create Series</Button>
+                                    <Button>Create Program</Button>
                                 </Link>
                                 <Link href="/sme/training-ops/series">
-                                    <Button variant="outline">My Series</Button>
+                                    <Button variant="outline">Learning Programs</Button>
                                 </Link>
                                 <Link href="/sme/training-ops/badges">
                                     <Button variant="outline">Domain Badges</Button>

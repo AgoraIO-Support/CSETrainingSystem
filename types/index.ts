@@ -374,10 +374,26 @@ export interface TrainingOpsAdminReport {
     summary: {
         teamMembers: number
         activeLearners: number
+        courseAssignments: number
+        courseStarted: number
+        courseCompleted: number
         courseCompletionRate: number
+        examInvitations: number
+        assessmentLearners: number
+        invitedLearners: number
+        invitationParticipatingLearners: number
+        participatingLearners: number
+        gradedAttempts: number
         examParticipationRate: number
         examPassRate: number
         averageExamScore: number
+        performanceInvitedLearners: number
+        performanceParticipatingLearners: number
+        performanceEvidenceRecords: number
+        performancePassRate: number
+        performanceAverageScore: number
+        trackedDomains: number
+        measuredDomains: number
         certificationRate: number
         atRiskLearners: number
         watchLearners: number

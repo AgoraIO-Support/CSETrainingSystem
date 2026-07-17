@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { PanelLeftOpen } from 'lucide-react'
+import { PanelLeftOpen, X } from 'lucide-react'
 import { Sidebar } from './sidebar'
 import { TopNav } from './top-nav'
 import { ApiClient } from '@/lib/api-client'
@@ -20,6 +20,7 @@ export function DashboardLayout({ children, initialUser }: DashboardLayoutProps)
     const SIDEBAR_WIDTH_STORAGE_KEY = 'cse.dashboardSidebarWidth'
     const SIDEBAR_VISIBILITY_STORAGE_KEY = 'cse.dashboardSidebarVisible'
     const [showSidebar, setShowSidebar] = useState(true)
+    const [mobileNavOpen, setMobileNavOpen] = useState(false)
     const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
     const [isResizingSidebar, setIsResizingSidebar] = useState(false)
     const sidebarResizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null)
@@ -118,6 +119,27 @@ export function DashboardLayout({ children, initialUser }: DashboardLayoutProps)
 
     return (
         <div className="flex h-screen overflow-hidden bg-[#f8f9fa]">
+            {mobileNavOpen ? (
+                <div className="fixed inset-0 z-50 flex lg:hidden">
+                    <div
+                        aria-hidden="true"
+                        className="absolute inset-0 bg-slate-950/45 backdrop-blur-sm"
+                        onClick={() => setMobileNavOpen(false)}
+                    />
+                    <div className="relative h-full w-[min(88vw,340px)] overflow-hidden border-r border-slate-200 bg-slate-50 shadow-2xl">
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            aria-label="Close navigation"
+                            onClick={() => setMobileNavOpen(false)}
+                            className="absolute right-4 top-4 z-10 border-slate-200 bg-white"
+                        >
+                            <X className="h-4 w-4" />
+                        </Button>
+                        <Sidebar user={user} mobile className="w-full border-r-0" />
+                    </div>
+                </div>
+            ) : null}
             <div
                 className={cn(
                     'relative hidden shrink-0 overflow-hidden border-r border-slate-200 bg-slate-50 transition-[width] duration-300 lg:block',
@@ -155,6 +177,7 @@ export function DashboardLayout({ children, initialUser }: DashboardLayoutProps)
                     onLogout={handleLogout}
                     showSidebar={showSidebar}
                     onToggleSidebar={() => setShowSidebar((current) => !current)}
+                    onOpenMobileNav={() => setMobileNavOpen(true)}
                 />
                 <main className="flex-1 overflow-y-auto bg-[#f8f9fa] p-4 md:p-6 xl:p-10">
                     {!showSidebar ? (

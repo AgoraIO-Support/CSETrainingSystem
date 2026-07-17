@@ -13,22 +13,23 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { FunnelCard, OpsHero, SectionHeading, SignalCard } from '@/components/training-ops/overview-primitives'
 import { ApiClient } from '@/lib/api-client'
 import type { TrainingOpsAdminReport, TrainingOpsLearnerRiskStatus, TrainingOpsReportRange } from '@/types'
 import {
     AlertTriangle,
-    Award,
     BarChart3,
+    BookOpen,
     CalendarDays,
     CheckCircle2,
     Download,
     FileText,
+    GraduationCap,
     Loader2,
-    Settings2,
     Search,
+    Settings2,
     ShieldAlert,
     Target,
-    Trophy,
     Users,
 } from 'lucide-react'
 
@@ -113,54 +114,13 @@ const exportLearnersCsv = (report: TrainingOpsAdminReport) => {
     URL.revokeObjectURL(url)
 }
 
-function MetricCard({
-    label,
-    value,
-    hint,
-    icon: Icon,
-    tone = 'default',
-}: {
-    label: string
-    value: string | number
-    hint: string
-    icon: typeof Users
-    tone?: 'default' | 'risk' | 'success'
-}) {
-    const iconTone = tone === 'risk'
-        ? 'border-rose-200 bg-rose-50 text-rose-700'
-        : tone === 'success'
-            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-            : 'border-slate-200 bg-slate-50 text-[#006688]'
-
-    return (
-        <Card className="border border-slate-200 bg-white shadow-sm">
-            <CardHeader className="flex flex-row items-start justify-between gap-3 pb-2">
-                <div>
-                    <CardDescription className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-                        {label}
-                    </CardDescription>
-                    <CardTitle className="mt-3 text-3xl font-semibold tracking-[-0.03em] text-slate-950">
-                        {value}
-                    </CardTitle>
-                </div>
-                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${iconTone}`}>
-                    <Icon className="h-5 w-5" />
-                </div>
-            </CardHeader>
-            <CardContent>
-                <p className="text-sm leading-6 text-slate-500">{hint}</p>
-            </CardContent>
-        </Card>
-    )
-}
-
 export default function TrainingOpsDashboardPage() {
     const [report, setReport] = useState<TrainingOpsAdminReport | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [learnerSearch, setLearnerSearch] = useState('')
     const [range, setRange] = useState<TrainingOpsReportRange>('30d')
-    const [includeAdmins, setIncludeAdmins] = useState(true)
+    const [includeAdmins, setIncludeAdmins] = useState(false)
     const [excludedUserIds, setExcludedUserIds] = useState<string[]>([])
     const [filterDialogOpen, setFilterDialogOpen] = useState(false)
 
@@ -198,419 +158,385 @@ export default function TrainingOpsDashboardPage() {
         )
     }, [learnerSearch, report])
 
+    const actionSummary = useMemo(() => {
+        const learners = report?.learnerPerformance ?? []
+        return {
+            overdue: learners.filter((learner) => learner.overdueExams > 0).length,
+            retake: learners.filter((learner) => learner.retakeNeeded > 0).length,
+            noAttempt: learners.filter((learner) => learner.examInvitations > 0 && learner.examAttempts === 0).length,
+            lowProgress: learners.filter((learner) => learner.courseAssigned > 0 && learner.averageCourseProgress < 60).length,
+        }
+    }, [report])
+
+    const measuredDomains = report?.domainProgress.filter((domain) => domain.gradedAttempts > 0) ?? []
+    const unmeasuredDomains = report?.domainProgress.filter((domain) => domain.gradedAttempts === 0) ?? []
     const activeFilterCount = (includeAdmins ? 1 : 0) + excludedUserIds.length
 
     const toggleExcludedUser = (userId: string, checked: boolean) => {
-        setExcludedUserIds((prev) =>
-            checked ? [...prev, userId] : prev.filter((id) => id !== userId)
-        )
+        setExcludedUserIds((prev) => checked ? [...prev, userId] : prev.filter((id) => id !== userId))
     }
 
     return (
         <DashboardLayout>
-            <div className="space-y-6">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div className="max-w-4xl space-y-3">
-                        <Badge className="w-fit rounded-full border border-[#b8ecff] bg-[#effbff] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#006688]">
-                            Admin · Training Ops
-                        </Badge>
-                        <div>
-                            <h1 className="text-3xl font-semibold tracking-[-0.03em] text-slate-950 md:text-4xl">
-                                Team readiness and learner performance
-                            </h1>
-                        </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                        <Select value={range} onValueChange={(value) => setRange(value as TrainingOpsReportRange)}>
-                            <SelectTrigger className="w-40 border-slate-200 bg-slate-50">
-                                <SelectValue placeholder="Select range" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {RANGE_OPTIONS.map((option) => (
-                                    <SelectItem key={option.value} value={option.value}>
-                                        {option.label}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        <Dialog open={filterDialogOpen} onOpenChange={setFilterDialogOpen}>
-                            <DialogTrigger asChild>
-                                <Button variant="outline" className="border-slate-200 bg-slate-50">
-                                    <Settings2 className="mr-2 h-4 w-4" />
-                                    Filters
-                                    {activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
-                                </Button>
-                            </DialogTrigger>
-                            <DialogContent className="max-w-2xl">
-                                <DialogHeader>
-                                    <DialogTitle>Report filters</DialogTitle>
-                                    <DialogDescription>
-                                        Include admins in the report or exclude specific users from all metrics.
-                                    </DialogDescription>
-                                </DialogHeader>
-
-                                <div className="space-y-6">
-                                    <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-4">
-                                        <div className="space-y-1">
-                                            <Label htmlFor="include-admins">Include admin users</Label>
-                                            <p className="text-sm text-slate-500">
-                                                When enabled, admins are counted in team summary, follow-up queue, and learner performance.
-                                            </p>
-                                        </div>
-                                        <Switch
-                                            id="include-admins"
-                                            checked={includeAdmins}
-                                            onCheckedChange={setIncludeAdmins}
-                                        />
-                                    </div>
-
-                                    <div className="space-y-3">
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <Label>Exclude users</Label>
-                                                <p className="text-sm text-slate-500">
-                                                    Useful for test accounts or people you do not want in this report.
-                                                </p>
-                                            </div>
-                                            {excludedUserIds.length > 0 ? (
-                                                <Button variant="ghost" size="sm" onClick={() => setExcludedUserIds([])}>
-                                                    Clear all
-                                                </Button>
-                                            ) : null}
-                                        </div>
-                                        <ScrollArea className="h-72 rounded-xl border border-slate-200">
-                                            <div className="space-y-2 p-3">
-                                                {(report?.availableUsers ?? []).map((user) => {
-                                                    const checked = excludedUserIds.includes(user.userId)
-                                                    return (
-                                                        <label
-                                                            key={user.userId}
-                                                            className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3"
-                                                        >
-                                                            <input
-                                                                type="checkbox"
-                                                                className="mt-1 h-4 w-4 rounded border-slate-300"
-                                                                checked={checked}
-                                                                onChange={(event) => toggleExcludedUser(user.userId, event.target.checked)}
-                                                            />
-                                                            <div className="min-w-0">
-                                                                <div className="flex flex-wrap items-center gap-2">
-                                                                    <p className="font-medium text-slate-950">{user.name}</p>
-                                                                    <Badge variant="outline">{user.role}</Badge>
-                                                                </div>
-                                                                <p className="text-sm text-slate-500">{user.email}</p>
-                                                            </div>
-                                                        </label>
-                                                    )
-                                                })}
-                                            </div>
-                                        </ScrollArea>
-                                    </div>
-                                </div>
-
-                                <DialogFooter>
-                                    <Button variant="outline" onClick={() => setFilterDialogOpen(false)}>
-                                        Done
+            <div className="space-y-8 pb-8">
+                <OpsHero
+                    eyebrow="Admin · Training Ops"
+                    title="Team learning health, without the reporting fog."
+                    description="See whether the team is participating, completing required work, building verified capability, and where intervention is needed next."
+                    scope={includeAdmins ? 'All active users' : 'Learners & SMEs'}
+                    meta={report ? `${report.period.label} · generated ${formatDate(report.generatedAt)}` : 'Loading current period'}
+                    actions={(
+                        <>
+                            <Select value={range} onValueChange={(value) => setRange(value as TrainingOpsReportRange)}>
+                                <SelectTrigger className="w-40 border-white/20 bg-white text-slate-900">
+                                    <SelectValue placeholder="Select range" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {RANGE_OPTIONS.map((option) => (
+                                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <Dialog open={filterDialogOpen} onOpenChange={setFilterDialogOpen}>
+                                <DialogTrigger asChild>
+                                    <Button variant="outline" className="border-white/20 bg-white/10 text-white hover:bg-white hover:text-slate-950">
+                                        <Settings2 className="mr-2 h-4 w-4" />
+                                        Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
                                     </Button>
-                                </DialogFooter>
-                            </DialogContent>
-                        </Dialog>
-                        <Link href="/admin/training-ops/effectiveness">
-                            <Button variant="outline"><BarChart3 className="mr-2 h-4 w-4" />Effectiveness</Button>
-                        </Link>
-                        <Link href="/admin/training-ops/events">
-                            <Button variant="outline"><CalendarDays className="mr-2 h-4 w-4" />Events</Button>
-                        </Link>
-                        <Link href="/admin/training-ops/domains">
-                            <Button variant="outline"><Target className="mr-2 h-4 w-4" />Domains</Button>
-                        </Link>
-                        <Button
-                            disabled={!report}
-                            onClick={() => report ? exportLearnersCsv(report) : undefined}
-                            className="bg-[#006688] text-white hover:bg-[#0a7696]"
-                        >
-                            <Download className="mr-2 h-4 w-4" />
-                            Export Learners
-                        </Button>
-                    </div>
-                </div>
+                                </DialogTrigger>
+                                <DialogContent className="max-w-2xl">
+                                    <DialogHeader>
+                                        <DialogTitle>Report scope</DialogTitle>
+                                        <DialogDescription>Keep test accounts and administrative users out of team learning signals.</DialogDescription>
+                                    </DialogHeader>
+                                    <div className="space-y-6">
+                                        <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                            <div className="space-y-1">
+                                                <Label htmlFor="include-admins">Include admin users</Label>
+                                                <p className="text-sm text-slate-500">Off by default so the dashboard represents the learning team.</p>
+                                            </div>
+                                            <Switch id="include-admins" checked={includeAdmins} onCheckedChange={setIncludeAdmins} />
+                                        </div>
+                                        <div className="space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <Label>Exclude users</Label>
+                                                    <p className="text-sm text-slate-500">Remove test accounts or out-of-scope team members.</p>
+                                                </div>
+                                                {excludedUserIds.length > 0 ? (
+                                                    <Button variant="ghost" size="sm" onClick={() => setExcludedUserIds([])}>Clear all</Button>
+                                                ) : null}
+                                            </div>
+                                            <ScrollArea className="h-72 rounded-xl border border-slate-200">
+                                                <div className="space-y-2 p-3">
+                                                    {(report?.availableUsers ?? []).map((user) => {
+                                                        const checked = excludedUserIds.includes(user.userId)
+                                                        return (
+                                                            <label key={user.userId} className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    className="mt-1 h-4 w-4 rounded border-slate-300"
+                                                                    checked={checked}
+                                                                    onChange={(event) => toggleExcludedUser(user.userId, event.target.checked)}
+                                                                />
+                                                                <div className="min-w-0">
+                                                                    <div className="flex flex-wrap items-center gap-2">
+                                                                        <p className="font-medium text-slate-950">{user.name}</p>
+                                                                        <Badge variant="outline">{user.role}</Badge>
+                                                                    </div>
+                                                                    <p className="text-sm text-slate-500">{user.email}</p>
+                                                                </div>
+                                                            </label>
+                                                        )
+                                                    })}
+                                                </div>
+                                            </ScrollArea>
+                                        </div>
+                                    </div>
+                                    <DialogFooter><Button variant="outline" onClick={() => setFilterDialogOpen(false)}>Done</Button></DialogFooter>
+                                </DialogContent>
+                            </Dialog>
+                            <Button
+                                disabled={!report}
+                                onClick={() => report ? exportLearnersCsv(report) : undefined}
+                                className="bg-[#00b7df] text-[#05202a] hover:bg-[#67dcf3]"
+                            >
+                                <Download className="mr-2 h-4 w-4" />Export
+                            </Button>
+                        </>
+                    )}
+                />
 
                 {error ? (
-                    <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-                        {error}
+                    <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+                        Training Ops data is unavailable: {error}
                     </div>
                 ) : null}
 
                 {loading || !report ? (
-                    <Card className="border border-slate-200 bg-white shadow-sm">
+                    <Card className="border-slate-200 bg-white shadow-sm">
                         <CardContent className="flex h-72 items-center justify-center text-slate-500">
-                            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                            Loading team readiness report...
+                            <Loader2 className="mr-2 h-5 w-5 animate-spin" />Loading team learning health...
                         </CardContent>
                     </Card>
                 ) : (
                     <>
-                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                            <MetricCard
-                                label="Team Members"
-                                value={report.summary.teamMembers}
-                                hint={`${report.summary.activeLearners} learners have recorded activity.`}
+                        <section aria-label="Team health signals" className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                            <SignalCard
+                                label="Active learners"
+                                value={report.summary.activeLearners}
+                                denominator={`/ ${report.summary.teamMembers}`}
+                                hint="Team members with recorded activity in the selected scope."
                                 icon={Users}
+                                tone="positive"
                             />
-                            <MetricCard
-                                label="Course Completion"
+                            <SignalCard
+                                label="Content completed"
                                 value={`${report.summary.courseCompletionRate}%`}
-                                hint="Completed learner-course records across assigned training."
-                                icon={CheckCircle2}
-                                tone="success"
+                                denominator={`${report.summary.courseCompleted}/${report.summary.courseAssignments}`}
+                                hint={`${report.summary.courseStarted} assigned course records have been started.`}
+                                icon={BookOpen}
                             />
-                            <MetricCard
-                                label="Exam Participation"
+                            <SignalCard
+                                label="Assessment coverage"
                                 value={`${report.summary.examParticipationRate}%`}
-                                hint={`${report.summary.examPassRate}% pass rate · ${report.summary.averageExamScore}% average score.`}
+                                denominator={`${report.summary.invitationParticipatingLearners}/${report.summary.invitedLearners}`}
+                                hint="Learners participating among those with published invitations."
                                 icon={FileText}
                             />
-                            <MetricCard
-                                label="Needs Follow-up"
-                                value={report.summary.atRiskLearners}
-                                hint={`${report.summary.watchLearners} watch · ${report.summary.retakeNeeded} retakes · ${report.summary.overdueLearners} overdue.`}
-                                icon={ShieldAlert}
-                                tone="risk"
+                            <SignalCard
+                                label="Performance evidence"
+                                value={report.summary.performanceEvidenceRecords > 0 ? `${report.summary.performancePassRate}%` : 'No data'}
+                                denominator={report.summary.performanceEvidenceRecords > 0 ? `${report.summary.performanceEvidenceRecords} records` : undefined}
+                                hint={report.summary.performanceEvidenceRecords > 0
+                                    ? `Latest learner-exam evidence only · ${report.summary.performanceAverageScore}% average.`
+                                    : 'No graded performance-counting evidence in this period.'}
+                                icon={GraduationCap}
+                                tone={report.summary.performanceEvidenceRecords === 0 ? 'warning' : 'positive'}
                             />
+                            <SignalCard
+                                label="Action required"
+                                value={report.summary.atRiskLearners}
+                                denominator={`${report.summary.watchLearners} watch`}
+                                hint={`${report.summary.overdueLearners} overdue · ${report.summary.retakeNeeded} actionable retakes.`}
+                                icon={ShieldAlert}
+                                tone={report.summary.atRiskLearners > 0 ? 'risk' : 'positive'}
+                            />
+                        </section>
+
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-cyan-200 bg-cyan-50/70 px-5 py-4 text-sm text-slate-700">
+                            <div className="flex items-center gap-3">
+                                <Target className="h-5 w-5 text-[#006688]" />
+                                <span>
+                                    <strong className="text-slate-950">Capability coverage:</strong>{' '}
+                                    {report.summary.measuredDomains} of {report.summary.trackedDomains} tracked domains have graded evidence.
+                                </span>
+                            </div>
+                            {report.summary.measuredDomains < report.summary.trackedDomains ? (
+                                <span className="rounded-full border border-cyan-200 bg-white px-3 py-1 text-xs font-medium text-[#006688]">
+                                    No data is not a zero score
+                                </span>
+                            ) : null}
                         </div>
 
-                        <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-                            <Card className="border border-slate-200 bg-white shadow-sm">
-                                <CardHeader>
-                                    <div className="flex flex-wrap items-start justify-between gap-3">
-                                        <div>
-                                            <CardTitle className="text-2xl text-slate-950">Report Snapshot</CardTitle>
-                                            <CardDescription className="text-slate-500">
-                                                {RANGE_OPTIONS.find((option) => option.value === report.period.range)?.label ?? 'Selected range'} · {report.period.label} · generated {formatDate(report.generatedAt)}
-                                            </CardDescription>
-                                        </div>
-                                        <Badge variant="outline" className="rounded-full border-slate-200 bg-slate-50 text-slate-600">
-                                            Certification {report.summary.certificationRate}%
-                                        </Badge>
-                                    </div>
-                                </CardHeader>
-                                <CardContent className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
-                                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Readiness Mix</p>
-                                        <div className="mt-5 space-y-4">
-                                            <div>
-                                                <div className="mb-2 flex justify-between text-sm">
-                                                    <span className="font-medium text-slate-700">Course completion</span>
-                                                    <span className="text-slate-500">{report.summary.courseCompletionRate}%</span>
-                                                </div>
-                                                <Progress value={report.summary.courseCompletionRate} className="h-2" />
-                                            </div>
-                                            <div>
-                                                <div className="mb-2 flex justify-between text-sm">
-                                                    <span className="font-medium text-slate-700">Exam participation</span>
-                                                    <span className="text-slate-500">{report.summary.examParticipationRate}%</span>
-                                                </div>
-                                                <Progress value={report.summary.examParticipationRate} className="h-2" />
-                                            </div>
-                                            <div>
-                                                <div className="mb-2 flex justify-between text-sm">
-                                                    <span className="font-medium text-slate-700">Exam pass rate</span>
-                                                    <span className="text-slate-500">{report.summary.examPassRate}%</span>
-                                                </div>
-                                                <Progress value={report.summary.examPassRate} className="h-2" />
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="grid gap-3">
-                                        {report.reportHighlights.map((highlight) => (
-                                            <div key={highlight} className="rounded-xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700">
-                                                {highlight}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </CardContent>
-                            </Card>
+                        <section className="space-y-5">
+                            <SectionHeading
+                                eyebrow="Flow"
+                                title="Participation to evidence"
+                                description="Course records and learner assessment coverage are shown as separate funnels because their units and evidence strength are different."
+                            />
+                            <div className="grid gap-6 xl:grid-cols-2">
+                                <FunnelCard
+                                    title="Required learning flow"
+                                    description="Content completion shows exposure, not verified mastery."
+                                    icon={BookOpen}
+                                    steps={[
+                                        { label: 'Assigned course records', value: report.summary.courseAssignments },
+                                        { label: 'Started', value: report.summary.courseStarted },
+                                        { label: 'Content completed', value: report.summary.courseCompleted, note: 'Mastery verification is reported separately.' },
+                                    ]}
+                                    emptyMessage="No course assignments were created in this reporting period."
+                                />
+                                <FunnelCard
+                                    title="Assessment coverage"
+                                    description="Learner-level coverage, with performance evidence isolated from practice activity."
+                                    icon={FileText}
+                                    steps={[
+                                        { label: 'Learners in assessment scope', value: report.summary.assessmentLearners, note: `${report.summary.invitedLearners} received invitations in this period.` },
+                                        { label: 'Learners participating', value: report.summary.participatingLearners },
+                                        { label: 'Learners with performance evidence', value: report.summary.performanceParticipatingLearners, note: 'Only exams marked as counting toward performance.' },
+                                    ]}
+                                    emptyMessage="No published exam invitations were created in this reporting period."
+                                />
+                            </div>
+                        </section>
 
-                            <Card className="border border-slate-200 bg-white shadow-sm">
+                        <section id="action-center" className="scroll-mt-24 space-y-5">
+                            <SectionHeading
+                                eyebrow="Intervention"
+                                title="Action Center"
+                                description="Prioritize overdue work, available retakes, missing attempts, and stalled learning instead of scanning the full learner table."
+                            />
+                            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                                {[
+                                    { label: 'Overdue assessment', value: actionSummary.overdue, hint: 'Past deadline with no attempt', tone: 'border-rose-200 bg-rose-50 text-rose-800' },
+                                    { label: 'Retake available', value: actionSummary.retake, hint: 'Failed with attempts remaining', tone: 'border-amber-200 bg-amber-50 text-amber-800' },
+                                    { label: 'No attempt yet', value: actionSummary.noAttempt, hint: 'Invited but not started', tone: 'border-sky-200 bg-sky-50 text-sky-800' },
+                                    { label: 'Learning stalled', value: actionSummary.lowProgress, hint: 'Assigned and below 60%', tone: 'border-slate-200 bg-slate-50 text-slate-800' },
+                                ].map((item) => (
+                                    <div key={item.label} className={`rounded-2xl border p-5 ${item.tone}`}>
+                                        <p className="text-xs font-semibold uppercase tracking-[0.15em] opacity-70">{item.label}</p>
+                                        <p className="mt-3 text-3xl font-semibold tracking-[-0.04em]">{item.value}</p>
+                                        <p className="mt-2 text-sm opacity-75">{item.hint}</p>
+                                    </div>
+                                ))}
+                            </div>
+                            <Card className="border-slate-200 bg-white shadow-sm">
                                 <CardHeader>
                                     <CardTitle className="flex items-center gap-2 text-xl text-slate-950">
-                                        <AlertTriangle className="h-5 w-5 text-rose-600" />
-                                        Follow-up Queue
+                                        <AlertTriangle className="h-5 w-5 text-rose-600" />Priority queue
                                     </CardTitle>
-                                    <CardDescription className="text-slate-500">
-                                        Learners who need action before the next team report.
-                                    </CardDescription>
+                                    <CardDescription>Highest-priority learners in the current report scope.</CardDescription>
                                 </CardHeader>
-                                <CardContent className="space-y-3">
+                                <CardContent>
                                     {report.riskQueue.length === 0 ? (
-                                        <div className="rounded-xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
-                                            No learners currently require follow-up.
-                                        </div>
-                                    ) : report.riskQueue.slice(0, 6).map((item) => (
-                                        <div key={item.userId} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div>
-                                                    <p className="font-semibold text-slate-950">{item.name}</p>
-                                                    <p className="text-sm text-slate-500">{item.email}</p>
+                                        <div className="rounded-xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">No learners currently require follow-up.</div>
+                                    ) : (
+                                        <div className="grid gap-3 lg:grid-cols-2">
+                                            {report.riskQueue.slice(0, 8).map((item) => (
+                                                <div key={item.userId} className="flex flex-col justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 sm:flex-row sm:items-center">
+                                                    <div className="min-w-0">
+                                                        <p className="font-semibold text-slate-950">{item.name}</p>
+                                                        <p className="truncate text-sm text-slate-500">{item.email}</p>
+                                                        <p className="mt-2 text-sm leading-6 text-slate-700">{item.reason}</p>
+                                                    </div>
+                                                    <div className="flex shrink-0 gap-2 text-xs">
+                                                        <Badge variant="outline">Progress {item.averageCourseProgress}%</Badge>
+                                                        <Badge variant="outline">Pass {item.passRate}%</Badge>
+                                                    </div>
                                                 </div>
-                                                <Badge className="border-rose-200 bg-rose-50 text-rose-700">Action</Badge>
-                                            </div>
-                                            <p className="mt-3 text-sm leading-6 text-slate-600">{item.reason}</p>
-                                            <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-slate-500">
-                                                <span>Progress {item.averageCourseProgress}%</span>
-                                                <span>Pass {item.passRate}%</span>
-                                                <span>{formatDate(item.lastActivityAt)}</span>
-                                            </div>
+                                            ))}
                                         </div>
-                                    ))}
+                                    )}
                                 </CardContent>
                             </Card>
-                        </div>
+                        </section>
 
-                        <Card className="border border-slate-200 bg-white shadow-sm">
-                            <CardHeader>
-                                <div className="flex flex-wrap items-start justify-between gap-4">
-                                    <div>
-                                        <CardTitle className="text-2xl text-slate-950">Domain Progress</CardTitle>
-                                        <CardDescription className="text-slate-500">
-                                            Pass-rate movement by product domain, sorted by intervention priority.
-                                        </CardDescription>
-                                    </div>
-                                    <Link href="/admin/training-ops/effectiveness">
-                                        <Button variant="outline">Open Full Board</Button>
-                                    </Link>
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                {report.domainProgress.length === 0 ? (
-                                    <div className="rounded-xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
-                                        No domain effectiveness data yet.
-                                    </div>
-                                ) : (
-                                    <div className="grid gap-3 lg:grid-cols-2">
-                                        {report.domainProgress.map((domain) => (
-                                            <div key={domain.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                                                <div className="flex flex-wrap items-start justify-between gap-3">
-                                                    <div>
-                                                        <div className="flex flex-wrap items-center gap-2">
-                                                            <p className="font-semibold text-slate-950">{domain.name}</p>
-                                                            <Badge variant="outline">{domain.track}</Badge>
-                                                        </div>
-                                                        <p className="mt-1 text-sm text-slate-500">
-                                                            {domain.ownerName ?? 'Unassigned owner'} · {domain.gradedAttempts} graded attempts · {domain.scheduledEventCount} active events
-                                                        </p>
+                        <section className="space-y-5">
+                            <SectionHeading
+                                eyebrow="Capability coverage"
+                                title="Measured domains first"
+                                description="Domains without graded evidence are coverage gaps, not zero mastery scores."
+                                action={(
+                                    <Link href="/admin/training-ops/effectiveness"><Button variant="outline"><BarChart3 className="mr-2 h-4 w-4" />Open full board</Button></Link>
+                                )}
+                            />
+                            <div className="grid gap-4 lg:grid-cols-2">
+                                {measuredDomains.map((domain) => (
+                                    <Card key={domain.id} className="border-slate-200 bg-white shadow-sm">
+                                        <CardContent className="p-5">
+                                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                                <div>
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <h3 className="font-semibold text-slate-950">{domain.name}</h3>
+                                                        <Badge variant="outline" className={domainTone[domain.status]}>{formatStatus(domain.status)}</Badge>
                                                     </div>
-                                                    <Badge className={domainTone[domain.status]}>{formatStatus(domain.status)}</Badge>
+                                                    <p className="mt-1 text-sm text-slate-500">{domain.ownerName ?? 'No SME owner'} · {domain.gradedAttempts} graded attempts</p>
                                                 </div>
-                                                <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                                                    <div>
-                                                        <p className="text-xs text-slate-500">Current</p>
-                                                        <p className="mt-1 text-xl font-semibold text-slate-950">{domain.currentPassRate}%</p>
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-xs text-slate-500">Target</p>
-                                                        <p className="mt-1 text-xl font-semibold text-slate-950">{domain.targetPassRate ?? 'N/A'}{domain.targetPassRate === null ? '' : '%'}</p>
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-xs text-slate-500">Gap</p>
-                                                        <p className="mt-1 text-xl font-semibold text-slate-950">{domain.targetGap === null ? 'N/A' : `${domain.targetGap > 0 ? '-' : '+'}${Math.abs(domain.targetGap)}%`}</p>
-                                                    </div>
-                                                </div>
-                                                <div className="mt-4">
-                                                    <Progress value={Math.max(0, Math.min(100, domain.currentPassRate))} className="h-2" />
+                                                <div className="text-right">
+                                                    <p className="text-3xl font-semibold tracking-[-0.04em] text-slate-950">{domain.currentPassRate}%</p>
+                                                    <p className="text-xs text-slate-500">Target {domain.targetPassRate ?? 'N/A'}%</p>
                                                 </div>
                                             </div>
-                                        ))}
+                                            <Progress value={domain.currentPassRate} className="mt-5 h-2" />
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
+                            {unmeasuredDomains.length > 0 ? (
+                                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 p-5">
+                                    <p className="text-sm font-semibold text-slate-800">Coverage setup needed</p>
+                                    <p className="mt-1 text-sm text-slate-500">{unmeasuredDomains.length} domains have no graded evidence in this period.</p>
+                                    <div className="mt-4 flex flex-wrap gap-2">
+                                        {unmeasuredDomains.map((domain) => <Badge key={domain.id} variant="outline" className="bg-white">{domain.name} · No data</Badge>)}
                                     </div>
-                                )}
-                            </CardContent>
-                        </Card>
+                                </div>
+                            ) : null}
+                        </section>
 
-                        <Card className="border border-slate-200 bg-white shadow-sm">
-                            <CardHeader>
-                                <div className="flex flex-wrap items-center justify-between gap-4">
-                                    <div>
-                                        <CardTitle className="text-2xl text-slate-950">Individual Performance</CardTitle>
-                                        <CardDescription className="text-slate-500">
-                                            Search and compare every learner&apos;s training, exam, certification, and risk status.
-                                        </CardDescription>
+                        <section id="people" className="space-y-5">
+                            <SectionHeading
+                                eyebrow="Drill-down"
+                                title="Learner evidence"
+                                description="Use the table for investigation and export; the Action Center remains the default intervention view."
+                            />
+                            <Card className="border-slate-200 bg-white shadow-sm">
+                                <CardHeader>
+                                    <div className="flex flex-wrap items-center justify-between gap-4">
+                                        <div>
+                                            <CardTitle className="text-xl text-slate-950">All learners</CardTitle>
+                                            <CardDescription>{filteredLearners.length} learners in the current scope.</CardDescription>
+                                        </div>
+                                        <div className="relative w-full sm:w-80">
+                                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                                            <Input value={learnerSearch} onChange={(event) => setLearnerSearch(event.target.value)} placeholder="Search learner, team, risk" className="pl-9" />
+                                        </div>
                                     </div>
-                                    <div className="relative w-full sm:w-80">
-                                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                                        <Input
-                                            value={learnerSearch}
-                                            onChange={(event) => setLearnerSearch(event.target.value)}
-                                            placeholder="Search learner, team, risk"
-                                            className="border-slate-200 bg-slate-50 pl-9"
-                                        />
-                                    </div>
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full min-w-[1040px] text-left text-sm">
-                                        <thead>
-                                            <tr className="border-b border-slate-200 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                                                <th className="py-3 pr-4">Learner</th>
-                                                <th className="px-4 py-3">Risk</th>
-                                                <th className="px-4 py-3">Courses</th>
-                                                <th className="px-4 py-3">Exams</th>
-                                                <th className="px-4 py-3">Pass / Score</th>
-                                                <th className="px-4 py-3">Recognition</th>
-                                                <th className="px-4 py-3">Follow-up</th>
-                                                <th className="py-3 pl-4">Last Activity</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100">
-                                            {filteredLearners.length === 0 ? (
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="overflow-x-auto rounded-xl border border-slate-200">
+                                        <table className="min-w-full text-sm">
+                                            <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
                                                 <tr>
-                                                    <td colSpan={8} className="py-10 text-center text-slate-500">
-                                                        No learners match the current search.
-                                                    </td>
+                                                    <th className="px-4 py-3">Learner</th>
+                                                    <th className="px-4 py-3">Status</th>
+                                                    <th className="px-4 py-3">Learning</th>
+                                                    <th className="px-4 py-3">Assessment</th>
+                                                    <th className="px-4 py-3">Evidence</th>
+                                                    <th className="px-4 py-3">Follow-up</th>
+                                                    <th className="px-4 py-3">Last activity</th>
                                                 </tr>
-                                            ) : filteredLearners.slice(0, 80).map((learner) => (
-                                                <tr key={learner.userId} className="align-top">
-                                                    <td className="py-4 pr-4">
-                                                        <p className="font-semibold text-slate-950">{learner.name}</p>
-                                                        <p className="mt-1 text-xs text-slate-500">{learner.email}</p>
-                                                        <p className="mt-1 text-xs text-slate-400">{learner.department ?? 'No department'} · {learner.title ?? 'No title'}</p>
-                                                    </td>
-                                                    <td className="px-4 py-4">
-                                                        <Badge className={riskTone[learner.riskStatus]}>{formatStatus(learner.riskStatus)}</Badge>
-                                                    </td>
-                                                    <td className="px-4 py-4">
-                                                        <p className="font-medium text-slate-950">{learner.courseCompleted}/{learner.courseAssigned}</p>
-                                                        <p className="mt-1 text-xs text-slate-500">{learner.averageCourseProgress}% avg progress</p>
-                                                    </td>
-                                                    <td className="px-4 py-4">
-                                                        <p className="font-medium text-slate-950">{learner.examAttempts}/{learner.examInvitations}</p>
-                                                        <p className="mt-1 text-xs text-slate-500">{learner.gradedAttempts} graded</p>
-                                                    </td>
-                                                    <td className="px-4 py-4">
-                                                        <p className="font-medium text-slate-950">{learner.passRate}% / {learner.averageScore}%</p>
-                                                        <p className="mt-1 text-xs text-slate-500">Best {learner.bestScore}%</p>
-                                                    </td>
-                                                    <td className="px-4 py-4">
-                                                        <div className="flex flex-wrap gap-1">
-                                                            <Badge variant="outline"><Award className="mr-1 h-3 w-3" />{learner.certificates}</Badge>
-                                                            <Badge variant="outline"><Trophy className="mr-1 h-3 w-3" />{learner.badges}</Badge>
-                                                        </div>
-                                                        <p className="mt-1 text-xs text-slate-500">{learner.stars} stars</p>
-                                                    </td>
-                                                    <td className="px-4 py-4">
-                                                        <p className="font-medium text-slate-950">{learner.retakeNeeded} retakes</p>
-                                                        <p className="mt-1 text-xs text-slate-500">{learner.overdueExams} overdue exams</p>
-                                                    </td>
-                                                    <td className="py-4 pl-4 text-slate-500">
-                                                        {formatDate(learner.lastActivityAt)}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </CardContent>
-                        </Card>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-200">
+                                                {filteredLearners.map((learner) => (
+                                                    <tr key={learner.userId} className="align-top hover:bg-slate-50/70">
+                                                        <td className="px-4 py-4">
+                                                            <p className="font-semibold text-slate-950">{learner.name}</p>
+                                                            <p className="text-xs text-slate-500">{learner.email}</p>
+                                                        </td>
+                                                        <td className="px-4 py-4"><Badge variant="outline" className={riskTone[learner.riskStatus]}>{formatStatus(learner.riskStatus)}</Badge></td>
+                                                        <td className="px-4 py-4">
+                                                            <p className="font-medium text-slate-800">{learner.courseCompleted}/{learner.courseAssigned} complete</p>
+                                                            <p className="text-xs text-slate-500">{learner.averageCourseProgress}% average progress</p>
+                                                        </td>
+                                                        <td className="px-4 py-4">
+                                                            <p className="font-medium text-slate-800">{learner.examAttempts}/{learner.examInvitations} attempts</p>
+                                                            <p className="text-xs text-slate-500">{learner.gradedAttempts} graded</p>
+                                                        </td>
+                                                        <td className="px-4 py-4">
+                                                            <p className="font-medium text-slate-800">{learner.passRate}% pass · {learner.averageScore}% avg</p>
+                                                            <p className="text-xs text-slate-500">Best {learner.bestScore}%</p>
+                                                        </td>
+                                                        <td className="px-4 py-4">
+                                                            <p className={learner.overdueExams > 0 ? 'font-medium text-rose-700' : 'text-slate-600'}>{learner.overdueExams} overdue</p>
+                                                            <p className={learner.retakeNeeded > 0 ? 'text-amber-700' : 'text-xs text-slate-500'}>{learner.retakeNeeded} retakes</p>
+                                                        </td>
+                                                        <td className="whitespace-nowrap px-4 py-4 text-slate-500">{formatDate(learner.lastActivityAt)}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </section>
+
+                        <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-6">
+                            <Link href="/admin/training-ops/series"><Button variant="outline"><GraduationCap className="mr-2 h-4 w-4" />Learning Programs</Button></Link>
+                            <Link href="/admin/training-ops/events"><Button variant="outline"><CalendarDays className="mr-2 h-4 w-4" />Events</Button></Link>
+                            <Link href="/admin/training-ops/domains"><Button variant="outline"><Target className="mr-2 h-4 w-4" />Domains & Ownership</Button></Link>
+                            <Link href="/admin/training-ops/effectiveness"><Button variant="outline"><CheckCircle2 className="mr-2 h-4 w-4" />Effectiveness</Button></Link>
+                        </div>
                     </>
                 )}
             </div>

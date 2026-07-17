@@ -208,7 +208,7 @@ export default function TrainingOpsSeriesDetailPage() {
                                             <p className="font-medium">{exam.title}</p>
                                             <p className="mt-1 text-sm text-muted-foreground">{exam.status} · {exam.assessmentKind ?? 'UNCLASSIFIED'}</p>
                                         </div>
-                                        <Link href={`/admin/exams/${exam.id}`}>
+                                        <Link href={`/admin/exams/${exam.id}/edit`}>
                                             <Button variant="outline">Exam</Button>
                                         </Link>
                                     </div>

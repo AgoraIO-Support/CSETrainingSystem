@@ -3,18 +3,8 @@ import { CertificateStatus, ExamAttemptStatus, UserRole, UserStatus } from '@pri
 import { withAdminAuth } from '@/lib/auth-middleware'
 import prisma from '@/lib/prisma'
 import { TrainingOpsService } from '@/lib/services/training-ops.service'
+import { averageNumber, percentage, selectLatestEvidenceAttempts } from '@/lib/training-ops-report-metrics'
 import type { TrainingOpsAdminReport, TrainingOpsLearnerRiskStatus, TrainingOpsReportRange } from '@/types'
-
-const pct = (numerator: number, denominator: number) => {
-    if (denominator <= 0) return 0
-    return Math.round((numerator / denominator) * 100)
-}
-
-const average = (values: Array<number | null | undefined>) => {
-    const valid = values.filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
-    if (valid.length === 0) return 0
-    return Math.round(valid.reduce((sum, value) => sum + value, 0) / valid.length)
-}
 
 const formatRange = (startDate: Date, endDate: Date) => {
     const formatter = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
@@ -77,7 +67,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
     try {
         const { searchParams } = new URL(req.url)
         const range = resolveRange(searchParams.get('range'))
-        const includeAdmins = parseBoolean(searchParams.get('includeAdmins'), true)
+        const includeAdmins = parseBoolean(searchParams.get('includeAdmins'), false)
         const excludedUserIds = parseExcludedUserIds(searchParams.get('excludeUserIds'))
         const { startDate, endDate } = buildPeriod(range)
         const includedRoles = includeAdmins ? [UserRole.USER, UserRole.SME, UserRole.ADMIN] : [UserRole.USER, UserRole.SME]
@@ -163,6 +153,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
                     exam: {
                         select: {
                             deadline: true,
+                            countsTowardPerformance: true,
                         },
                     },
                 },
@@ -192,6 +183,7 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
                         select: {
                             maxAttempts: true,
                             deadline: true,
+                            countsTowardPerformance: true,
                         },
                     },
                 },
@@ -316,9 +308,9 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
 
             const courseAssigned = userEnrollments.length
             const courseCompleted = userEnrollments.filter((entry) => entry.status === 'COMPLETED' || entry.progress >= 100).length
-            const averageCourseProgress = average(userEnrollments.map((entry) => entry.progress))
-            const passRate = pct(passedAttempts.length, gradedAttempts.length)
-            const averageScore = average(gradedAttempts.map((entry) => entry.percentageScore))
+            const averageCourseProgress = averageNumber(userEnrollments.map((entry) => entry.progress))
+            const passRate = percentage(passedAttempts.length, gradedAttempts.length)
+            const averageScore = averageNumber(gradedAttempts.map((entry) => entry.percentageScore))
             const bestScore = Math.round(Math.max(0, ...gradedAttempts.map((entry) => entry.percentageScore ?? 0)))
 
             let riskStatus: TrainingOpsLearnerRiskStatus = 'ON_TRACK'
@@ -361,30 +353,69 @@ export const GET = withAdminAuth(async (req: NextRequest) => {
             }
         })
 
-        const learnersWithCourseAssignments = learnerPerformance.filter((learner) => learner.courseAssigned > 0)
-        const learnersWithExamInvitations = learnerPerformance.filter((learner) => learner.examInvitations > 0)
         const learnersWithCertificates = learnerPerformance.filter((learner) => learner.certificates > 0)
         const allGradedAttempts = attempts.filter((attempt) => attempt.status === ExamAttemptStatus.GRADED)
         const passedGradedAttempts = allGradedAttempts.filter((attempt) => attempt.passed === true)
+        const performanceInvitations = invitations.filter((invitation) => invitation.exam.countsTowardPerformance)
+        const performanceEvidence = selectLatestEvidenceAttempts(
+            allGradedAttempts.filter((attempt) => attempt.exam.countsTowardPerformance)
+        )
+        const passedPerformanceEvidence = performanceEvidence.filter((attempt) => attempt.passed === true)
         const atRiskLearners = learnerPerformance.filter((learner) => learner.riskStatus === 'AT_RISK').length
         const watchLearners = learnerPerformance.filter((learner) => learner.riskStatus === 'WATCH').length
         const retakeNeeded = learnerPerformance.reduce((sum, learner) => sum + learner.retakeNeeded, 0)
         const overdueLearners = learnerPerformance.filter((learner) => learner.overdueExams > 0).length
+        const courseAssignments = learnerPerformance.reduce((sum, learner) => sum + learner.courseAssigned, 0)
+        const courseStarted = enrollments.filter((enrollment) => enrollment.progress > 0).length
+        const courseCompleted = learnerPerformance.reduce((sum, learner) => sum + learner.courseCompleted, 0)
+        const activeLearnerIds = new Set([
+            ...enrollments.map((enrollment) => enrollment.userId),
+            ...attempts.map((attempt) => attempt.userId),
+            ...certificates.map((certificate) => certificate.userId),
+            ...learners
+                .filter((learner) => learner.lastLoginAt && learner.lastLoginAt >= startDate && learner.lastLoginAt <= endDate)
+                .map((learner) => learner.id),
+        ])
+        const invitedLearnerIds = new Set(invitations.map((invitation) => invitation.userId))
+        const participatingLearnerIds = new Set(attempts.map((attempt) => attempt.userId))
+        const invitationKeys = new Set(invitations.map((invitation) => `${invitation.userId}:${invitation.examId}`))
+        const invitationParticipatingLearnerIds = new Set(
+            attempts
+                .filter((attempt) => invitationKeys.has(`${attempt.userId}:${attempt.examId}`))
+                .map((attempt) => attempt.userId)
+        )
+        const assessmentLearnerIds = new Set([...invitedLearnerIds, ...participatingLearnerIds])
+        const performanceInvitedLearnerIds = new Set(performanceInvitations.map((invitation) => invitation.userId))
+        const performanceParticipatingLearnerIds = new Set(performanceEvidence.map((attempt) => attempt.userId))
+        const measuredDomains = domainEffectiveness.filter((domain) => domain.gradedAttempts > 0).length
 
         const summary = {
             teamMembers: learners.length,
-            activeLearners: learnerPerformance.filter((learner) => learner.lastActivityAt !== null).length,
-            courseCompletionRate: pct(
-                learnersWithCourseAssignments.reduce((sum, learner) => sum + learner.courseCompleted, 0),
-                learnersWithCourseAssignments.reduce((sum, learner) => sum + learner.courseAssigned, 0)
+            activeLearners: activeLearnerIds.size,
+            courseAssignments,
+            courseStarted,
+            courseCompleted,
+            courseCompletionRate: percentage(courseCompleted, courseAssignments),
+            examInvitations: invitations.length,
+            assessmentLearners: assessmentLearnerIds.size,
+            invitedLearners: invitedLearnerIds.size,
+            invitationParticipatingLearners: invitationParticipatingLearnerIds.size,
+            participatingLearners: participatingLearnerIds.size,
+            gradedAttempts: allGradedAttempts.length,
+            examParticipationRate: percentage(
+                invitationParticipatingLearnerIds.size,
+                invitedLearnerIds.size
             ),
-            examParticipationRate: pct(
-                learnersWithExamInvitations.filter((learner) => learner.examAttempts > 0).length,
-                learnersWithExamInvitations.length
-            ),
-            examPassRate: pct(passedGradedAttempts.length, allGradedAttempts.length),
-            averageExamScore: average(allGradedAttempts.map((attempt) => attempt.percentageScore)),
-            certificationRate: pct(learnersWithCertificates.length, learners.length),
+            examPassRate: percentage(passedGradedAttempts.length, allGradedAttempts.length),
+            averageExamScore: averageNumber(allGradedAttempts.map((attempt) => attempt.percentageScore)),
+            performanceInvitedLearners: performanceInvitedLearnerIds.size,
+            performanceParticipatingLearners: performanceParticipatingLearnerIds.size,
+            performanceEvidenceRecords: performanceEvidence.length,
+            performancePassRate: percentage(passedPerformanceEvidence.length, performanceEvidence.length),
+            performanceAverageScore: averageNumber(performanceEvidence.map((attempt) => attempt.percentageScore)),
+            trackedDomains: domainEffectiveness.length,
+            measuredDomains,
+            certificationRate: percentage(learnersWithCertificates.length, learners.length),
             atRiskLearners,
             watchLearners,
             retakeNeeded,
