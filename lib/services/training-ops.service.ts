@@ -1858,6 +1858,10 @@ export class TrainingOpsService {
             throw new Error('INVALID_EVENT_TIME_RANGE')
         }
 
+        if (payload.status === LearningEventStatus.SCHEDULED && !payload.scheduledAt) {
+            throw new Error('SCHEDULED_EVENT_REQUIRES_DATE')
+        }
+
         if (payload.startsAt && payload.endsAt && payload.endsAt < payload.startsAt) {
             throw new Error('INVALID_EVENT_TIME_RANGE')
         }
@@ -2034,6 +2038,11 @@ export class TrainingOpsService {
 
         if (nextScheduledAt && nextEndsAt && nextEndsAt < nextScheduledAt) {
             throw new Error('INVALID_EVENT_TIME_RANGE')
+        }
+
+        const nextStatus = payload.status === undefined ? existing.status : payload.status
+        if (nextStatus === LearningEventStatus.SCHEDULED && !nextScheduledAt) {
+            throw new Error('SCHEDULED_EVENT_REQUIRES_DATE')
         }
 
         if (nextStartsAt && nextEndsAt && nextEndsAt < nextStartsAt) {
@@ -3371,11 +3380,18 @@ export class TrainingOpsService {
         await this.deleteLearningEvent(eventId)
     }
 
-    static async getScopedLearnerGaps(user: TrainingOpsOperator) {
+    static async getScopedLearnerGaps(
+        user: TrainingOpsOperator,
+        options: { domainIds?: string[] } = {}
+    ) {
         const { scope } = await this.getScopedSummary(user)
-        const domainIds = scope?.domainIds ?? (
+        const allowedDomainIds = scope?.domainIds ?? (
             await prisma.productDomain.findMany({ select: { id: true } })
         ).map((row) => row.id)
+        const requestedDomainIds = options.domainIds?.filter(Boolean)
+        const domainIds = requestedDomainIds
+            ? requestedDomainIds.filter((domainId) => allowedDomainIds.includes(domainId))
+            : allowedDomainIds
 
         if (domainIds.length === 0) {
             return {

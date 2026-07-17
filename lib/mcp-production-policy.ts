@@ -21,7 +21,10 @@ const readCsvEnv = (name: string) =>
 
 const PRIMARY_STANDARD_MCP_TOOL_NAMES = new Set([
     'list_my_workspace',
+    'get_training_ops_action_center',
+    'get_domain_health',
     'create_badge',
+    'create_learning_program',
     'create_series',
     'create_event',
     'create_course',
@@ -111,6 +114,34 @@ export const isTrustedMcpCaller = (request: Request) => {
 }
 
 export const isHighRiskStandardMcpTool = (toolName: string) => HIGH_RISK_TOOL_NAMES.has(toolName)
+
+export type SmeMcpToolAnnotations = {
+    readOnlyHint: boolean
+    destructiveHint: boolean
+    idempotentHint: boolean
+    openWorldHint: boolean
+}
+
+const READ_ONLY_TOOL_NAMES = new Set([
+    'list_my_workspace',
+    'get_training_ops_action_center',
+    'get_domain_health',
+    'review_event_status',
+    'list_my_series_badges',
+])
+
+const NATURALLY_IDEMPOTENT_TOOL_NAMES = new Set([
+    ...READ_ONLY_TOOL_NAMES,
+    'share_course_with_learners',
+    'publish_exam_for_learners',
+])
+
+export const getSmeMcpToolAnnotations = (toolName: string): SmeMcpToolAnnotations => ({
+    readOnlyHint: READ_ONLY_TOOL_NAMES.has(toolName),
+    destructiveHint: HIGH_RISK_TOOL_NAMES.has(toolName),
+    idempotentHint: NATURALLY_IDEMPOTENT_TOOL_NAMES.has(toolName),
+    openWorldHint: false,
+})
 
 export const isToolExposedOnStandardMcpServer = (toolName: string) => {
     const metadata = smeMcpToolMetadataByName[toolName as keyof typeof smeMcpToolMetadataByName]

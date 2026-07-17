@@ -1,5 +1,8 @@
 import { AuthUser } from '@/lib/auth-middleware'
-import { isToolExposedOnStandardMcpServer } from '@/lib/mcp-production-policy'
+import {
+    getSmeMcpToolAnnotations,
+    isToolExposedOnStandardMcpServer,
+} from '@/lib/mcp-production-policy'
 import { SmeMcpService } from '@/lib/services/sme-mcp.service'
 import {
     getSmeMcpToolMetadata,
@@ -142,6 +145,8 @@ const parameterDescription = (
     fallback: string
 ) => getSmeMcpToolParameterMetadata(toolName, parameterName)?.description ?? fallback
 
+// Metadata examples intentionally support every JSON-compatible parameter shape.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const parameterExample = (toolName: keyof typeof smeMcpToolMetadataByName, parameterName: string): any =>
     getSmeMcpToolParameterMetadata(toolName, parameterName)?.example
 
@@ -181,9 +186,41 @@ const createSeriesSchema = z.object({
     contributesToDomainBadges: z.boolean().optional(),
 })
 
+const createLearningProgramSchema = z.object({
+    name: z.string().trim().min(1).max(160),
+    programType: createSeriesSchema.shape.seriesType.optional(),
+    seriesType: createSeriesSchema.shape.seriesType.optional(),
+    productDomain: z.string().trim().min(1).max(160),
+    programOwner: z.string().trim().min(1).max(255).optional().nullable(),
+    seriesOwner: z.string().trim().min(1).max(255).optional().nullable(),
+    cadence: z.string().trim().max(120).optional().nullable(),
+    description: z.string().trim().optional().nullable(),
+    active: z.boolean().optional(),
+    contributesToDomainBadges: z.boolean().optional(),
+}).superRefine((value, ctx) => {
+    if (!value.programType && !value.seriesType) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['programType'], message: 'programType is required.' })
+    }
+    if (value.programType && value.seriesType && value.programType !== value.seriesType) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['seriesType'],
+            message: 'programType and seriesType must match when both are provided.',
+        })
+    }
+    if (value.programOwner && value.seriesOwner && value.programOwner !== value.seriesOwner) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['seriesOwner'],
+            message: 'programOwner and seriesOwner must match when both are provided.',
+        })
+    }
+})
+
 const createEventSchema = z.object({
     title: z.string().trim().min(1).max(200),
-    learningSeries: z.string().trim().min(1).max(200),
+    learningProgram: z.string().trim().min(1).max(200).optional(),
+    learningSeries: z.string().trim().min(1).max(200).optional(),
     format: z.enum(['CASE_STUDY', 'KNOWLEDGE_SHARING', 'FAQ_SHARE', 'RELEASE_BRIEFING', 'QUIZ_REVIEW', 'FINAL_EXAM', 'WORKSHOP']),
     status: z.enum(['DRAFT', 'SCHEDULED']).optional(),
     host: z.string().trim().min(1).max(255).optional().nullable(),
@@ -192,6 +229,30 @@ const createEventSchema = z.object({
     scheduledAt: z.coerce.date().optional().nullable(),
     countsTowardPerformance: z.boolean().optional(),
     starValue: z.number().int().min(0).max(20).optional().nullable(),
+}).superRefine((value, ctx) => {
+    if (!value.learningProgram && !value.learningSeries && !value.productDomain) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['productDomain'],
+            message: 'Provide learningProgram (preferred), learningSeries (compatibility alias), or productDomain.',
+        })
+    }
+
+    if (value.learningProgram && value.learningSeries && value.learningProgram !== value.learningSeries) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['learningSeries'],
+            message: 'learningProgram and learningSeries must reference the same program when both are provided.',
+        })
+    }
+
+    if (value.status === 'SCHEDULED' && !value.scheduledAt) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['scheduledAt'],
+            message: 'scheduledAt is required when status is SCHEDULED.',
+        })
+    }
 })
 
 const createCourseSchema = z.object({
@@ -412,10 +473,26 @@ const reviewEventStatusSchema = z.object({
     event: z.string().trim().min(1).max(200),
 })
 
+const highRiskConfirmationFields = {
+    dryRun: z.boolean().optional(),
+    confirm: z.boolean().optional(),
+    idempotencyKey: z.string().trim().min(8).max(200).optional(),
+}
+
+const highRiskControlJsonProperties = {
+    dryRun: describedBooleanSchema('Preview the operation without changing data.', false),
+    confirm: describedBooleanSchema('Explicitly confirm execution after reviewing the preview.', false),
+    idempotencyKey: describedStringSchema('Optional caller-supplied request key for audit correlation. Assignment and invitation tools also deduplicate existing records.', {
+        minLength: 8,
+        maxLength: 200,
+    }),
+}
+
 const shareCourseWithLearnersSchema = z.object({
     course: z.string().trim().min(1).max(200),
     userIds: inviteUsersSchema.shape.userIds,
     sendNotification: z.boolean().optional(),
+    ...highRiskConfirmationFields,
 })
 
 const prepareTranscriptUploadSchema = z.object({
@@ -428,6 +505,7 @@ const prepareTranscriptUploadSchema = z.object({
     replaceExistingLanguage: z.boolean().optional(),
     setAsDefaultSubtitle: z.boolean().optional(),
     setAsPrimaryForAI: z.boolean().optional(),
+    ...highRiskConfirmationFields,
 })
 
 const processTranscriptKnowledgeSchema = z.object({
@@ -437,12 +515,14 @@ const processTranscriptKnowledgeSchema = z.object({
     processKnowledge: z.boolean().optional(),
     force: z.boolean().optional(),
     knowledgePromptTemplateId: z.string().uuid().optional().nullable(),
+    ...highRiskConfirmationFields,
 })
 
 const publishExamForLearnersSchema = z.object({
     exam: z.string().trim().min(1).max(200),
     userIds: z.array(z.string().uuid()).default([]),
     sendNotification: z.boolean().optional(),
+    ...highRiskConfirmationFields,
 })
 
 export const deprecatedSmeMcpToolNames = [
@@ -486,6 +566,36 @@ export const smeMcpToolDefinitions = [
             examples: [{}, { domainId: parameterExample('list_my_workspace', 'domainId') }],
         },
         execute: (user, input) => SmeMcpService.listMyWorkspace(user, input as z.infer<typeof listWorkspaceSchema>),
+    },
+    {
+        name: 'get_training_ops_action_center',
+        description: smeMcpToolMetadataByName.get_training_ops_action_center.description,
+        inputSchema: listWorkspaceSchema.default({}),
+        inputJsonSchema: {
+            type: 'object',
+            description: toolInputDescription('get_training_ops_action_center'),
+            properties: {
+                domainId: describedUuidSchema('Optional Domain Scope UUID returned by list_my_workspace.'),
+            },
+            additionalProperties: false,
+        },
+        execute: (user, input) =>
+            SmeMcpService.getTrainingOpsActionCenter(user, input as z.infer<typeof listWorkspaceSchema>),
+    },
+    {
+        name: 'get_domain_health',
+        description: smeMcpToolMetadataByName.get_domain_health.description,
+        inputSchema: listWorkspaceSchema.default({}),
+        inputJsonSchema: {
+            type: 'object',
+            description: toolInputDescription('get_domain_health'),
+            properties: {
+                domainId: describedUuidSchema('Optional Domain Scope UUID returned by list_my_workspace.'),
+            },
+            additionalProperties: false,
+        },
+        execute: (user, input) =>
+            SmeMcpService.getDomainHealth(user, input as z.infer<typeof listWorkspaceSchema>),
     },
     {
         name: 'create_badge',
@@ -574,6 +684,51 @@ export const smeMcpToolDefinitions = [
         execute: (user, input) => SmeMcpService.createSeries(user, input as z.infer<typeof createSeriesSchema>),
     },
     {
+        name: 'create_learning_program',
+        description: smeMcpToolMetadataByName.create_learning_program.description,
+        inputSchema: createLearningProgramSchema,
+        inputJsonSchema: {
+            type: 'object',
+            description: toolInputDescription('create_learning_program'),
+            properties: {
+                name: describedStringSchema('Required Learning Program name.', { minLength: 1, maxLength: 160 }),
+                programType: describedStringSchema('Required program type.', {
+                    enum: ['WEEKLY_DRILL', 'CASE_STUDY', 'KNOWLEDGE_SHARING', 'FAQ_SHARE', 'RELEASE_READINESS', 'QUARTERLY_FINAL', 'YEAR_END_FINAL'],
+                }),
+                seriesType: describedStringSchema('Compatibility alias for programType.', {
+                    enum: ['WEEKLY_DRILL', 'CASE_STUDY', 'KNOWLEDGE_SHARING', 'FAQ_SHARE', 'RELEASE_READINESS', 'QUARTERLY_FINAL', 'YEAR_END_FINAL'],
+                }),
+                productDomain: describedStringSchema('Required owning Domain reference.', { minLength: 1, maxLength: 160 }),
+                programOwner: describedStringSchema('Optional program owner reference.', { nullable: true }),
+                seriesOwner: describedStringSchema('Optional program owner reference.', { nullable: true }),
+                cadence: describedStringSchema('Optional cadence label.', { maxLength: 120, nullable: true }),
+                description: describedStringSchema('Optional program description.', { nullable: true }),
+                active: describedBooleanSchema('Whether the program is active immediately.', true),
+                contributesToDomainBadges: describedBooleanSchema('Whether activity contributes to Domain badges.', true),
+            },
+            required: ['name', 'productDomain'],
+            anyOf: [{ required: ['programType'] }, { required: ['seriesType'] }],
+            additionalProperties: false,
+            examples: [
+                getSmeMcpToolMetadata('create_learning_program').minimalExample.input,
+                getSmeMcpToolMetadata('create_learning_program').fullExample?.input,
+            ].filter(Boolean),
+        },
+        execute: (user, rawInput) => {
+            const input = rawInput as z.infer<typeof createLearningProgramSchema>
+            return SmeMcpService.createSeries(user, {
+                name: input.name,
+                seriesType: input.programType ?? input.seriesType!,
+                productDomain: input.productDomain,
+                seriesOwner: input.programOwner ?? input.seriesOwner,
+                cadence: input.cadence,
+                description: input.description,
+                active: input.active,
+                contributesToDomainBadges: input.contributesToDomainBadges,
+            }, 'create_learning_program')
+        },
+    },
+    {
         name: 'create_event',
         description: smeMcpToolMetadataByName.create_event.description,
         inputSchema: createEventSchema,
@@ -586,10 +741,14 @@ export const smeMcpToolDefinitions = [
                     maxLength: 200,
                     examples: [String(parameterExample('create_event', 'title') ?? '')],
                 }),
-                learningSeries: describedStringSchema(parameterDescription('create_event', 'learningSeries', 'Required series reference.'), {
+                learningProgram: describedStringSchema(parameterDescription('create_event', 'learningProgram', 'Optional Learning Program reference.'), {
                     minLength: 1,
                     maxLength: 200,
-                    examples: [String(parameterExample('create_event', 'learningSeries') ?? '')],
+                    examples: [String(parameterExample('create_event', 'learningProgram') ?? '')],
+                }),
+                learningSeries: describedStringSchema(parameterDescription('create_event', 'learningSeries', 'Compatibility alias for learningProgram.'), {
+                    minLength: 1,
+                    maxLength: 200,
                 }),
                 format: describedStringSchema(parameterDescription('create_event', 'format', 'Required event format.'), {
                     enum: parameterAcceptedValues('create_event', 'format'),
@@ -627,7 +786,12 @@ export const smeMcpToolDefinitions = [
                     nullable: true,
                 }),
             },
-            required: ['title', 'learningSeries', 'format'],
+            required: ['title', 'format'],
+            anyOf: [
+                { required: ['learningProgram'] },
+                { required: ['learningSeries'] },
+                { required: ['productDomain'] },
+            ],
             additionalProperties: false,
             examples: [getSmeMcpToolMetadata('create_event').minimalExample.input, getSmeMcpToolMetadata('create_event').fullExample?.input].filter(Boolean),
         },
@@ -1046,6 +1210,7 @@ export const smeMcpToolDefinitions = [
                     ),
                     false
                 ),
+                ...highRiskControlJsonProperties,
             },
             required: ['course', 'userIds'],
             additionalProperties: false,
@@ -1082,6 +1247,7 @@ export const smeMcpToolDefinitions = [
                     ),
                     false
                 ),
+                ...highRiskControlJsonProperties,
             },
             required: ['exam'],
             additionalProperties: false,
@@ -1145,6 +1311,7 @@ export const smeMcpToolDefinitions = [
                 setAsPrimaryForAI: describedBooleanSchema(
                     parameterDescription('prepare_transcript_upload', 'setAsPrimaryForAI', 'Optional primary-for-AI flag.')
                 ),
+                ...highRiskControlJsonProperties,
             },
             required: ['lessonId', 'filename'],
             additionalProperties: false,
@@ -1209,6 +1376,7 @@ export const smeMcpToolDefinitions = [
                         'Optional knowledge prompt template UUID.'
                     )
                 ),
+                ...highRiskControlJsonProperties,
             },
             required: ['lessonId'],
             additionalProperties: false,
@@ -1258,4 +1426,5 @@ export const listMcpToolsForServer = () =>
         name: definition.name,
         description: definition.description,
         inputSchema: definition.inputJsonSchema,
+        annotations: getSmeMcpToolAnnotations(definition.name),
     }))

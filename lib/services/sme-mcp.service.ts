@@ -41,7 +41,6 @@ import {
     buildEssaySampleAnswerGuidance,
     parseEssayGradingCriteria,
     sumEssayGradingCriteriaPoints,
-    type EssayGradingCriterion,
     type EssayScoringStyle,
 } from '@/lib/essay-grading'
 import { v4 as uuidv4 } from 'uuid'
@@ -264,6 +263,7 @@ export class SmeMcpService {
             domainId?: string
         } = {}
     ): Promise<ToolResult<{
+        scope: { domainId: string | null; domainName: string | null }
         domains: Awaited<ReturnType<typeof TrainingOpsService.getScopedSummary>>['domains']
         series: Awaited<ReturnType<typeof TrainingOpsService.getScopedSummary>>['series']
         pendingEvents: Awaited<ReturnType<typeof TrainingOpsService.getScopedSummary>>['events']
@@ -273,14 +273,25 @@ export class SmeMcpService {
         weakTopics: Awaited<ReturnType<typeof TrainingOpsService.getScopedLearnerGaps>>['weakTopics']
         learnerGaps: Awaited<ReturnType<typeof TrainingOpsService.getScopedLearnerGaps>>['learnerGaps']
     }>> {
-        const [summary, learnerGaps, courses, exams] = await Promise.all([
+        const [summary, courses, exams] = await Promise.all([
             TrainingOpsService.getScopedSummary(user),
-            TrainingOpsService.getScopedLearnerGaps(user),
             TrainingOpsService.getScopedCourses(user),
             TrainingOpsService.getScopedExams(user),
         ])
 
         const domainId = input.domainId
+        const selectedDomain = domainId
+            ? summary.domains.find((domain) => domain.id === domainId)
+            : null
+
+        if (domainId && !selectedDomain) {
+            throw errorWithDetails('DOMAIN_REFERENCE_NOT_FOUND', { ref: domainId })
+        }
+
+        const learnerGaps = await TrainingOpsService.getScopedLearnerGaps(
+            user,
+            domainId ? { domainIds: [domainId] } : {}
+        )
 
         const domains = domainId
             ? summary.domains.filter((domain) => domain.id === domainId)
@@ -296,7 +307,8 @@ export class SmeMcpService {
             .filter((event) => {
                 const matchesDomain = !domainId || (event.domain?.id ? domainIds.has(event.domain.id) : false)
                 const matchesSeries = !domainId || (event.series?.id ? seriesIds.has(event.series.id) : false)
-                return matchesDomain && matchesSeries && event.status !== 'COMPLETED' && event.status !== 'CANCELED'
+                const matchesScope = !domainId || matchesDomain || matchesSeries
+                return matchesScope && event.status !== 'COMPLETED' && event.status !== 'CANCELED'
             })
             .slice(0, 10)
 
@@ -315,8 +327,12 @@ export class SmeMcpService {
         return {
             success: true,
             tool: 'list_my_workspace',
-            summary: `Returned ${domains.length} domains, ${series.length} series, and ${pendingEvents.length} pending events.`,
+            summary: `Returned ${domains.length} domains, ${series.length} Learning Programs, and ${pendingEvents.length} pending events.`,
             data: {
+                scope: {
+                    domainId: selectedDomain?.id ?? null,
+                    domainName: selectedDomain?.name ?? null,
+                },
                 domains,
                 series,
                 pendingEvents,
@@ -326,7 +342,7 @@ export class SmeMcpService {
                 weakTopics: learnerGaps.weakTopics,
                 learnerGaps: learnerGaps.learnerGaps,
             },
-            nextActions: ['create_badge', 'create_series', 'create_event', 'create_course', 'create_exam'],
+            nextActions: ['get_training_ops_action_center', 'get_domain_health', 'create_learning_program', 'create_event'],
         }
     }
 
@@ -588,7 +604,7 @@ export class SmeMcpService {
                     domainId: domain.id,
                 },
             },
-            nextActions: ['list_my_workspace', 'create_series'],
+            nextActions: ['list_my_workspace', 'create_learning_program'],
             recommendedNextInputs: {
                 list_my_workspace: {
                     domainId: domain.id,
@@ -608,8 +624,10 @@ export class SmeMcpService {
             description?: string | null
             active?: boolean
             contributesToDomainBadges?: boolean
-        }
+        },
+        toolName: 'create_series' | 'create_learning_program' = 'create_series'
     ): Promise<ToolResult<{
+        program: Awaited<ReturnType<typeof TrainingOpsService.createScopedLearningSeries>>
         series: Awaited<ReturnType<typeof TrainingOpsService.createScopedLearningSeries>>
         normalized: {
             slug: string
@@ -639,9 +657,10 @@ export class SmeMcpService {
 
         return {
             success: true,
-            tool: 'create_series',
-            summary: `Created learning series "${series.name}" in domain "${domain.name}".`,
+            tool: toolName,
+            summary: `Created learning program "${series.name}" in domain "${domain.name}".`,
             data: {
+                program: series,
                 series,
                 normalized: {
                     slug: series.slug,
@@ -652,10 +671,92 @@ export class SmeMcpService {
             nextActions: ['create_event', 'list_my_workspace'],
             recommendedNextInputs: {
                 create_event: {
-                    learningSeries: series.id,
+                    learningProgram: series.id,
                     productDomain: domain.id,
                 },
             },
+            ...(toolName === 'create_series'
+                ? { warnings: ['create_series is retained for compatibility; prefer create_learning_program.'] }
+                : {}),
+        }
+    }
+
+    static async getTrainingOpsActionCenter(
+        user: MappableUser,
+        input: { domainId?: string } = {}
+    ): Promise<ToolResult<Record<string, unknown>>> {
+        const workspace = await this.listMyWorkspace(user, input)
+        const data = workspace.data
+        const eventScheduleGaps = data.pendingEvents.filter((event) => !event.scheduledAt)
+        const learnerGaps = data.learnerGaps.filter((learner) => learner.passRate < 70)
+
+        const recommendedActions = [
+            ...(eventScheduleGaps.length > 0
+                ? [`Schedule ${eventScheduleGaps.length} event${eventScheduleGaps.length === 1 ? '' : 's'} that currently have no date.`]
+                : []),
+            ...(learnerGaps.length > 0
+                ? [`Review ${learnerGaps.length} learner${learnerGaps.length === 1 ? '' : 's'} below the 70% pass-rate threshold.`]
+                : []),
+            ...(data.atRiskDomains.length > 0
+                ? [`Create an intervention plan for ${data.atRiskDomains.length} domain${data.atRiskDomains.length === 1 ? '' : 's'} not currently on track.`]
+                : []),
+            ...(data.weakTopics.length > 0
+                ? [`Prioritize refresher content for ${data.weakTopics.slice(0, 3).map((topic) => topic.topic).filter(Boolean).join(', ')}.`]
+                : []),
+        ]
+
+        return {
+            success: true,
+            tool: 'get_training_ops_action_center',
+            summary: `Found ${eventScheduleGaps.length} scheduling gaps, ${learnerGaps.length} learner gaps, and ${data.atRiskDomains.length} domains needing attention.`,
+            data: {
+                scope: data.scope,
+                eventScheduleGaps,
+                learnerGaps,
+                weakTopics: data.weakTopics.map((topic) => ({
+                    ...topic,
+                    missRate: topic.answered > 0 ? Math.round((topic.misses / topic.answered) * 100) : 0,
+                })),
+                domainsNeedingAttention: data.atRiskDomains,
+                recommendedActions,
+            },
+            nextActions: ['get_domain_health', 'create_event', 'create_course', 'create_exam'],
+        }
+    }
+
+    static async getDomainHealth(
+        user: MappableUser,
+        input: { domainId?: string } = {}
+    ): Promise<ToolResult<Record<string, unknown>>> {
+        const summary = await TrainingOpsService.getScopedSummary(user)
+        const selectedDomain = input.domainId
+            ? summary.domains.find((domain) => domain.id === input.domainId)
+            : null
+
+        if (input.domainId && !selectedDomain) {
+            throw errorWithDetails('DOMAIN_REFERENCE_NOT_FOUND', { ref: input.domainId })
+        }
+
+        const health = summary.effectiveness.filter((domain) => !input.domainId || domain.id === input.domainId)
+        const measuredDomains = health.filter((domain) => domain.gradedAttempts > 0)
+        const noDataDomains = health.filter((domain) => domain.gradedAttempts === 0)
+
+        return {
+            success: true,
+            tool: 'get_domain_health',
+            summary: `Returned health for ${health.length} domain${health.length === 1 ? '' : 's'}; ${noDataDomains.length} currently lack graded-attempt data.`,
+            data: {
+                scope: {
+                    domainId: selectedDomain?.id ?? null,
+                    domainName: selectedDomain?.name ?? null,
+                },
+                measuredDomains: measuredDomains.map((domain) => ({
+                    ...domain,
+                    confidence: domain.gradedAttempts >= 20 ? 'HIGH' : domain.gradedAttempts >= 5 ? 'MEDIUM' : 'LOW',
+                })),
+                noDataDomains,
+            },
+            nextActions: ['get_training_ops_action_center', 'list_my_workspace'],
         }
     }
 
@@ -663,7 +764,8 @@ export class SmeMcpService {
         user: MappableUser,
         input: {
             title: string
-            learningSeries: string
+            learningProgram?: string
+            learningSeries?: string
             format: LearningEventFormat
             status?: LearningEventStatus
             host?: string | null
@@ -675,19 +777,28 @@ export class SmeMcpService {
         }
     ): Promise<ToolResult<{
         event: Awaited<ReturnType<typeof TrainingOpsService.createScopedLearningEvent>>
+        resolvedProgram: {
+            id: string
+            name: string
+            slug: string
+            type: LearningSeriesType
+        } | null
         resolvedSeries: {
             id: string
             name: string
             slug: string
             type: LearningSeriesType
-        }
+        } | null
         resolvedDomain: {
             id: string | null
             name: string | null
             slug: string | null
         }
     }>> {
-        const series = await this.resolveSeriesReference(user, input.learningSeries)
+        const programRef = input.learningProgram ?? input.learningSeries
+        const series = programRef
+            ? await this.resolveSeriesReference(user, programRef)
+            : null
         const explicitDomain = input.productDomain
             ? await this.resolveDomainReference(user, input.productDomain)
             : null
@@ -699,8 +810,8 @@ export class SmeMcpService {
             title: input.title.trim(),
             format: input.format,
             status: input.status ?? LearningEventStatus.DRAFT,
-            domainId: explicitDomain?.id ?? series.domain?.id ?? null,
-            seriesId: series.id,
+            domainId: explicitDomain?.id ?? series?.domain?.id ?? null,
+            seriesId: series?.id ?? null,
             description: optionalText(input.description),
             scheduledAt: input.scheduledAt ?? null,
             startsAt: input.scheduledAt ?? null,
@@ -714,19 +825,27 @@ export class SmeMcpService {
         return {
             success: true,
             tool: 'create_event',
-            summary: `Created event "${event.title}" in series "${series.name}".`,
+            summary: series
+                ? `Created event "${event.title}" in learning program "${series.name}".`
+                : `Created standalone event "${event.title}" in domain "${explicitDomain?.name}".`,
             data: {
                 event,
-                resolvedSeries: {
+                resolvedProgram: series ? {
                     id: series.id,
                     name: series.name,
                     slug: series.slug,
                     type: series.type,
-                },
+                } : null,
+                resolvedSeries: series ? {
+                    id: series.id,
+                    name: series.name,
+                    slug: series.slug,
+                    type: series.type,
+                } : null,
                 resolvedDomain: {
-                    id: event.domain?.id ?? series.domain?.id ?? null,
-                    name: event.domain?.name ?? series.domain?.name ?? null,
-                    slug: event.domain?.slug ?? series.domain?.slug ?? null,
+                    id: event.domain?.id ?? series?.domain?.id ?? null,
+                    name: event.domain?.name ?? series?.domain?.name ?? null,
+                    slug: event.domain?.slug ?? series?.domain?.slug ?? null,
                 },
             },
             nextActions: ['create_course', 'create_exam', 'review_event_status'],
@@ -741,6 +860,9 @@ export class SmeMcpService {
                     event: event.id,
                 },
             },
+            ...(input.learningSeries && !input.learningProgram
+                ? { warnings: ['learningSeries is retained for compatibility; prefer learningProgram.'] }
+                : {}),
         }
     }
 
@@ -2544,7 +2666,7 @@ export class SmeMcpService {
             tool: 'list_my_series_badges',
             summary: `Returned domain badge progressions for ${data.domains.length} scoped domains.`,
             data,
-            nextActions: ['list_my_workspace', 'create_badge', 'create_series'],
+            nextActions: ['list_my_workspace', 'create_badge', 'create_learning_program'],
         }
     }
 

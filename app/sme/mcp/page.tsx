@@ -6,6 +6,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -25,6 +26,7 @@ import type {
 import {
     AlertCircle,
     Braces,
+    CalendarClock,
     CheckCircle2,
     ChevronDown,
     ChevronRight,
@@ -39,6 +41,8 @@ import {
     RefreshCw,
     Search,
     Sparkles,
+    Target,
+    Users,
     Wand2,
 } from 'lucide-react'
 
@@ -51,6 +55,12 @@ type SmeMcpResult = {
     nextActions?: string[]
     recommendedNextInputs?: Record<string, unknown>
     warnings?: string[]
+}
+
+type ActionCenterData = {
+    eventScheduleGaps?: unknown[]
+    learnerGaps?: unknown[]
+    domainsNeedingAttention?: unknown[]
 }
 
 type EssayReadinessStatus = 'NOT_APPLICABLE' | 'READY' | 'PARTIAL' | 'NOT_READY'
@@ -76,6 +86,12 @@ const TOOL_LIBRARY_MAX_WIDTH = 520
 const DETAIL_PANEL_WIDTH = 420
 const CENTER_PANEL_MIN_WIDTH = 360
 const GRID_GAP_WIDTH = 24
+const HIGH_RISK_TOOLS = new Set([
+    'share_course_with_learners',
+    'publish_exam_for_learners',
+    'prepare_transcript_upload',
+    'process_transcript_knowledge',
+])
 
 const categoryThemes: Record<
     ToolCategoryKey,
@@ -310,6 +326,9 @@ function buildExampleInput(
     switch (tool) {
         case 'list_my_workspace':
             return variant === 'full' && domain?.id ? { domainId: domain.id } : {}
+        case 'get_training_ops_action_center':
+        case 'get_domain_health':
+            return variant === 'full' && domain?.id ? { domainId: domain.id } : {}
         case 'create_badge':
             return variant === 'full'
                 ? {
@@ -342,11 +361,28 @@ function buildExampleInput(
                     seriesType: 'CASE_STUDY',
                     productDomain: domain?.name ?? '',
                 }
+        case 'create_learning_program':
+            return variant === 'full'
+                ? {
+                    name: `${domain?.name ?? 'SME'} Weekly Case Study`,
+                    programType: 'CASE_STUDY',
+                    productDomain: domain?.name ?? '',
+                    programOwner: 'current_user',
+                    cadence: 'Weekly',
+                    description: `Weekly ${domain?.name ?? 'SME'} case-study program.`,
+                    active: true,
+                    contributesToDomainBadges: true,
+                }
+                : {
+                    name: `${domain?.name ?? 'SME'} Weekly Case Study`,
+                    programType: 'CASE_STUDY',
+                    productDomain: domain?.name ?? '',
+                }
         case 'create_event':
             return variant === 'full'
                 ? {
                     title: `${domain?.name ?? 'SME'} Case Study - ${new Date().toISOString().slice(0, 10)}`,
-                    learningSeries: learningSeries?.name ?? '',
+                    learningProgram: learningSeries?.name ?? '',
                     format: 'CASE_STUDY',
                     status: 'DRAFT',
                     host: 'current_user',
@@ -357,7 +393,7 @@ function buildExampleInput(
                 }
                 : {
                     title: `${domain?.name ?? 'SME'} Case Study - ${new Date().toISOString().slice(0, 10)}`,
-                    learningSeries: learningSeries?.name ?? '',
+                    learningProgram: learningSeries?.name ?? '',
                     format: 'CASE_STUDY',
                 }
         case 'create_course':
@@ -576,6 +612,9 @@ export default function SmeMcpLabPage() {
     const [series, setSeries] = useState<LearningSeriesSummary[]>([])
     const [courses, setCourses] = useState<TrainingOpsCourseSummary[]>([])
     const [exams, setExams] = useState<TrainingOpsExamSummary[]>([])
+    const [selectedDomainId, setSelectedDomainId] = useState('')
+    const [actionCenter, setActionCenter] = useState<ActionCenterData | null>(null)
+    const [confirmationOpen, setConfirmationOpen] = useState(false)
 
     useEffect(() => {
         const storedWidth = window.localStorage.getItem(TOOL_LIBRARY_WIDTH_STORAGE_KEY)
@@ -586,6 +625,23 @@ export default function SmeMcpLabPage() {
 
         setToolLibraryWidth(clampToolLibraryWidth(parsedWidth))
     }, [])
+
+    useEffect(() => {
+        if (loadingContext) return
+
+        const loadActionCenter = async () => {
+            try {
+                const response = await ApiClient.callSmeMcp('get_training_ops_action_center', {
+                    ...(selectedDomainId ? { domainId: selectedDomainId } : {}),
+                })
+                setActionCenter((response.data ?? null) as ActionCenterData | null)
+            } catch {
+                setActionCenter(null)
+            }
+        }
+
+        void loadActionCenter()
+    }, [loadingContext, selectedDomainId])
 
     useEffect(() => {
         window.localStorage.setItem(TOOL_LIBRARY_WIDTH_STORAGE_KEY, String(toolLibraryWidth))
@@ -707,6 +763,14 @@ export default function SmeMcpLabPage() {
     )
 
     const selectedToolDef = TOOL_DEFINITIONS.find((tool) => tool.key === selectedTool) ?? TOOL_DEFINITIONS[0]
+    const scopedDomains = useMemo(
+        () => selectedDomainId ? domains.filter((domain) => domain.id === selectedDomainId) : domains,
+        [domains, selectedDomainId]
+    )
+    const scopedSeries = useMemo(
+        () => selectedDomainId ? series.filter((program) => program.domain?.id === selectedDomainId) : series,
+        [series, selectedDomainId]
+    )
 
     useEffect(() => {
         if (filteredToolDefinitions.some((tool) => tool.key === selectedTool)) {
@@ -720,16 +784,16 @@ export default function SmeMcpLabPage() {
     }, [filteredToolDefinitions, selectedTool])
 
     const refreshExample = (toolKey: string, variant: ExampleVariant = selectedExampleVariant) => {
-        const example = buildExampleInput(toolKey, variant, overview, domains, series, courses, exams)
+        const example = buildExampleInput(toolKey, variant, overview, scopedDomains, scopedSeries, courses, exams)
         setInputJson(JSON.stringify(example, null, 2))
     }
 
     useEffect(() => {
         if (!loadingContext) {
-            const example = buildExampleInput(selectedTool, selectedExampleVariant, overview, domains, series, courses, exams)
+            const example = buildExampleInput(selectedTool, selectedExampleVariant, overview, scopedDomains, scopedSeries, courses, exams)
             setInputJson(JSON.stringify(example, null, 2))
         }
-    }, [selectedTool, selectedExampleVariant, loadingContext, overview, domains, series, courses, exams])
+    }, [selectedTool, selectedExampleVariant, loadingContext, overview, scopedDomains, scopedSeries, courses, exams])
 
     const parsedInput = useMemo(() => {
         try {
@@ -761,12 +825,11 @@ export default function SmeMcpLabPage() {
     )
     const layoutColumns = `${toolLibraryWidth}px minmax(0,1fr) ${DETAIL_PANEL_WIDTH}px`
 
-    const handleRun = async () => {
+    const executeTool = async (input: Record<string, unknown>) => {
         try {
             setRunning(true)
             setError(null)
-            const parsed = inputJson.trim() ? JSON.parse(inputJson) : {}
-            const response = await ApiClient.callSmeMcp(selectedTool, parsed)
+            const response = await ApiClient.callSmeMcp(selectedTool, input)
             setResult(response)
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Failed to execute SME MCP tool'
@@ -775,6 +838,46 @@ export default function SmeMcpLabPage() {
         } finally {
             setRunning(false)
         }
+    }
+
+    const handleRun = async () => {
+        try {
+            const parsed = inputJson.trim() ? JSON.parse(inputJson) as Record<string, unknown> : {}
+            if (HIGH_RISK_TOOLS.has(selectedTool) && parsed.confirm !== true) {
+                setConfirmationOpen(true)
+                return
+            }
+            await executeTool(parsed)
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Input JSON is invalid')
+        }
+    }
+
+    const handleConfirmedRun = async () => {
+        setConfirmationOpen(false)
+        try {
+            const parsed = inputJson.trim() ? JSON.parse(inputJson) as Record<string, unknown> : {}
+            const confirmedInput = {
+                ...parsed,
+                dryRun: false,
+                confirm: true,
+                idempotencyKey: parsed.idempotencyKey ?? crypto.randomUUID(),
+            }
+            setInputJson(JSON.stringify(confirmedInput, null, 2))
+            await executeTool(confirmedInput)
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Input JSON is invalid')
+        }
+    }
+
+    const openWorkflow = (tool: string) => {
+        setSelectedTool(tool)
+        setCategoryFilter('all')
+        const example = buildExampleInput(tool, 'minimal', overview, scopedDomains, scopedSeries, courses, exams)
+        const scopedExample = selectedDomainId && (tool === 'get_training_ops_action_center' || tool === 'get_domain_health')
+            ? { domainId: selectedDomainId }
+            : example
+        setInputJson(JSON.stringify(scopedExample, null, 2))
     }
 
     const handleCopyResult = async () => {
@@ -797,37 +900,62 @@ export default function SmeMcpLabPage() {
     return (
         <DashboardLayout>
             <div className="space-y-6">
-                <Card className="border border-slate-200 bg-white shadow-sm">
-                    <CardContent className="space-y-5 p-7 md:p-8">
-                        <Badge className="w-fit rounded-full border border-[#b8ecff] bg-[#effbff] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#006688]">
-                            SME MCP v3-Ready Lab
-                        </Badge>
-                        <div className="space-y-3">
-                            <h1 className="text-3xl font-semibold tracking-[-0.04em] text-slate-950 md:text-4xl">
-                                Metadata-driven console for SME MCP tooling
-                            </h1>
-                            <p className="max-w-4xl text-sm leading-7 text-slate-600 md:text-base">
-                                This lab now uses richer metadata for parameter guidance, examples, defaults, and next-step orchestration.
-                                The current backend tool surface stays compatible, while the UI is prepared for the future SME-first v3 design.
-                            </p>
+                <Card className="overflow-hidden border border-slate-200 bg-[radial-gradient(circle_at_12%_0%,rgba(14,165,233,0.16),transparent_32%),linear-gradient(135deg,#f8fdff_0%,#ffffff_58%,#f8fafc_100%)] shadow-sm">
+                    <CardContent className="space-y-6 p-7 md:p-8">
+                        <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-start">
+                            <div className="max-w-3xl space-y-3">
+                                <Badge className="w-fit rounded-full border border-[#b8ecff] bg-[#effbff] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#006688]">
+                                    SME Automation Workspace
+                                </Badge>
+                                <h1 className="text-3xl font-semibold tracking-[-0.04em] text-slate-950 md:text-4xl">
+                                    Turn training signals into the next action
+                                </h1>
+                                <p className="text-sm leading-7 text-slate-600 md:text-base">
+                                    Review operational gaps first, then plan events and build reusable learning assets. Learning Programs are optional; every action stays anchored to a Domain Scope.
+                                </p>
+                            </div>
+                            <label className="w-full min-w-0 rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm lg:w-auto lg:min-w-[260px]">
+                                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Domain Scope</span>
+                                <select
+                                    value={selectedDomainId}
+                                    onChange={(event) => setSelectedDomainId(event.target.value)}
+                                    className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-[#006688]/20"
+                                >
+                                    <option value="">All authorized domains</option>
+                                    {domains.map((domain) => <option key={domain.id} value={domain.id}>{domain.name}</option>)}
+                                </select>
+                            </label>
                         </div>
-                        <div className="grid gap-4 md:grid-cols-4">
-                            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Domains</p>
-                                <p className="mt-2 text-2xl font-semibold text-slate-950">{domains.length}</p>
+
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                            <button type="button" onClick={() => openWorkflow('get_training_ops_action_center')} className="rounded-2xl border border-cyan-200 bg-white/90 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-300">
+                                <CalendarClock className="h-5 w-5 text-[#007a99]" />
+                                <p className="mt-3 text-2xl font-semibold text-slate-950">{actionCenter?.eventScheduleGaps?.length ?? 0}</p>
+                                <p className="mt-1 text-sm text-slate-600">Events needing dates</p>
+                            </button>
+                            <button type="button" onClick={() => openWorkflow('get_training_ops_action_center')} className="rounded-2xl border border-amber-200 bg-white/90 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-amber-300">
+                                <Users className="h-5 w-5 text-amber-600" />
+                                <p className="mt-3 text-2xl font-semibold text-slate-950">{actionCenter?.learnerGaps?.length ?? 0}</p>
+                                <p className="mt-1 text-sm text-slate-600">Learners below threshold</p>
+                            </button>
+                            <button type="button" onClick={() => openWorkflow('get_domain_health')} className="rounded-2xl border border-rose-200 bg-white/90 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-rose-300">
+                                <Target className="h-5 w-5 text-rose-600" />
+                                <p className="mt-3 text-2xl font-semibold text-slate-950">{actionCenter?.domainsNeedingAttention?.length ?? 0}</p>
+                                <p className="mt-1 text-sm text-slate-600">Domains needing attention</p>
+                            </button>
+                            <div className="rounded-2xl border border-slate-200 bg-slate-950 p-4 text-white shadow-sm">
+                                <Layers3 className="h-5 w-5 text-cyan-300" />
+                                <p className="mt-3 text-2xl font-semibold">{scopedSeries.length}</p>
+                                <p className="mt-1 text-sm text-slate-300">Learning Programs in scope</p>
                             </div>
-                            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Series</p>
-                                <p className="mt-2 text-2xl font-semibold text-slate-950">{series.length}</p>
-                            </div>
-                            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Courses</p>
-                                <p className="mt-2 text-2xl font-semibold text-slate-950">{courses.length}</p>
-                            </div>
-                            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Exams</p>
-                                <p className="mt-2 text-2xl font-semibold text-slate-950">{exams.length}</p>
-                            </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                            <Button size="sm" onClick={() => openWorkflow('get_training_ops_action_center')} className="rounded-full bg-[#006688] hover:bg-[#00566f]">Review action center</Button>
+                            <Button size="sm" variant="outline" onClick={() => openWorkflow('create_event')} className="rounded-full bg-white">Plan an event</Button>
+                            <Button size="sm" variant="outline" onClick={() => openWorkflow('create_course')} className="rounded-full bg-white">Build a course draft</Button>
+                            <Button size="sm" variant="outline" onClick={() => openWorkflow('create_exam')} className="rounded-full bg-white">Build an assessment</Button>
+                            <Button size="sm" variant="outline" onClick={() => openWorkflow('review_event_status')} className="rounded-full bg-white">Review readiness</Button>
                         </div>
                     </CardContent>
                 </Card>
@@ -842,10 +970,10 @@ export default function SmeMcpLabPage() {
 
                 <div
                     ref={layoutRef}
-                    className="grid gap-6 xl:[grid-template-columns:var(--sme-mcp-layout-columns)]"
+                    className="grid gap-6 xl:grid-cols-[minmax(280px,340px)_minmax(0,1fr)] 2xl:[grid-template-columns:var(--sme-mcp-layout-columns)]"
                     style={{ ['--sme-mcp-layout-columns' as string]: layoutColumns }}
                 >
-                    <div className="relative xl:min-w-0">
+                    <div className="relative min-w-0">
                         <Card className="overflow-hidden border border-slate-200/80 bg-white/95 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.45)] backdrop-blur">
                             <div className="border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.18),_transparent_42%),linear-gradient(180deg,_#f8fcff_0%,_#ffffff_100%)] px-5 py-5">
                                 <div className="flex items-start justify-between gap-4">
@@ -927,10 +1055,10 @@ export default function SmeMcpLabPage() {
                                         </div>
                                         <div className="min-w-0 flex-1 space-y-3">
                                             <div className="flex items-center gap-2">
-                                                <p className="text-sm font-semibold text-slate-950">Compatibility controls</p>
+                                                <p className="text-sm font-semibold text-slate-950">Advanced Mode</p>
                                                 <HelpTooltip
-                                                    content="Keep the SME-first surface clean by default. Reveal advanced tools only when you need lower-level execution."
-                                                    label="Compatibility controls help"
+                                                    content="Reveal low-level and compatibility tools only when you need to inspect or support an existing integration."
+                                                    label="Advanced Mode help"
                                                     triggerClassName="border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700"
                                                     focusable
                                                 />
@@ -939,7 +1067,7 @@ export default function SmeMcpLabPage() {
                                             <Button
                                                 type="button"
                                                 variant="outline"
-                                                className="w-full justify-between rounded-2xl border-slate-200 bg-white shadow-sm"
+                                                className="h-auto min-h-10 w-full justify-between whitespace-normal rounded-2xl border-slate-200 bg-white px-3 py-2 text-xs shadow-sm sm:text-sm"
                                                 onClick={() => setShowAdvancedTools((value) => !value)}
                                             >
                                                 <span>{showAdvancedTools ? 'Hide Advanced Tools' : 'Show Advanced Tools'}</span>
@@ -950,7 +1078,7 @@ export default function SmeMcpLabPage() {
                                 </div>
 
                                 <ScrollArea className="h-[930px] pr-2">
-                                    <div className="space-y-4 pb-4">
+                                    <div className="min-w-0 space-y-4 overflow-x-hidden pb-4">
                                         {orderedCategories.map((category) => {
                                             const tools = filteredToolDefinitions.filter((tool) => tool.category === category)
                                             if (tools.length === 0) return null
@@ -1050,7 +1178,7 @@ export default function SmeMcpLabPage() {
                             </CardContent>
                         </Card>
 
-                        <div className="absolute inset-y-0 -right-3 hidden w-6 items-center justify-center xl:flex">
+                        <div className="absolute inset-y-0 -right-3 hidden w-6 items-center justify-center 2xl:flex">
                             <div className="absolute inset-y-4 left-1/2 w-px -translate-x-1/2 bg-slate-200" />
                             <div
                                 role="separator"
@@ -1086,10 +1214,10 @@ export default function SmeMcpLabPage() {
                         </div>
                     </div>
 
-                    <div className="space-y-6">
+                    <div className="min-w-0 space-y-6">
                         <Card className="border border-slate-200 bg-white shadow-sm">
                             <CardHeader>
-                                <div className="flex items-start justify-between gap-3">
+                                <div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
                                     <div className="space-y-2">
                                         <CardTitle className="text-2xl text-slate-950">{selectedToolDef.label}</CardTitle>
                                         <CardDescription className="text-sm leading-7 text-slate-600">
@@ -1151,9 +1279,9 @@ export default function SmeMcpLabPage() {
 
                                 <Tabs value={selectedExampleVariant} onValueChange={(value) => setSelectedExampleVariant(value as ExampleVariant)}>
                                     <div className="flex flex-wrap items-center justify-between gap-3">
-                                        <TabsList className="bg-slate-100">
-                                            <TabsTrigger value="minimal">Minimal Example</TabsTrigger>
-                                            <TabsTrigger value="full" disabled={!selectedToolDef.fullExample}>
+                                        <TabsList className="grid h-auto w-full grid-cols-2 bg-slate-100 sm:w-auto">
+                                            <TabsTrigger value="minimal" className="h-auto whitespace-normal px-2 py-2 text-xs sm:text-sm">Minimal Example</TabsTrigger>
+                                            <TabsTrigger value="full" className="h-auto whitespace-normal px-2 py-2 text-xs sm:text-sm" disabled={!selectedToolDef.fullExample}>
                                                 Full Example
                                             </TabsTrigger>
                                         </TabsList>
@@ -1334,7 +1462,7 @@ export default function SmeMcpLabPage() {
                         </Card>
                     </div>
 
-                    <div className="space-y-6">
+                    <div className="min-w-0 space-y-6 xl:col-span-2 2xl:col-span-1">
                         <Card className="border border-slate-200 bg-white shadow-sm">
                             <CardHeader>
                                 <CardTitle className="flex items-center gap-2 text-xl text-slate-950">
@@ -1436,10 +1564,10 @@ export default function SmeMcpLabPage() {
                                     </Button>
                                 </div>
                                 <Tabs defaultValue="summary">
-                                    <TabsList className="bg-slate-100">
-                                        <TabsTrigger value="summary">Summary</TabsTrigger>
-                                        <TabsTrigger value="data">Structured</TabsTrigger>
-                                        <TabsTrigger value="raw">Raw JSON</TabsTrigger>
+                                    <TabsList className="grid h-auto w-full grid-cols-3 bg-slate-100">
+                                        <TabsTrigger value="summary" className="px-1 text-xs sm:px-3 sm:text-sm">Summary</TabsTrigger>
+                                        <TabsTrigger value="data" className="px-1 text-xs sm:px-3 sm:text-sm">Structured</TabsTrigger>
+                                        <TabsTrigger value="raw" className="px-1 text-xs sm:px-3 sm:text-sm">Raw JSON</TabsTrigger>
                                     </TabsList>
                                     <TabsContent value="summary" className="space-y-4">
                                         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -1566,6 +1694,17 @@ export default function SmeMcpLabPage() {
                         </Card>
                     </div>
                 </div>
+
+                <ConfirmDialog
+                    open={confirmationOpen}
+                    onOpenChange={setConfirmationOpen}
+                    title="Confirm production-side operation"
+                    description={`${selectedToolDef.label} may publish content, notify learners, upload a transcript, or start processing. Scope: ${scopedDomains[0]?.name ?? 'all authorized domains'}. The request will include a correlation key for auditability.`}
+                    confirmLabel="Confirm and run"
+                    confirmVariant="destructive"
+                    confirmDisabled={running}
+                    onConfirm={() => void handleConfirmedRun()}
+                />
             </div>
         </DashboardLayout>
     )

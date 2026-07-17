@@ -4,6 +4,7 @@ import {
     deprecatedSmeMcpToolNames,
     getSmeMcpToolDefinition,
 } from '@/lib/sme-mcp-registry'
+import { isHighRiskStandardMcpTool } from '@/lib/mcp-production-policy'
 import { z } from 'zod'
 
 type MappableUser = Pick<AuthUser, 'id' | 'role'>
@@ -37,6 +38,37 @@ export const parseAndExecuteSmeMcpTool = async (
     }
 
     const input = definition.inputSchema.parse(payload.input)
+    if (isHighRiskStandardMcpTool(payload.tool)) {
+        const controls = input as { dryRun?: boolean; confirm?: boolean; idempotencyKey?: string }
+        if (controls.dryRun || controls.confirm !== true) {
+            return {
+                success: true as const,
+                tool: payload.tool,
+                summary: controls.dryRun
+                    ? 'Dry run complete. No production data was changed.'
+                    : 'Preview ready. Set confirm to true to execute this high-risk operation.',
+                data: {
+                    preview: true,
+                    confirmationRequired: true,
+                    requestedOperation: payload.tool,
+                    idempotencyKey: controls.idempotencyKey ?? null,
+                    notificationRequested:
+                        'sendNotification' in (input as Record<string, unknown>)
+                            ? Boolean((input as Record<string, unknown>).sendNotification)
+                            : null,
+                },
+                nextActions: [payload.tool],
+                recommendedNextInputs: {
+                    [payload.tool]: {
+                        ...(input as Record<string, unknown>),
+                        dryRun: false,
+                        confirm: true,
+                    },
+                },
+                warnings: ['This operation can publish, notify, upload, or start processing. Explicit confirmation is required.'],
+            }
+        }
+    }
     return definition.execute(user, input)
 }
 
@@ -96,6 +128,10 @@ export const normalizeSmeMcpError = (error: unknown) => {
 
         if (message === 'SERIES_REFERENCE_AMBIGUOUS') {
             return errorResponse(400, 'SERIES_REFERENCE_AMBIGUOUS', 'Learning series reference matched multiple series in the current SME scope', details)
+        }
+
+        if (message === 'SCHEDULED_EVENT_REQUIRES_DATE') {
+            return errorResponse(400, 'SCHEDULED_EVENT_REQUIRES_DATE', 'scheduledAt is required when an event is SCHEDULED')
         }
 
         if (message === 'EVENT_REFERENCE_NOT_FOUND') {
