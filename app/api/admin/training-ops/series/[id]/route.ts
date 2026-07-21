@@ -66,3 +66,45 @@ export const PATCH = withAdminAuth(async (req: NextRequest, _user, context: Rout
         )
     }
 })
+
+export const DELETE = withAdminAuth(async (_req: NextRequest, _user, context: RouteContext) => {
+    try {
+        const { id } = await context.params
+        await TrainingOpsService.deleteUnassociatedLearningSeries(id)
+
+        return NextResponse.json({
+            success: true,
+            data: { id },
+        })
+    } catch (error) {
+        console.error('Delete training-op series error:', error)
+
+        if (error instanceof Error && error.message === 'LEARNING_SERIES_NOT_FOUND') {
+            return NextResponse.json({
+                success: false,
+                error: {
+                    code: 'PROGRAM_NOT_FOUND',
+                    message: 'Learning Program not found',
+                },
+            }, { status: 404 })
+        }
+
+        if (error instanceof Error && error.message === 'LEARNING_SERIES_HAS_ASSOCIATIONS') {
+            return NextResponse.json({
+                success: false,
+                error: {
+                    code: 'PROGRAM_HAS_ASSOCIATIONS',
+                    message: 'Remove all linked Events, Courses, and Exams before deleting this Program.',
+                },
+            }, { status: 409 })
+        }
+
+        return NextResponse.json({
+            success: false,
+            error: {
+                code: 'SYSTEM_001',
+                message: 'Failed to delete Learning Program',
+            },
+        }, { status: 500 })
+    }
+})

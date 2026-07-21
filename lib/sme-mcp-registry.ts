@@ -222,13 +222,12 @@ const createEventSchema = z.object({
     learningProgram: z.string().trim().min(1).max(200).optional(),
     learningSeries: z.string().trim().min(1).max(200).optional(),
     format: z.enum(['CASE_STUDY', 'KNOWLEDGE_SHARING', 'FAQ_SHARE', 'RELEASE_BRIEFING', 'QUIZ_REVIEW', 'FINAL_EXAM', 'WORKSHOP']),
-    status: z.enum(['DRAFT', 'SCHEDULED']).optional(),
+    status: z.enum(['IN_PROGRESS', 'COMPLETED']).optional(),
     host: z.string().trim().min(1).max(255).optional().nullable(),
     productDomain: z.string().trim().min(1).max(160).optional().nullable(),
     description: z.string().trim().optional().nullable(),
     scheduledAt: z.coerce.date().optional().nullable(),
     countsTowardPerformance: z.boolean().optional(),
-    starValue: z.number().int().min(0).max(20).optional().nullable(),
 }).superRefine((value, ctx) => {
     if (!value.learningProgram && !value.learningSeries && !value.productDomain) {
         ctx.addIssue({
@@ -246,13 +245,6 @@ const createEventSchema = z.object({
         })
     }
 
-    if (value.status === 'SCHEDULED' && !value.scheduledAt) {
-        ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['scheduledAt'],
-            message: 'scheduledAt is required when status is SCHEDULED.',
-        })
-    }
 })
 
 const createCourseSchema = z.object({
@@ -274,7 +266,10 @@ const createExamSchema = z.object({
     event: z.string().trim().min(1).max(200).optional().nullable(),
     description: z.string().trim().optional().nullable(),
     instructions: z.string().trim().optional().nullable(),
-    examType: z.enum(['PRACTICE', 'READINESS', 'FORMAL']),
+    examType: z.enum(['PRACTICE', 'READINESS', 'FORMAL']).default('PRACTICE'),
+    awardsStars: z.boolean().default(true),
+    starValue: z.number().int().min(0).max(20).default(3),
+    countsTowardPerformance: z.boolean().default(false),
     totalScore: z.number().int().positive(),
     passingScore: z.number().int().nonnegative(),
     maxAttempts: z.number().int().positive(),
@@ -525,6 +520,42 @@ const publishExamForLearnersSchema = z.object({
     ...highRiskConfirmationFields,
 })
 
+const domainAssignmentSchema = z.object({
+    objectType: z.enum(['PROGRAM', 'EVENT']),
+    id: z.string().uuid(),
+    domainId: z.string().uuid(),
+})
+
+const applyDomainAssignmentsSchema = z.object({
+    assignments: z.array(domainAssignmentSchema).min(1).max(100),
+    dryRun: z.boolean().optional().default(true),
+    confirm: z.boolean().optional(),
+    confirmationToken: z.string().length(64).optional(),
+    idempotencyKey: z.string().trim().min(8).max(200).optional(),
+}).superRefine((value, ctx) => {
+    if (value.dryRun === false && value.confirm !== true) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['confirm'], message: 'confirm=true is required for apply.' })
+    }
+    if (value.dryRun === false && !value.confirmationToken) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['confirmationToken'], message: 'Use the token returned by dry-run.' })
+    }
+})
+
+const manageDomainAliasSchema = z.object({
+    domainId: z.string().uuid(),
+    alias: z.string().trim().min(1).max(160),
+    dryRun: z.boolean().optional().default(true),
+    confirm: z.boolean().optional(),
+    confirmationToken: z.string().length(64).optional(),
+}).superRefine((value, ctx) => {
+    if (value.dryRun === false && value.confirm !== true) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['confirm'], message: 'confirm=true is required for apply.' })
+    }
+    if (value.dryRun === false && !value.confirmationToken) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['confirmationToken'], message: 'Use the token returned by dry-run.' })
+    }
+})
+
 export const deprecatedSmeMcpToolNames = [
     'upload_transcript_and_process',
     'list_course_editor_state',
@@ -596,6 +627,73 @@ export const smeMcpToolDefinitions = [
         },
         execute: (user, input) =>
             SmeMcpService.getDomainHealth(user, input as z.infer<typeof listWorkspaceSchema>),
+    },
+    {
+        name: 'audit_domain_associations',
+        description: smeMcpToolMetadataByName.audit_domain_associations.description,
+        inputSchema: z.object({}).default({}),
+        inputJsonSchema: emptyObjectJsonSchema,
+        execute: (user) => SmeMcpService.auditDomainAssociations(user),
+    },
+    {
+        name: 'propose_domain_assignments',
+        description: smeMcpToolMetadataByName.propose_domain_assignments.description,
+        inputSchema: z.object({}).default({}),
+        inputJsonSchema: emptyObjectJsonSchema,
+        execute: (user) => SmeMcpService.proposeDomainAssignments(user),
+    },
+    {
+        name: 'apply_domain_assignments',
+        description: smeMcpToolMetadataByName.apply_domain_assignments.description,
+        inputSchema: applyDomainAssignmentsSchema,
+        inputJsonSchema: {
+            type: 'object',
+            description: toolInputDescription('apply_domain_assignments'),
+            properties: {
+                assignments: {
+                    type: 'array',
+                    minItems: 1,
+                    maxItems: 100,
+                    items: {
+                        type: 'object',
+                        properties: {
+                            objectType: { type: 'string', enum: ['PROGRAM', 'EVENT'] },
+                            id: uuidSchema,
+                            domainId: uuidSchema,
+                        },
+                        required: ['objectType', 'id', 'domainId'],
+                        additionalProperties: false,
+                    },
+                },
+                dryRun: describedBooleanSchema('Preview by default; set false only after reviewing the token.', true),
+                confirm: describedBooleanSchema('Explicit confirmation required for apply.', false),
+                confirmationToken: describedStringSchema('Exact 64-character token returned by the current dry-run.', { minLength: 64, maxLength: 64 }),
+                idempotencyKey: describedStringSchema('Optional audit correlation key.', { minLength: 8, maxLength: 200 }),
+            },
+            required: ['assignments'],
+            additionalProperties: false,
+        },
+        execute: (user, input) =>
+            SmeMcpService.applyDomainAssignments(user, input as z.infer<typeof applyDomainAssignmentsSchema>),
+    },
+    {
+        name: 'manage_domain_alias',
+        description: smeMcpToolMetadataByName.manage_domain_alias.description,
+        inputSchema: manageDomainAliasSchema,
+        inputJsonSchema: {
+            type: 'object',
+            description: toolInputDescription('manage_domain_alias'),
+            properties: {
+                domainId: describedUuidSchema('Active Product Domain ID.'),
+                alias: describedStringSchema('Exact alias to normalize and associate with the Domain.', { minLength: 1, maxLength: 160 }),
+                dryRun: describedBooleanSchema('Preview by default.', true),
+                confirm: describedBooleanSchema('Explicit confirmation required for apply.', false),
+                confirmationToken: describedStringSchema('64-character token returned by dry-run.', { minLength: 64, maxLength: 64 }),
+            },
+            required: ['domainId', 'alias'],
+            additionalProperties: false,
+        },
+        execute: (user, input) => SmeMcpService.manageDomainAlias(user, input as z.infer<typeof manageDomainAliasSchema>),
     },
     {
         name: 'create_badge',
@@ -779,12 +877,6 @@ export const smeMcpToolDefinitions = [
                     parameterDescription('create_event', 'countsTowardPerformance', 'Optional performance tracking flag.'),
                     false
                 ),
-                starValue: describedIntegerSchema(parameterDescription('create_event', 'starValue', 'Optional star value.'), {
-                    minimum: 0,
-                    maximum: 20,
-                    examples: typeof parameterExample('create_event', 'starValue') === 'number' ? [parameterExample('create_event', 'starValue')] : [2],
-                    nullable: true,
-                }),
             },
             required: ['title', 'format'],
             anyOf: [
@@ -881,10 +973,20 @@ export const smeMcpToolDefinitions = [
                     examples: typeof parameterExample('create_exam', 'instructions') === 'string' ? [parameterExample('create_exam', 'instructions')] : undefined,
                     nullable: true,
                 }),
-                examType: describedStringSchema(parameterDescription('create_exam', 'examType', 'Required assessment kind.'), {
+                examType: describedStringSchema(parameterDescription('create_exam', 'examType', 'Optional assessment kind.'), {
                     enum: parameterAcceptedValues('create_exam', 'examType'),
                     examples: typeof parameterExample('create_exam', 'examType') === 'string' ? [parameterExample('create_exam', 'examType')] : undefined,
                 }),
+                awardsStars: describedBooleanSchema(
+                    parameterDescription('create_exam', 'awardsStars', 'Optional star-award flag; defaults to true.')
+                ),
+                starValue: describedIntegerSchema(
+                    parameterDescription('create_exam', 'starValue', 'Stars awarded on pass; defaults to 3.'),
+                    { minimum: 0, maximum: 20, examples: [3] }
+                ),
+                countsTowardPerformance: describedBooleanSchema(
+                    parameterDescription('create_exam', 'countsTowardPerformance', 'Optional performance tracking flag; defaults to false.')
+                ),
                 totalScore: describedIntegerSchema(parameterDescription('create_exam', 'totalScore', 'Required total score.'), {
                     minimum: 1,
                     examples: [Number(parameterExample('create_exam', 'totalScore') ?? 100)],
@@ -909,7 +1011,7 @@ export const smeMcpToolDefinitions = [
                     { example: parameterExample('create_exam', 'options') }
                 ),
             },
-            required: ['title', 'examType', 'totalScore', 'passingScore', 'maxAttempts'],
+            required: ['title', 'totalScore', 'passingScore', 'maxAttempts'],
             additionalProperties: false,
             examples: [getSmeMcpToolMetadata('create_exam').minimalExample.input, getSmeMcpToolMetadata('create_exam').fullExample?.input].filter(Boolean),
         },

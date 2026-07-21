@@ -39,11 +39,7 @@ export const PATCH = withSmeOrAdminAuth(async (req: NextRequest, user, context: 
             seriesId: data.seriesId ?? undefined,
             domainId: data.domainId ?? undefined,
             description: data.description ?? undefined,
-            releaseVersion: data.releaseVersion ?? undefined,
             scheduledAt: data.scheduledAt ?? undefined,
-            startsAt: data.startsAt ?? undefined,
-            endsAt: data.endsAt ?? undefined,
-            starValue: data.starValue ?? undefined,
             hostId: data.hostId ?? undefined,
         })
 
@@ -83,6 +79,21 @@ export const PATCH = withSmeOrAdminAuth(async (req: NextRequest, user, context: 
                     message: 'Selected Event format is not allowed for the chosen Program type.',
                 },
             }, { status: 400 })
+        }
+
+        if (error instanceof Error && [
+            'COURSE_DOMAIN_REQUIRED',
+            'COURSE_DOMAIN_CONFLICT',
+            'EXAM_DOMAIN_REQUIRED',
+            'EXAM_DOMAIN_CONFLICT',
+        ].includes(error.message)) {
+            return NextResponse.json({
+                success: false,
+                error: {
+                    code: error.message,
+                    message: 'This change would invalidate a published Course or non-draft Exam Event Domain scope.',
+                },
+            }, { status: 409 })
         }
 
         return NextResponse.json({

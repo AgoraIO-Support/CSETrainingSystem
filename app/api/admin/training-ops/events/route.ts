@@ -22,11 +22,8 @@ const parseFormat = (value: string | null): LearningEventFormat | undefined => {
 
 const parseStatus = (value: string | null): LearningEventStatus | undefined => {
     if (
-        value === 'DRAFT' ||
-        value === 'SCHEDULED' ||
         value === 'IN_PROGRESS' ||
-        value === 'COMPLETED' ||
-        value === 'CANCELED'
+        value === 'COMPLETED'
     ) {
         return value
     }
@@ -99,11 +96,7 @@ export const POST = withAdminAuth(async (req: NextRequest, user) => {
                 seriesId: data.seriesId ?? null,
                 domainId: data.domainId ?? null,
                 description: data.description ?? null,
-                releaseVersion: data.releaseVersion ?? null,
                 scheduledAt: data.scheduledAt ?? null,
-                startsAt: data.startsAt ?? null,
-                endsAt: data.endsAt ?? null,
-                starValue: data.starValue ?? null,
                 hostId: data.hostId ?? null,
             },
             user.id

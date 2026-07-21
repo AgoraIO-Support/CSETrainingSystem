@@ -53,16 +53,12 @@ function EditSmeLearningEventPageContent() {
     const [form, setForm] = useState({
         title: '',
         format: 'CASE_STUDY' as LearningEventSummary['format'],
-        status: 'DRAFT' as LearningEventSummary['status'],
+        status: 'IN_PROGRESS' as LearningEventSummary['status'],
         domainId: '',
         seriesId: '',
         hostId: '',
         description: '',
-        releaseVersion: '',
         scheduledAt: '',
-        startsAt: '',
-        endsAt: '',
-        starValue: '1',
         isRequired: false,
         countsTowardPerformance: false,
     })
@@ -89,11 +85,7 @@ function EditSmeLearningEventPageContent() {
                     seriesId: event.series?.id ?? '',
                     hostId: event.host?.id ?? '',
                     description: event.description ?? '',
-                    releaseVersion: event.releaseVersion ?? '',
                     scheduledAt: toInputDateTime(event.scheduledAt),
-                    startsAt: toInputDateTime(event.startsAt),
-                    endsAt: toInputDateTime(event.endsAt),
-                    starValue: event.starValue === null || event.starValue === undefined ? '' : String(event.starValue),
                     isRequired: event.isRequired,
                     countsTowardPerformance: event.countsTowardPerformance,
                 })
@@ -195,11 +187,7 @@ function EditSmeLearningEventPageContent() {
                 seriesId: form.seriesId || null,
                 hostId: form.hostId || null,
                 description: form.description.trim() || null,
-                releaseVersion: form.releaseVersion.trim() || null,
                 scheduledAt: toIsoStringOrNull(form.scheduledAt),
-                startsAt: toIsoStringOrNull(form.startsAt),
-                endsAt: toIsoStringOrNull(form.endsAt),
-                starValue: form.starValue ? Number(form.starValue) : null,
                 isRequired: form.isRequired,
                 countsTowardPerformance: form.countsTowardPerformance,
             })
@@ -313,11 +301,8 @@ function EditSmeLearningEventPageContent() {
                                 <div className="space-y-2">
                                     <Label htmlFor="status">Status *</Label>
                                     <select id="status" className="h-10 w-full rounded-md border bg-background px-3" value={form.status} onChange={(e) => updateForm('status', e.target.value as LearningEventSummary['status'])}>
-                                        <option value="DRAFT">Draft</option>
-                                        <option value="SCHEDULED">Scheduled</option>
                                         <option value="IN_PROGRESS">In Progress</option>
                                         <option value="COMPLETED">Completed</option>
-                                        <option value="CANCELED">Canceled</option>
                                     </select>
                                 </div>
                                 <div className="space-y-2">

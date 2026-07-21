@@ -168,14 +168,6 @@ export class TrainingOpsRewardService {
             }
         }
 
-        if (!attempt.exam.awardsStars || !attempt.exam.starValue || attempt.exam.starValue <= 0) {
-            return {
-                starAwarded: false,
-                stars: 0,
-                newBadges: 0,
-            }
-        }
-
         const existingStarAward = await db.starAward.findFirst({
             where: {
                 userId: attempt.userId,
@@ -202,10 +194,13 @@ export class TrainingOpsRewardService {
             awardEventSeriesDomainId: existingStarAward?.event?.series?.domainId,
             examEventSeriesDomainId: attempt.exam.learningEvent?.series?.domainId,
         })
+        const targetStars = attempt.exam.awardsStars && attempt.exam.starValue && attempt.exam.starValue > 0
+            ? attempt.exam.starValue
+            : 0
 
-        let starsAwarded = 0
+        let starsAdjusted = 0
         let starAwardAdjusted = false
-        if (!existingStarAward) {
+        if (!existingStarAward && targetStars > 0) {
             const sourceType = this.resolveStarSourceType({
                 assessmentKind: attempt.exam.assessmentKind,
                 eventFormat: attempt.exam.learningEvent?.format,
@@ -218,45 +213,47 @@ export class TrainingOpsRewardService {
                     eventId: attempt.exam.learningEventId ?? null,
                     examId: attempt.examId,
                     sourceType,
-                    stars: attempt.exam.starValue,
+                    stars: targetStars,
                     reason: `Passed exam: ${attempt.exam.title}`,
                 },
             })
 
-            starsAwarded = starAward.stars
-        } else {
-            const delta = Math.max(0, attempt.exam.starValue - existingStarAward.stars)
+            starsAdjusted = starAward.stars
+        } else if (existingStarAward) {
+            const delta = targetStars - existingStarAward.stars
             const nextDomainId = existingStarAward.domainId ?? resolvedDomainId
             const nextEventId = existingStarAward.eventId ?? attempt.exam.learningEventId ?? null
             const shouldUpdateMetadata =
                 nextDomainId !== existingStarAward.domainId || nextEventId !== existingStarAward.eventId
 
-            if (delta > 0 || shouldUpdateMetadata) {
+            if (delta !== 0 || shouldUpdateMetadata) {
                 await db.starAward.update({
                     where: { id: existingStarAward.id },
                     data: {
                         domainId: nextDomainId,
                         eventId: nextEventId,
-                        ...(delta > 0 ? { stars: attempt.exam.starValue } : {}),
+                        ...(delta !== 0 ? { stars: targetStars } : {}),
                         reason: `Passed exam: ${attempt.exam.title}`,
                     },
                 })
             }
 
-            starsAwarded = delta
-            starAwardAdjusted = delta > 0
+            starsAdjusted = delta
+            starAwardAdjusted = delta !== 0
         }
         const rewardDomainId = existingStarAward?.domainId ?? resolvedDomainId
-        const newBadges = await this.awardEligibleBadgesForDomain({
-            userId: attempt.userId,
-            domainId: rewardDomainId,
-            eventId: attempt.exam.learningEventId ?? null,
-            examId: attempt.examId,
-        }, db)
+        const newBadges = targetStars > 0
+            ? await this.awardEligibleBadgesForDomain({
+                userId: attempt.userId,
+                domainId: rewardDomainId,
+                eventId: attempt.exam.learningEventId ?? null,
+                examId: attempt.examId,
+            }, db)
+            : 0
 
         return {
-            starAwarded: starsAwarded > 0,
-            stars: starsAwarded,
+            starAwarded: starsAdjusted > 0,
+            stars: starsAdjusted,
             starAwardAdjusted,
             newBadges,
         }
@@ -276,15 +273,6 @@ export class TrainingOpsRewardService {
             throw new Error('EXAM_NOT_FOUND')
         }
 
-        if (!exam.awardsStars || !exam.starValue || exam.starValue <= 0) {
-            return {
-                processedAttempts: 0,
-                starAwardsIssued: 0,
-                starsGranted: 0,
-                newBadges: 0,
-            }
-        }
-
         const passedAttempts = await db.examAttempt.findMany({
             where: {
                 examId,
@@ -300,7 +288,9 @@ export class TrainingOpsRewardService {
         const processedUsers = new Set<string>()
         let processedAttempts = 0
         let starAwardsIssued = 0
+        let starAwardsAdjusted = 0
         let starsGranted = 0
+        let starsRevoked = 0
         let newBadges = 0
 
         for (const attempt of passedAttempts) {
@@ -312,7 +302,11 @@ export class TrainingOpsRewardService {
             processedAttempts += 1
 
             const rewardResult = await this.issueRewardsForPassedExamAttempt(attempt.id, db)
-            if (rewardResult.starAwarded) {
+            if (rewardResult.starAwardAdjusted) {
+                starAwardsAdjusted += 1
+                starsGranted += Math.max(0, rewardResult.stars)
+                starsRevoked += Math.max(0, -rewardResult.stars)
+            } else if (rewardResult.starAwarded) {
                 starAwardsIssued += 1
                 starsGranted += rewardResult.stars
             }
@@ -322,7 +316,9 @@ export class TrainingOpsRewardService {
         return {
             processedAttempts,
             starAwardsIssued,
+            starAwardsAdjusted,
             starsGranted,
+            starsRevoked,
             newBadges,
         }
     }
@@ -339,16 +335,6 @@ export class TrainingOpsRewardService {
 
         if (!exam) {
             throw new Error('EXAM_NOT_FOUND')
-        }
-
-        if (!exam.awardsStars || !exam.starValue || exam.starValue <= 0) {
-            return {
-                processedAttempts: 0,
-                starAwardsIssued: 0,
-                starAwardsAdjusted: 0,
-                starsGranted: 0,
-                newBadges: 0,
-            }
         }
 
         const passedAttempts = await db.examAttempt.findMany({
@@ -368,6 +354,7 @@ export class TrainingOpsRewardService {
         let starAwardsIssued = 0
         let starAwardsAdjusted = 0
         let starsGranted = 0
+        let starsRevoked = 0
         let newBadges = 0
 
         for (const attempt of passedAttempts) {
@@ -379,12 +366,12 @@ export class TrainingOpsRewardService {
             processedAttempts += 1
 
             const rewardResult = await this.issueRewardsForPassedExamAttempt(attempt.id, db)
-            if (rewardResult.starAwarded) {
-                if (rewardResult.starAwardAdjusted) {
-                    starAwardsAdjusted += 1
-                } else {
-                    starAwardsIssued += 1
-                }
+            if (rewardResult.starAwardAdjusted) {
+                starAwardsAdjusted += 1
+                starsGranted += Math.max(0, rewardResult.stars)
+                starsRevoked += Math.max(0, -rewardResult.stars)
+            } else if (rewardResult.starAwarded) {
+                starAwardsIssued += 1
                 starsGranted += rewardResult.stars
             }
             newBadges += rewardResult.newBadges
@@ -395,6 +382,7 @@ export class TrainingOpsRewardService {
             starAwardsIssued,
             starAwardsAdjusted,
             starsGranted,
+            starsRevoked,
             newBadges,
         }
     }

@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ApiClient } from '@/lib/api-client'
 import type { LearningEventSummary, LearningSeriesSummary } from '@/types'
-import { CalendarDays, Loader2, Plus } from 'lucide-react'
+import { CalendarDays, Loader2, Plus, Trash2 } from 'lucide-react'
 import { BackButton } from '@/components/ui/back-button'
 
 const EMPTY_OPTION = '__all__'
@@ -33,6 +33,7 @@ function EventCatalogPageContent({ view }: EventCatalogPageProps) {
     const [seriesLoading, setSeriesLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [events, setEvents] = useState<LearningEventSummary[]>([])
+    const [deletingEventId, setDeletingEventId] = useState<string | null>(null)
     const [seriesOptions, setSeriesOptions] = useState<LearningSeriesSummary[]>([])
     const [filters, setFilters] = useState({
         search: '',
@@ -111,13 +112,13 @@ function EventCatalogPageContent({ view }: EventCatalogPageProps) {
     )
 
     const stats = useMemo(() => {
-        const scheduled = events.filter((event) => event.status === 'SCHEDULED' && event.scheduledAt).length
+        const inProgress = events.filter((event) => event.status === 'IN_PROGRESS').length
         const linkedExams = events.reduce((count, event) => count + event.exams.length, 0)
         const performanceEvents = events.filter((event) => event.countsTowardPerformance).length
 
         return {
             total: events.length,
-            scheduled,
+            inProgress,
             linkedExams,
             performanceEvents,
         }
@@ -137,6 +138,27 @@ function EventCatalogPageContent({ view }: EventCatalogPageProps) {
 
         const query = nextSearch.toString()
         router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
+    }
+
+    const deleteEvent = async (event: LearningEventSummary) => {
+        if (event.courses.length > 0 || event.exams.length > 0) {
+            return
+        }
+
+        if (!window.confirm(`Delete Event "${event.title}"? This action cannot be undone.`)) {
+            return
+        }
+
+        try {
+            setDeletingEventId(event.id)
+            setError(null)
+            await ApiClient.deleteTrainingOpsEvent(event.id)
+            setEvents((current) => current.filter((item) => item.id !== event.id))
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to delete learning event')
+        } finally {
+            setDeletingEventId(null)
+        }
     }
 
     const seriesHrefPrefix = isAdmin ? '/admin/training-ops/series' : '/sme/training-ops/series'
@@ -159,7 +181,7 @@ function EventCatalogPageContent({ view }: EventCatalogPageProps) {
                                 {selectedSeries
                                     ? `Showing events inside "${selectedSeries.name}"${isAdmin ? ' so you can review governance and linked exam activity.' : ' and the execution activity inside your SME scope.'}`
                                     : isAdmin
-                                        ? 'Review scheduled learning activity across all domains, then open events to manage linked exams and scheduling state.'
+                                        ? 'Review active learning activity across all domains, then open events to manage linked exams and completion state.'
                                         : 'Manage the events inside your SME scope and connect them to existing exams.'}
                             </p>
                         </div>
@@ -186,7 +208,7 @@ function EventCatalogPageContent({ view }: EventCatalogPageProps) {
 
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                     <Card><CardHeader className="pb-2"><CardDescription>Total Events</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.total}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">{isAdmin ? 'Current list after global filters are applied.' : 'Scoped to your owned Domains and Programs.'}</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2"><CardDescription>Scheduled</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.scheduled}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">{isAdmin ? 'Events with a fixed calendar slot.' : 'Upcoming events already on the calendar.'}</p></CardContent></Card>
+                    <Card><CardHeader className="pb-2"><CardDescription>In Progress</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.inProgress}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Active events that have not been completed.</p></CardContent></Card>
                     <Card><CardHeader className="pb-2"><CardDescription>Linked Exams</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.linkedExams}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">{isAdmin ? 'Existing exams currently attached to events.' : 'Existing exams attached to your events.'}</p></CardContent></Card>
                     <Card><CardHeader className="pb-2"><CardDescription>Performance Events</CardDescription><CardTitle className="text-3xl">{loading ? '...' : stats.performanceEvents}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">{isAdmin ? 'Sessions that count toward formal assessment.' : 'Sessions mapped to formal performance tracking.'}</p></CardContent></Card>
                 </div>
@@ -243,11 +265,8 @@ function EventCatalogPageContent({ view }: EventCatalogPageProps) {
                                 onChange={(e) => setFilters((prev) => ({ ...prev, status: e.target.value }))}
                             >
                                 <option value={EMPTY_OPTION}>All statuses</option>
-                                <option value="DRAFT">Draft</option>
-                                <option value="SCHEDULED">Scheduled</option>
                                 <option value="IN_PROGRESS">In Progress</option>
                                 <option value="COMPLETED">Completed</option>
-                                <option value="CANCELED">Canceled</option>
                             </select>
                         </div>
                         <div className="space-y-2">
@@ -335,6 +354,7 @@ function EventCatalogPageContent({ view }: EventCatalogPageProps) {
                                                         <CalendarDays className="mr-1 inline h-4 w-4" />
                                                         {event.scheduledAt ? new Date(event.scheduledAt).toLocaleString() : 'Not scheduled'}
                                                     </span>
+                                                    <span>{event.courses.length} linked course{event.courses.length === 1 ? '' : 's'}</span>
                                                     <span>{event.exams.length} linked exam{event.exams.length === 1 ? '' : 's'}</span>
                                                     <span>{event.countsTowardPerformance ? 'Counts toward performance' : 'Practice / readiness only'}</span>
                                                 </div>
@@ -350,6 +370,29 @@ function EventCatalogPageContent({ view }: EventCatalogPageProps) {
                                                     <Link href={`/admin/exams/create?learningEventId=${event.id}`}>
                                                         <Button>Create Exam</Button>
                                                     </Link>
+                                                ) : null}
+                                                {isAdmin ? (
+                                                    <Button
+                                                        variant="destructive"
+                                                        disabled={
+                                                            deletingEventId === event.id ||
+                                                            event.courses.length > 0 ||
+                                                            event.exams.length > 0
+                                                        }
+                                                        title={
+                                                            event.courses.length > 0 || event.exams.length > 0
+                                                                ? 'Remove all linked Courses and Exams before deleting this Event.'
+                                                                : 'Delete Event'
+                                                        }
+                                                        onClick={() => void deleteEvent(event)}
+                                                    >
+                                                        {deletingEventId === event.id ? (
+                                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                        ) : (
+                                                            <Trash2 className="mr-2 h-4 w-4" />
+                                                        )}
+                                                        Delete
+                                                    </Button>
                                                 ) : null}
                                             </div>
                                         </div>

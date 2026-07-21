@@ -38,16 +38,12 @@ function NewLearningEventPageContent() {
     const [form, setForm] = useState({
         title: '',
         format: 'CASE_STUDY' as LearningEventSummary['format'],
-        status: 'DRAFT' as LearningEventSummary['status'],
+        status: 'IN_PROGRESS' as LearningEventSummary['status'],
         domainId: '',
         seriesId: '',
         hostId: '',
         description: '',
-        releaseVersion: '',
         scheduledAt: '',
-        startsAt: '',
-        endsAt: '',
-        starValue: '1',
         isRequired: false,
         countsTowardPerformance: false,
     })
@@ -167,11 +163,7 @@ function NewLearningEventPageContent() {
                 seriesId: form.seriesId || null,
                 hostId: form.hostId || null,
                 description: form.description.trim() || null,
-                releaseVersion: form.releaseVersion.trim() || null,
                 scheduledAt: toIsoStringOrNull(form.scheduledAt),
-                startsAt: toIsoStringOrNull(form.startsAt),
-                endsAt: toIsoStringOrNull(form.endsAt),
-                starValue: form.starValue ? Number(form.starValue) : null,
                 isRequired: form.isRequired,
                 countsTowardPerformance: form.countsTowardPerformance,
             })
@@ -254,11 +246,8 @@ function NewLearningEventPageContent() {
                                         value={form.status}
                                         onChange={(e) => updateForm('status', e.target.value as LearningEventSummary['status'])}
                                     >
-                                        <option value="DRAFT">Draft</option>
-                                        <option value="SCHEDULED">Scheduled</option>
                                         <option value="IN_PROGRESS">In Progress</option>
                                         <option value="COMPLETED">Completed</option>
-                                        <option value="CANCELED">Canceled</option>
                                     </select>
                                 </div>
                                 <div className="space-y-2">
@@ -328,25 +317,16 @@ function NewLearningEventPageContent() {
                                 />
                             </div>
 
-                            <div className="space-y-2">
-                                <Label htmlFor="releaseVersion">Release Version</Label>
-                                <Input
-                                    id="releaseVersion"
-                                    value={form.releaseVersion}
-                                    onChange={(e) => updateForm('releaseVersion', e.target.value)}
-                                    placeholder="Optional, e.g. 2026.03.28"
-                                />
-                            </div>
                         </CardContent>
                     </Card>
 
                     <Card>
                         <CardHeader>
-                            <CardTitle>Scheduling & Incentives</CardTitle>
-                            <CardDescription>Capture timing and whether this event contributes to stars or performance tracking.</CardDescription>
+                            <CardTitle>Schedule & Policy</CardTitle>
+                            <CardDescription>Set the event schedule and how it should appear in learner and performance workflows.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="grid gap-4 md:grid-cols-3">
+                            <div className="max-w-md">
                                 <div className="space-y-2">
                                     <Label htmlFor="scheduledAt">Scheduled At</Label>
                                     <Input
@@ -354,38 +334,6 @@ function NewLearningEventPageContent() {
                                         type="datetime-local"
                                         value={form.scheduledAt}
                                         onChange={(e) => updateForm('scheduledAt', e.target.value)}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="startsAt">Starts At</Label>
-                                    <Input
-                                        id="startsAt"
-                                        type="datetime-local"
-                                        value={form.startsAt}
-                                        onChange={(e) => updateForm('startsAt', e.target.value)}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="endsAt">Ends At</Label>
-                                    <Input
-                                        id="endsAt"
-                                        type="datetime-local"
-                                        value={form.endsAt}
-                                        onChange={(e) => updateForm('endsAt', e.target.value)}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="grid gap-4 md:grid-cols-2">
-                                <div className="space-y-2">
-                                    <Label htmlFor="starValue">Star Value</Label>
-                                    <Input
-                                        id="starValue"
-                                        type="number"
-                                        min="0"
-                                        max="20"
-                                        value={form.starValue}
-                                        onChange={(e) => updateForm('starValue', e.target.value)}
                                     />
                                 </div>
                             </div>

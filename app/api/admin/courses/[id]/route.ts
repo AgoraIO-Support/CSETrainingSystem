@@ -88,6 +88,13 @@ export const PUT = withSmeOrAdminAuth(async (req, user, { params }: { params: Pr
             )
         }
 
+        if (error instanceof Error && ['COURSE_DOMAIN_REQUIRED', 'COURSE_DOMAIN_CONFLICT'].includes(error.message)) {
+            return NextResponse.json(
+                { success: false, error: { code: error.message, message: 'Published courses require one unambiguous Event Domain scope.' } },
+                { status: 409 }
+            )
+        }
+
         if (error instanceof Error && error.message === 'TRAINING_OPS_SCOPE_FORBIDDEN') {
             return NextResponse.json(
                 {

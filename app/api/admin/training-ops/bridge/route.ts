@@ -62,7 +62,7 @@ export const GET = withAdminAuth(async () => {
             activeProductDomains,
             learningSeries,
             activeLearningSeries,
-            scheduledEvents,
+            inProgressEvents,
             completedEvents,
             badgeMilestones,
             badgeAwards,
@@ -141,7 +141,7 @@ export const GET = withAdminAuth(async () => {
                 Prisma.sql`SELECT COUNT(*)::bigint AS count FROM "learning_series" WHERE "isActive" = true`
             ),
             optionalCountQuery(
-                Prisma.sql`SELECT COUNT(*)::bigint AS count FROM "learning_events" WHERE "status" = 'SCHEDULED'`
+                Prisma.sql`SELECT COUNT(*)::bigint AS count FROM "learning_events" WHERE "status" = 'IN_PROGRESS'`
             ),
             optionalCountQuery(
                 Prisma.sql`SELECT COUNT(*)::bigint AS count FROM "learning_events" WHERE "status" = 'COMPLETED'`
@@ -482,7 +482,7 @@ export const GET = withAdminAuth(async () => {
                 activeProductDomains,
                 learningSeries,
                 activeLearningSeries,
-                scheduledEvents,
+                inProgressEvents,
                 completedEvents,
                 migrated: productDomains !== null,
                 previewDomains,

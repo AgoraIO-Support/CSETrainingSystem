@@ -338,7 +338,7 @@ export default function TrainingOpsPrototypePage() {
                                     {bridgeLoading
                                         ? 'Checking new schema tables'
                                         : bridge?.trainingOps.migrated
-                                            ? `${bridge?.trainingOps.learningSeries ?? 0} series · ${bridge?.trainingOps.scheduledEvents ?? 0} scheduled events`
+                                            ? `${bridge?.trainingOps.learningSeries ?? 0} series · ${bridge?.trainingOps.inProgressEvents ?? 0} events in progress`
                                             : 'Training-ops tables are pending database migration'}
                                 </p>
                             </div>

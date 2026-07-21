@@ -36,6 +36,7 @@
         "audit:randomized-mc-attempts": "tsx scripts/audit-randomized-multiple-choice-attempts.ts",
         "rewards:reconcile": "tsx scripts/reconcile-training-ops-rewards.ts",
         "rewards:reconcile:apply": "tsx scripts/reconcile-training-ops-rewards.ts --apply --confirm=BACKFILL_TRAINING_OPS_REWARDS",
+        "domains:audit": "tsx scripts/audit-domain-associations.ts",
         "test:podman": "bash scripts/podman/test.sh"
     },
     "dependencies": {

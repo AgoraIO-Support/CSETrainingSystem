@@ -23,6 +23,8 @@ const PRIMARY_STANDARD_MCP_TOOL_NAMES = new Set([
     'list_my_workspace',
     'get_training_ops_action_center',
     'get_domain_health',
+    'audit_domain_associations',
+    'propose_domain_assignments',
     'create_badge',
     'create_learning_program',
     'create_series',
@@ -38,6 +40,8 @@ const PRIMARY_STANDARD_MCP_TOOL_NAMES = new Set([
 ])
 
 const HIGH_RISK_TOOL_NAMES = new Set([
+    'apply_domain_assignments',
+    'manage_domain_alias',
     'share_course_with_learners',
     'publish_exam_for_learners',
     'prepare_transcript_upload',
@@ -126,6 +130,8 @@ const READ_ONLY_TOOL_NAMES = new Set([
     'list_my_workspace',
     'get_training_ops_action_center',
     'get_domain_health',
+    'audit_domain_associations',
+    'propose_domain_assignments',
     'review_event_status',
     'list_my_series_badges',
 ])

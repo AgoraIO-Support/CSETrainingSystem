@@ -76,14 +76,14 @@ export const POST = withSmeOrAdminAuth(async (req: NextRequest, user, context: R
                 }, { status: 409 })
             }
 
-            if (error.message === 'EXAM_DOMAIN_MISMATCH' || error.message === 'EXAM_SERIES_MISMATCH') {
+            if (['EXAM_DOMAIN_MISMATCH', 'EXAM_SERIES_MISMATCH', 'EXAM_DOMAIN_REQUIRED', 'EXAM_DOMAIN_CONFLICT'].includes(error.message)) {
                 return NextResponse.json({
                     success: false,
                     error: {
                         code: error.message,
-                        message: error.message === 'EXAM_DOMAIN_MISMATCH'
-                            ? 'Exam domain does not match the selected event scope'
-                            : 'Exam Learning Program does not match the selected Event scope',
+                        message: error.message === 'EXAM_SERIES_MISMATCH'
+                            ? 'Exam Learning Program does not match the selected Event scope'
+                            : 'Exam must use one unambiguous Event Domain scope',
                     },
                 }, { status: 400 })
             }

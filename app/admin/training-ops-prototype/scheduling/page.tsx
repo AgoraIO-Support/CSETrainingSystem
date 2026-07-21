@@ -223,7 +223,7 @@ export default function TrainingOpsSchedulingPrototypePage() {
                             <div>
                                 <CardDescription className="text-xs uppercase tracking-[0.14em] text-slate-500">Release lane SLA</CardDescription>
                                 <CardTitle className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-slate-950">
-                                    {bridgeLoading ? '...' : bridge?.trainingOps.scheduledEvents ?? 0}
+                                    {bridgeLoading ? '...' : bridge?.trainingOps.inProgressEvents ?? 0}
                                 </CardTitle>
                             </div>
                             <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-[#006688]">
@@ -473,7 +473,7 @@ export default function TrainingOpsSchedulingPrototypePage() {
                                     Stores one concrete scheduled session with owner, time, materials, and optional exam.
                                 </p>
                                 <p className="mt-3 text-xs uppercase tracking-[0.14em] text-slate-500">
-                                    Live count · {bridgeLoading ? '...' : bridge?.trainingOps.scheduledEvents ?? 0} scheduled
+                                    Live count · {bridgeLoading ? '...' : bridge?.trainingOps.inProgressEvents ?? 0} in progress
                                 </p>
                             </div>
                             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">

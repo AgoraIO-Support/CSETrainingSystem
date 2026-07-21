@@ -15,7 +15,7 @@ import { getExamTimeZoneOptions, utcToLocalDateTimeInputValue } from '@/lib/exam
 import { Loader2, Save, Send, CheckCircle, XCircle } from 'lucide-react'
 import { BackButton } from '@/components/ui/back-button'
 import Link from 'next/link'
-import type { Exam, ExamStatus, TrainingOpsCourseSummary } from '@/types'
+import type { Exam, ExamStatus, LearningEventSummary, TrainingOpsCourseSummary } from '@/types'
 
 type AssessmentKindOption = 'PRACTICE' | 'READINESS' | 'FORMAL'
 
@@ -68,6 +68,7 @@ function EditExamPageContent({ params }: PageProps) {
     const isSmeMode = searchParams.get('sme') === '1'
     const [exam, setExam] = useState<Exam | null>(null)
     const [courses, setCourses] = useState<Array<{ id: string; title: string }>>([])
+    const [eventOptions, setEventOptions] = useState<LearningEventSummary[]>([])
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -100,6 +101,7 @@ function EditExamPageContent({ params }: PageProps) {
         description: '',
         instructions: '',
         courseId: '',
+        learningEventId: '',
         timeLimit: '',
         totalScore: '',
         passingScore: '',
@@ -124,14 +126,18 @@ function EditExamPageContent({ params }: PageProps) {
     useEffect(() => {
         const loadExam = async () => {
             try {
-                const [response, coursesResponse] = await Promise.all([
+                const [response, coursesResponse, eventsResponse] = await Promise.all([
                     ApiClient.getAdminExam(examId),
                     isSmeMode
                         ? ApiClient.getSmeTrainingOpsCourses()
                         : ApiClient.getAdminCourses({ limit: 100, status: 'ALL' }),
+                    isSmeMode
+                        ? ApiClient.getSmeTrainingOpsEvents()
+                        : ApiClient.getTrainingOpsEvents({ limit: 100 }),
                 ])
                 const data = response.data
-                let nextLinkedEvent: Awaited<ReturnType<typeof ApiClient.getTrainingOpsEvent>>['data'] | null = null
+                const events = eventsResponse.data
+                const nextLinkedEvent = events.find(event => event.id === data.learningEventId) ?? null
 
                 setCourses(
                     (isSmeMode ? coursesResponse.data as TrainingOpsCourseSummary[] : coursesResponse.data).map((course) => ({
@@ -139,15 +145,7 @@ function EditExamPageContent({ params }: PageProps) {
                         title: course.title,
                     }))
                 )
-
-                if (data.learningEventId) {
-                    try {
-                        const linkedEventResponse = await ApiClient.getTrainingOpsEvent(data.learningEventId)
-                        nextLinkedEvent = linkedEventResponse.data
-                    } catch {
-                        nextLinkedEvent = null
-                    }
-                }
+                setEventOptions(events)
 
                 setExam(data)
                 setForm({
@@ -155,6 +153,7 @@ function EditExamPageContent({ params }: PageProps) {
                     description: data.description || '',
                     instructions: data.instructions || '',
                     courseId: data.courseId ?? '',
+                    learningEventId: data.learningEventId ?? '',
                     timeLimit: data.timeLimit?.toString() || '',
                     totalScore: data.totalScore.toString(),
                     passingScore: data.passingScore.toString(),
@@ -278,6 +277,7 @@ function EditExamPageContent({ params }: PageProps) {
                     description: form.description || null,
                     instructions: form.instructions || null,
                     courseId: form.courseId || null,
+                    learningEventId: form.learningEventId || null,
                     timeLimit: form.timeLimit ? parseInt(form.timeLimit) : null,
                     totalScore: parseInt(form.totalScore) || 100,
                     passingScore: parseInt(form.passingScore) || 60,
@@ -299,7 +299,7 @@ function EditExamPageContent({ params }: PageProps) {
             setExam(response.data)
             setSuccessMessage(
                 rewardPolicyOnlyMode
-                    ? 'Reward policy updated. Passed learners have been synced for missing stars.'
+                    ? 'Reward policy updated. Passed learners\' stars have been synchronized.'
                     : 'Exam updated successfully!'
             )
             setTimeout(() => setSuccessMessage(null), 3000)
@@ -429,6 +429,7 @@ function EditExamPageContent({ params }: PageProps) {
         questionPointsSum != null &&
         questionPointsSum === exam.totalScore
     const canApprove = exam.status === 'PENDING_REVIEW' && questionPointsSum === exam.totalScore
+    const selectedEvent = eventOptions.find(event => event.id === form.learningEventId) ?? null
 
     return (
         <DashboardLayout>
@@ -640,6 +641,46 @@ function EditExamPageContent({ params }: PageProps) {
                                         Optionally scope this exam to a course. Leave it blank for a general event, series, or domain exam.
                                     </p>
                                 </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="learningEventId">Associated Event</Label>
+                                    {canEditExam ? (
+                                        <select
+                                            id="learningEventId"
+                                            className="w-full h-10 px-3 border rounded-md bg-background"
+                                            value={form.learningEventId}
+                                            onChange={(e) => updateForm('learningEventId', e.target.value)}
+                                        >
+                                            <option value="">No Event selected</option>
+                                            {eventOptions.map((event) => (
+                                                <option key={event.id} value={event.id}>
+                                                    {event.title}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    ) : (
+                                        <Input value={selectedEvent?.title ?? 'No Event selected'} disabled />
+                                    )}
+                                    {selectedEvent ? (
+                                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                                            <Badge variant="outline">
+                                                Domain: {selectedEvent.domain?.name ?? 'Missing'}
+                                            </Badge>
+                                            <Badge variant="outline">
+                                                Program: {selectedEvent.series?.name ?? 'None'}
+                                            </Badge>
+                                            <Link
+                                                className="font-medium text-primary hover:underline"
+                                                href={`${isSmeMode ? '/sme' : '/admin'}/training-ops/events/${selectedEvent.id}`}
+                                            >
+                                                Open Event
+                                            </Link>
+                                        </div>
+                                    ) : (
+                                        <p className="text-xs text-muted-foreground">
+                                            Select the Event that defines this Exam&apos;s Domain and Program scope.
+                                        </p>
+                                    )}
+                                </div>
                             </div>
                         </CardContent>
                     </Card>
@@ -701,7 +742,7 @@ function EditExamPageContent({ params }: PageProps) {
                             <CardTitle>Reward Policy</CardTitle>
                             <CardDescription>
                                 {rewardPolicyOnlyMode
-                                    ? 'Published exams only allow admin star backfill. Passed learners will receive any newly enabled or increased stars.'
+                                    ? 'Published exams allow admin reward updates. Passed learners will be synchronized to the configured star value.'
                                     : 'Configure how this assessment contributes to rewards and certification.'}
                             </CardDescription>
                         </CardHeader>
@@ -750,7 +791,7 @@ function EditExamPageContent({ params }: PageProps) {
                                             />
                                             {rewardPolicyOnlyMode ? (
                                                 <p className="text-xs text-muted-foreground">
-                                                    Existing passed learners will be backfilled when you save.
+                                                    Existing passed learners will be synchronized when you save.
                                                 </p>
                                             ) : null}
                                         </div>

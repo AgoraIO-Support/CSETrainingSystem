@@ -384,12 +384,11 @@ function buildExampleInput(
                     title: `${domain?.name ?? 'SME'} Case Study - ${new Date().toISOString().slice(0, 10)}`,
                     learningProgram: learningSeries?.name ?? '',
                     format: 'CASE_STUDY',
-                    status: 'DRAFT',
+                    status: 'IN_PROGRESS',
                     host: 'current_user',
                     description: 'Created from SME MCP Lab.',
                     scheduledAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
                     countsTowardPerformance: false,
-                    starValue: 2,
                 }
                 : {
                     title: `${domain?.name ?? 'SME'} Case Study - ${new Date().toISOString().slice(0, 10)}`,

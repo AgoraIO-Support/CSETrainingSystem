@@ -130,10 +130,6 @@ export const normalizeSmeMcpError = (error: unknown) => {
             return errorResponse(400, 'SERIES_REFERENCE_AMBIGUOUS', 'Learning series reference matched multiple series in the current SME scope', details)
         }
 
-        if (message === 'SCHEDULED_EVENT_REQUIRES_DATE') {
-            return errorResponse(400, 'SCHEDULED_EVENT_REQUIRES_DATE', 'scheduledAt is required when an event is SCHEDULED')
-        }
-
         if (message === 'EVENT_REFERENCE_NOT_FOUND') {
             return errorResponse(404, 'EVENT_REFERENCE_NOT_FOUND', 'Learning event reference was not found in the current SME scope', details)
         }

@@ -15,7 +15,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ApiClient } from '@/lib/api-client'
-import type { Course, CourseLevel } from '@/types'
+import type { Course, CourseLevel, LearningEventSummary } from '@/types'
 import Link from 'next/link'
 import { Loader2, Video, FileText, AlertTriangle, Check, Info, MonitorPlay } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -27,6 +27,7 @@ import { ChunkPreview } from '@/components/admin/chunk-preview'
 const backendBaseUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || '').replace(/\/$/, '')
 
 const levels: CourseLevel[] = ['BEGINNER', 'INTERMEDIATE', 'ADVANCED']
+const NO_EVENT_VALUE = '__none__'
 
 type LessonAssetDto = {
     id: string
@@ -146,6 +147,7 @@ function EditCoursePageContent({ params }: { params: Promise<{ id: string }> }) 
         status: 'DRAFT',
         learningOutcomes: '',
         requirements: '',
+        learningEventId: '',
     })
     const [activeStep, setActiveStep] = useState(1)
     const [formDirty, setFormDirty] = useState(false)
@@ -159,6 +161,7 @@ function EditCoursePageContent({ params }: { params: Promise<{ id: string }> }) 
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState<string | null>(null)
     const [instructors, setInstructors] = useState<Array<{ id: string; name: string }>>([])
+    const [eventOptions, setEventOptions] = useState<LearningEventSummary[]>([])
     const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null)
     const [lessonForm, setLessonForm] = useState({
         title: '',
@@ -211,9 +214,12 @@ function EditCoursePageContent({ params }: { params: Promise<{ id: string }> }) 
         let mounted = true
         const loadCourse = async () => {
             try {
-                const [courseRes, instructorsRes] = await Promise.all([
+                const [courseRes, instructorsRes, eventsRes] = await Promise.all([
                     ApiClient.getCourse(id),
                     ApiClient.getInstructors(),
+                    isSmeMode
+                        ? ApiClient.getSmeTrainingOpsEvents()
+                        : ApiClient.getTrainingOpsEvents({ limit: 100 }),
                 ])
 
                 if (!mounted) return
@@ -232,10 +238,12 @@ function EditCoursePageContent({ params }: { params: Promise<{ id: string }> }) 
                     status: data.status || 'DRAFT',
                     learningOutcomes: (data.learningOutcomes || []).join('\n'),
                     requirements: (data.requirements || []).join('\n'),
+                    learningEventId: data.learningEventId || '',
                 })
                 setFormDirty(false)
 
                 setInstructors(instructorsRes.data.map(instr => ({ id: instr.id, name: instr.name })))
+                setEventOptions(eventsRes.data)
             } catch (err) {
                 console.error(err)
                 setError(err instanceof Error ? err.message : 'Failed to load course')
@@ -248,7 +256,7 @@ function EditCoursePageContent({ params }: { params: Promise<{ id: string }> }) 
         return () => {
             mounted = false
         }
-    }, [id])
+    }, [id, isSmeMode])
 
     const handleChange = (field: string, value: any) => {
         setForm(prev => ({ ...prev, [field]: value as any }))
@@ -289,6 +297,12 @@ function EditCoursePageContent({ params }: { params: Promise<{ id: string }> }) 
     }
 
     const ensurePublishable = async () => {
+        if (!form.learningEventId) {
+            setError('Select an associated Event before publishing this Course.')
+            setActiveStep(1)
+            return false
+        }
+
         const validate = () => {
             const chapters = course?.chapters ?? []
             const lessonCount =
@@ -325,6 +339,7 @@ function EditCoursePageContent({ params }: { params: Promise<{ id: string }> }) 
             .map(item => item.trim())
             .filter(Boolean),
         instructorId: form.instructorId,
+        learningEventId: form.learningEventId || null,
     })
 
     const saveCourseInfo = async (options?: { silent?: boolean; redirect?: boolean; validateStep?: number | 'all' }) => {
@@ -1251,6 +1266,7 @@ const handleDeleteLessonAsset = async (assetId: string) => {
         instructors.find(instr => instr.id === form.instructorId)?.name ||
         course?.instructor?.name ||
         'Unassigned'
+    const selectedEvent = eventOptions.find(event => event.id === form.learningEventId) ?? null
     const currentStatus = course?.status || form.status
     const displayTags =
         course?.tags ??
@@ -1515,6 +1531,57 @@ const handleDeleteLessonAsset = async (assetId: string) => {
                                                 onChange={e => handleChange('requirements', e.target.value)}
                                             />
                                         </div>
+                                    </div>
+
+                                    <div className="space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-4">
+                                        <div>
+                                            <p className="text-xs uppercase tracking-wider text-primary font-semibold">Training governance</p>
+                                            <h3 className="text-lg font-semibold">Associated Event</h3>
+                                            <p className="text-sm text-muted-foreground">
+                                                Published Courses must be manually linked to an Event with one clear Domain.
+                                            </p>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="learningEventId">Event</Label>
+                                            <Select
+                                                value={form.learningEventId || NO_EVENT_VALUE}
+                                                onValueChange={value => handleChange(
+                                                    'learningEventId',
+                                                    value === NO_EVENT_VALUE ? '' : value
+                                                )}
+                                            >
+                                                <SelectTrigger id="learningEventId">
+                                                    <SelectValue placeholder="Select an Event" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value={NO_EVENT_VALUE}>No Event selected</SelectItem>
+                                                    {eventOptions.map(event => (
+                                                        <SelectItem key={event.id} value={event.id}>
+                                                            {event.title}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        {selectedEvent ? (
+                                            <div className="flex flex-wrap gap-2 text-sm">
+                                                <Badge variant="outline">
+                                                    Domain: {selectedEvent.domain?.name ?? 'Missing'}
+                                                </Badge>
+                                                <Badge variant="outline">
+                                                    Program: {selectedEvent.series?.name ?? 'None'}
+                                                </Badge>
+                                                <Button asChild variant="link" size="sm" className="h-auto px-0">
+                                                    <Link href={`${isSmeMode ? '/sme' : '/admin'}/training-ops/events/${selectedEvent.id}`}>
+                                                        Open Event
+                                                    </Link>
+                                                </Button>
+                                            </div>
+                                        ) : (
+                                            <p className="text-sm text-amber-700">
+                                                Select an Event before changing this Course to Published.
+                                            </p>
+                                        )}
                                     </div>
 
                                     <div>

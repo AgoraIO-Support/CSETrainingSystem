@@ -123,7 +123,7 @@ export const PATCH = withSmeOrAdminAuth(
         description: data.description ?? undefined,
         instructions: data.instructions ?? undefined,
         timeLimit: data.timeLimit ?? undefined,
-        timezone,
+        timezone: data.timezone === undefined ? undefined : timezone,
         deadline,
         availableFrom,
       };
@@ -224,6 +224,32 @@ export const PATCH = withSmeOrAdminAuth(
           );
         }
 
+        if (error.message === 'LEARNING_EVENT_NOT_FOUND') {
+          return NextResponse.json(
+            {
+              success: false,
+              error: {
+                code: 'EVENT_NOT_FOUND',
+                message: 'Learning Event not found',
+              },
+            },
+            { status: 404 }
+          );
+        }
+
+        if (error.message === 'EXAM_DOMAIN_CONFLICT') {
+          return NextResponse.json(
+            {
+              success: false,
+              error: {
+                code: 'EXAM_DOMAIN_CONFLICT',
+                message: 'The selected Event conflicts with the Exam Domain.',
+              },
+            },
+            { status: 409 }
+          );
+        }
+
         if (error.message === 'EXAM_NOT_DRAFT') {
           return NextResponse.json(
             {
@@ -244,19 +270,6 @@ export const PATCH = withSmeOrAdminAuth(
               error: {
                 code: 'EXAM_004',
                 message: 'Published exams only allow admin star reward updates for passed learners.',
-              },
-            },
-            { status: 400 }
-          );
-        }
-
-        if (error.message === 'PUBLISHED_EXAM_REWARD_DOWNGRADE_FORBIDDEN') {
-          return NextResponse.json(
-            {
-              success: false,
-              error: {
-                code: 'EXAM_004',
-                message: 'Published exam rewards can only be enabled or increased. Downgrades are not allowed.',
               },
             },
             { status: 400 }

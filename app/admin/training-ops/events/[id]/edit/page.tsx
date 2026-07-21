@@ -45,16 +45,12 @@ export default function EditLearningEventPage() {
     const [form, setForm] = useState({
         title: '',
         format: 'CASE_STUDY' as LearningEventSummary['format'],
-        status: 'DRAFT' as LearningEventSummary['status'],
+        status: 'IN_PROGRESS' as LearningEventSummary['status'],
         domainId: '',
         seriesId: '',
         hostId: '',
         description: '',
-        releaseVersion: '',
         scheduledAt: '',
-        startsAt: '',
-        endsAt: '',
-        starValue: '1',
         isRequired: false,
         countsTowardPerformance: false,
     })
@@ -81,11 +77,7 @@ export default function EditLearningEventPage() {
                     seriesId: eventRes.data.series?.id ?? '',
                     hostId: eventRes.data.host?.id ?? '',
                     description: eventRes.data.description ?? '',
-                    releaseVersion: eventRes.data.releaseVersion ?? '',
                     scheduledAt: toLocalInput(eventRes.data.scheduledAt),
-                    startsAt: toLocalInput(eventRes.data.startsAt),
-                    endsAt: toLocalInput(eventRes.data.endsAt),
-                    starValue: eventRes.data.starValue?.toString() ?? '',
                     isRequired: eventRes.data.isRequired,
                     countsTowardPerformance: eventRes.data.countsTowardPerformance,
                 })
@@ -178,11 +170,7 @@ export default function EditLearningEventPage() {
                 seriesId: form.seriesId || null,
                 hostId: form.hostId || null,
                 description: form.description.trim() || null,
-                releaseVersion: form.releaseVersion.trim() || null,
                 scheduledAt: toIsoStringOrNull(form.scheduledAt),
-                startsAt: toIsoStringOrNull(form.startsAt),
-                endsAt: toIsoStringOrNull(form.endsAt),
-                starValue: form.starValue ? Number(form.starValue) : null,
                 isRequired: form.isRequired,
                 countsTowardPerformance: form.countsTowardPerformance,
             })
@@ -245,11 +233,8 @@ export default function EditLearningEventPage() {
                                 <div className="space-y-2">
                                     <Label htmlFor="status">Status *</Label>
                                     <select id="status" className="h-10 w-full rounded-md border bg-background px-3" value={form.status} onChange={(e) => updateForm('status', e.target.value as LearningEventSummary['status'])}>
-                                        <option value="DRAFT">Draft</option>
-                                        <option value="SCHEDULED">Scheduled</option>
                                         <option value="IN_PROGRESS">In Progress</option>
                                         <option value="COMPLETED">Completed</option>
-                                        <option value="CANCELED">Canceled</option>
                                     </select>
                                 </div>
                                 <div className="space-y-2">

@@ -1038,13 +1038,9 @@ export class ApiClient {
         seriesId?: string | null
         domainId?: string | null
         description?: string | null
-        releaseVersion?: string | null
         scheduledAt?: string | null
-        startsAt?: string | null
-        endsAt?: string | null
         isRequired: boolean
         countsTowardPerformance: boolean
-        starValue?: number | null
         hostId?: string | null
     }): Promise<{
         success: boolean
@@ -1070,13 +1066,9 @@ export class ApiClient {
         seriesId?: string | null
         domainId?: string | null
         description?: string | null
-        releaseVersion?: string | null
         scheduledAt?: string | null
-        startsAt?: string | null
-        endsAt?: string | null
         isRequired: boolean
         countsTowardPerformance: boolean
-        starValue?: number | null
         hostId?: string | null
     }>): Promise<{
         success: boolean
@@ -1085,6 +1077,33 @@ export class ApiClient {
         return this.request(`/admin/training-ops/events/${eventId}`, {
             method: 'PATCH',
             body: JSON.stringify(payload),
+        })
+    }
+
+    static async deleteTrainingOpsEvent(eventId: string): Promise<{
+        success: boolean
+        data: { id: string }
+    }> {
+        return this.request(`/admin/training-ops/events/${eventId}`, {
+            method: 'DELETE',
+        })
+    }
+
+    static async deleteTrainingOpsSeries(seriesId: string): Promise<{
+        success: boolean
+        data: { id: string }
+    }> {
+        return this.request(`/admin/training-ops/series/${seriesId}`, {
+            method: 'DELETE',
+        })
+    }
+
+    static async deleteTrainingOpsDomain(domainId: string): Promise<{
+        success: boolean
+        data: { id: string }
+    }> {
+        return this.request(`/admin/training-ops/domains/${domainId}`, {
+            method: 'DELETE',
         })
     }
 
@@ -1338,13 +1357,9 @@ export class ApiClient {
         seriesId?: string | null
         domainId?: string | null
         description?: string | null
-        releaseVersion?: string | null
         scheduledAt?: string | null
-        startsAt?: string | null
-        endsAt?: string | null
         isRequired: boolean
         countsTowardPerformance: boolean
-        starValue?: number | null
         hostId?: string | null
     }): Promise<{
         success: boolean
@@ -1363,13 +1378,9 @@ export class ApiClient {
         seriesId?: string | null
         domainId?: string | null
         description?: string | null
-        releaseVersion?: string | null
         scheduledAt?: string | null
-        startsAt?: string | null
-        endsAt?: string | null
         isRequired: boolean
         countsTowardPerformance: boolean
-        starValue?: number | null
         hostId?: string | null
     }>): Promise<{
         success: boolean
@@ -1617,6 +1628,7 @@ export class ApiClient {
 
     static async updateExam(examId: string, payload: Partial<{
         courseId: string | null
+        learningEventId: string | null
         title: string
         description: string | null
         instructions: string | null

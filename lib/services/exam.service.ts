@@ -20,6 +20,9 @@ import { TrainingOpsRewardService } from '@/lib/services/training-ops-reward.ser
 import { ASSET_S3_BUCKET_NAME, S3_BUCKET_NAME } from '@/lib/aws-s3';
 import { resolveRichTextAssetUrls } from '@/lib/rich-text';
 import type { EssayGradingCriterion } from '@/lib/essay-grading';
+import { resolveDomainCandidates } from '@/lib/domain-governance';
+import { DomainGovernanceService } from '@/lib/services/domain-governance.service';
+import { buildExamEventAssociationData } from '@/lib/event-exam-association';
 
 // Input types
 export interface CreateExamInput {
@@ -50,6 +53,7 @@ export interface CreateExamInput {
 
 export interface UpdateExamInput {
   courseId?: string | null;
+  learningEventId?: string | null;
   title?: string;
   description?: string;
   instructions?: string;
@@ -416,23 +420,36 @@ export class ExamService {
     createdById: string,
     options?: { actorRole?: UserRole }
   ): Promise<ExamWithDetails> {
+    let courseScope: {
+      learningEvent: { domainId: string | null; series: { domainId: string | null } | null } | null;
+      sourceLearningEvent: { domainId: string | null; series: { domainId: string | null } | null } | null;
+    } | null = null
     if (data.courseId) {
       const course = await prisma.course.findUnique({
         where: { id: data.courseId },
+        select: {
+          id: true,
+          learningEvent: { select: { domainId: true, series: { select: { domainId: true } } } },
+          sourceLearningEvent: { select: { domainId: true, series: { select: { domainId: true } } } },
+        },
       });
 
       if (!course) {
         throw new Error('COURSE_NOT_FOUND');
       }
+      courseScope = course
     }
 
     let resolvedProductDomainId = data.productDomainId ?? null
     let resolvedLearningSeriesId = data.learningSeriesId ?? null
     let resolvedLearningEventId = data.learningEventId ?? null
     let resolvedAssessmentKind = data.assessmentKind ?? AssessmentKind.PRACTICE
-    let resolvedAwardsStars = data.awardsStars ?? false
-    let resolvedStarValue = data.starValue ?? null
+    let resolvedAwardsStars = data.awardsStars ?? true
+    let resolvedStarValue = data.starValue ?? (resolvedAwardsStars ? 3 : 0)
     let resolvedCountsTowardPerformance = data.countsTowardPerformance ?? false
+    let eventScope: { domainId: string | null; series: { domainId: string | null } | null } | null = null
+    let seriesScope: { domainId: string | null } | null = null
+    let sourceEventScope: { domainId: string | null; series: { domainId: string | null } | null } | null = null
 
     if (data.learningEventId) {
       const event = await prisma.learningEvent.findUnique({
@@ -447,6 +464,7 @@ export class ExamService {
       if (!event) {
         throw new Error('LEARNING_EVENT_NOT_FOUND')
       }
+      eventScope = event
 
       resolvedLearningEventId = event.id
       resolvedLearningSeriesId = data.learningSeriesId ?? event.seriesId ?? null
@@ -456,21 +474,18 @@ export class ExamService {
         data.assessmentKind ?? this.resolveAssessmentKindFromEvent(event)
       resolvedCountsTowardPerformance =
         data.countsTowardPerformance ?? event.countsTowardPerformance
-      resolvedAwardsStars =
-        data.awardsStars ?? ((event.starValue ?? 0) > 0)
-      resolvedStarValue =
-        data.starValue ?? event.starValue ?? null
     }
 
     if (data.sourceLearningEventId) {
       const sourceEvent = await prisma.learningEvent.findUnique({
         where: { id: data.sourceLearningEventId },
-        select: { id: true },
+        select: { id: true, domainId: true, series: { select: { domainId: true } } },
       })
 
       if (!sourceEvent) {
         throw new Error('LEARNING_EVENT_NOT_FOUND')
       }
+      sourceEventScope = sourceEvent
     }
 
     if (resolvedLearningSeriesId) {
@@ -482,11 +497,26 @@ export class ExamService {
       if (!series) {
         throw new Error('LEARNING_SERIES_NOT_FOUND')
       }
+      seriesScope = series
 
-      if (!resolvedProductDomainId && series.domainId) {
-        resolvedProductDomainId = series.domainId
-      }
     }
+
+    const domainResolution = resolveDomainCandidates([
+      { domainId: data.productDomainId, source: 'exam.productDomainId', kind: 'COMPATIBILITY' },
+      { domainId: seriesScope?.domainId, source: 'exam.program.domainId', kind: 'COMPATIBILITY' },
+      { domainId: eventScope?.domainId, source: 'exam.event.domainId' },
+      { domainId: eventScope?.series?.domainId, source: 'exam.event.program.domainId' },
+      { domainId: courseScope?.learningEvent?.domainId, source: 'exam.course.event.domainId' },
+      { domainId: courseScope?.learningEvent?.series?.domainId, source: 'exam.course.event.program.domainId' },
+      { domainId: courseScope?.sourceLearningEvent?.domainId, source: 'exam.course.sourceEvent.domainId' },
+      { domainId: courseScope?.sourceLearningEvent?.series?.domainId, source: 'exam.course.sourceEvent.program.domainId' },
+      { domainId: sourceEventScope?.domainId, source: 'exam.sourceEvent.domainId' },
+      { domainId: sourceEventScope?.series?.domainId, source: 'exam.sourceEvent.program.domainId' },
+    ])
+    if (domainResolution.status === 'CONFLICT') throw new Error('EXAM_DOMAIN_CONFLICT')
+    resolvedProductDomainId = domainResolution.status === 'SCOPED'
+      ? domainResolution.domainId
+      : data.productDomainId ?? null
 
     if (resolvedProductDomainId) {
       const domain = await prisma.productDomain.findUnique({
@@ -595,6 +625,7 @@ export class ExamService {
         courseId: true,
         learningEventId: true,
         learningSeriesId: true,
+        productDomainId: true,
         assessmentKind: true,
         awardsStars: true,
         starValue: true,
@@ -634,6 +665,49 @@ export class ExamService {
       }
     }
 
+    let eventAssociationData: Partial<{
+      learningEventId: string | null
+      learningSeriesId: string | null
+      productDomainId: string | null
+      assessmentKind: AssessmentKind
+      countsTowardPerformance: boolean
+    }> = {}
+    if (data.learningEventId !== undefined) {
+      if (data.learningEventId === null) {
+        eventAssociationData = { learningEventId: null }
+      } else {
+        const event = await prisma.learningEvent.findUnique({
+          where: { id: data.learningEventId },
+          include: {
+            series: { select: { id: true, type: true, domainId: true } },
+          },
+        })
+
+        if (!event) {
+          throw new Error('LEARNING_EVENT_NOT_FOUND')
+        }
+
+        const domainResolution = resolveDomainCandidates([
+          { domainId: event.domainId, source: 'exam.event.domainId' },
+          { domainId: event.series?.domainId, source: 'exam.event.program.domainId' },
+          { domainId: existing.productDomainId, source: 'exam.productDomainId', kind: 'COMPATIBILITY' },
+        ])
+        if (domainResolution.status === 'CONFLICT') {
+          throw new Error('EXAM_DOMAIN_CONFLICT')
+        }
+
+        eventAssociationData = buildExamEventAssociationData({
+          eventId: event.id,
+          eventSeriesId: event.seriesId,
+          eventDomainId: domainResolution.status === 'SCOPED' ? domainResolution.domainId : null,
+          examSeriesId: null,
+          examDomainId: existing.productDomainId,
+          assessmentKind: data.assessmentKind ?? this.resolveAssessmentKindFromEvent(event),
+          countsTowardPerformance: data.countsTowardPerformance ?? event.countsTowardPerformance,
+        })
+      }
+    }
+
     if (options?.actorRole === 'SME') {
       this.assertSmeRewardPolicyAllowed({
         existingAssessmentKind: existing.assessmentKind,
@@ -647,26 +721,14 @@ export class ExamService {
       if (nextAwardsStars && (!nextStarValue || nextStarValue <= 0)) {
         throw new Error('PUBLISHED_EXAM_STAR_VALUE_REQUIRED')
       }
-
-      if (existing.awardsStars && nextAwardsStars === false) {
-        throw new Error('PUBLISHED_EXAM_REWARD_DOWNGRADE_FORBIDDEN')
-      }
-
-      if (
-        existing.awardsStars &&
-        typeof existing.starValue === 'number' &&
-        typeof nextStarValue === 'number' &&
-        nextStarValue < existing.starValue
-      ) {
-        throw new Error('PUBLISHED_EXAM_REWARD_DOWNGRADE_FORBIDDEN')
-      }
     }
 
     const hasAnyChange = Object.values(data).some((v) => v !== undefined);
 
-    const exam = await prisma.exam.update({
+    const updateArgs = {
       where: { id },
       data: {
+        ...eventAssociationData,
         ...(data.title !== undefined && { title: data.title }),
         ...(data.courseId !== undefined && {
           courseId: data.courseId,
@@ -722,11 +784,15 @@ export class ExamService {
           },
         },
       },
-    });
+    } satisfies Prisma.ExamUpdateArgs;
 
-    if (isPublishedRewardOnlyUpdate && nextAwardsStars && nextStarValue && nextStarValue > 0) {
-      await TrainingOpsRewardService.syncRewardsForPublishedExam(id)
-    }
+    const exam = isPublishedRewardOnlyUpdate
+      ? await prisma.$transaction(async (tx) => {
+          const updatedExam = await tx.exam.update(updateArgs)
+          await TrainingOpsRewardService.syncRewardsForPublishedExam(id, tx)
+          return updatedExam
+        })
+      : await prisma.exam.update(updateArgs)
 
     return exam as ExamWithDetails;
   }
@@ -862,6 +928,8 @@ export class ExamService {
         throw new Error('APPROVER_REQUIRED');
       }
 
+      await DomainGovernanceService.assertExamPublishable(id)
+
       // Must have a consistent scoring configuration before approval.
       const sum = await prisma.examQuestion.aggregate({
         where: { examId: id, archivedAt: null },
@@ -890,6 +958,8 @@ export class ExamService {
       if (existing.status !== ExamStatus.CLOSED) {
         throw new Error('PUBLISH_REQUIRES_ASSIGNMENT');
       }
+
+      await DomainGovernanceService.assertExamPublishable(id)
 
       updateData.closedAt = null;
     }

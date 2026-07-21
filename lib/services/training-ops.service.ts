@@ -1,10 +1,13 @@
 import prisma from '@/lib/prisma'
-import { Prisma, ProductDomainCategory, ProductTrack, SmeKpiMode, LearningSeriesType, LearningEventFormat, LearningEventStatus, AssessmentKind, ExamStatus, ExamAttemptStatus } from '@prisma/client'
+import { Prisma, ProductDomainCategory, ProductTrack, SmeKpiMode, LearningSeriesType, LearningEventFormat, LearningEventStatus, AssessmentKind, CourseStatus, ExamStatus, ExamAttemptStatus } from '@prisma/client'
 import { ExamService } from '@/lib/services/exam.service'
 import { CourseService } from '@/lib/services/course.service'
 import { CascadeDeleteService } from '@/lib/services/cascade-delete.service'
 import { TrainingOpsRewardService } from '@/lib/services/training-ops-reward.service'
 import { isEventFormatAllowedForSeriesType } from '@/lib/training-ops-series-event-rules'
+import { assertPublishableDomain, resolveDomainCandidates } from '@/lib/domain-governance'
+import { DomainGovernanceService } from '@/lib/services/domain-governance.service'
+import { buildExamEventAssociationData } from '@/lib/event-exam-association'
 
 type TrainingOpsOperatorRole = 'USER' | 'SME' | 'ADMIN'
 type TrainingOpsOperator = {
@@ -15,6 +18,13 @@ type TrainingOpsScope = {
     domainIds: string[]
     seriesIds: string[]
     eventIds: string[]
+}
+
+type LearningSeriesRewardSummary = {
+    seriesId: string
+    starAwards: number
+    badgeAwards: number
+    recognizedLearners: number
 }
 
 type EventSummaryBase<TExam, TCourse> = Prisma.LearningEventGetPayload<{
@@ -279,13 +289,9 @@ export class TrainingOpsService {
             format: event.format,
             status: event.status,
             description: event.description,
-            releaseVersion: event.releaseVersion,
             scheduledAt: event.scheduledAt,
-            startsAt: event.startsAt,
-            endsAt: event.endsAt,
             isRequired: event.isRequired,
             countsTowardPerformance: event.countsTowardPerformance,
-            starValue: event.starValue,
             domain: event.domain,
             series: event.series,
             host: event.host,
@@ -792,6 +798,34 @@ export class TrainingOpsService {
         }
     }
 
+    static async deleteUnassociatedDomain(id: string) {
+        const existing = await prisma.productDomain.findUnique({
+            where: { id },
+            select: { id: true },
+        })
+
+        if (!existing) {
+            throw new Error('PRODUCT_DOMAIN_NOT_FOUND')
+        }
+
+        const result = await prisma.productDomain.deleteMany({
+            where: {
+                id,
+                learningSeries: { none: {} },
+                learningEvents: { none: {} },
+                exams: { none: {} },
+                examQuestions: { none: {} },
+                starAwards: { none: {} },
+                badgeMilestones: { none: {} },
+                badgeAwards: { none: {} },
+            },
+        })
+
+        if (result.count === 0) {
+            throw new Error('PRODUCT_DOMAIN_HAS_ASSOCIATIONS')
+        }
+    }
+
     static async createDomain(payload: {
         name: string
         slug: string
@@ -961,7 +995,7 @@ export class TrainingOpsService {
                        COUNT(*)::bigint AS "scheduledEventCount"
                 FROM "learning_events" le
                 WHERE le."domainId" IS NOT NULL
-                  AND le."status" IN ('DRAFT', 'SCHEDULED', 'IN_PROGRESS')
+                  AND le."status" = 'IN_PROGRESS'
                   ${eventStartDateFilter}
                   ${eventEndDateFilter}
                 GROUP BY le."domainId"
@@ -1044,6 +1078,59 @@ export class TrainingOpsService {
         })
     }
 
+    private static async getLearningSeriesRewardRows(seriesId?: string): Promise<LearningSeriesRewardSummary[]> {
+        const seriesFilter = seriesId
+            ? Prisma.sql`WHERE ls."id" = ${seriesId}`
+            : Prisma.sql``
+        const rows = await prisma.$queryRaw<Array<{
+            seriesId: string
+            starAwards: bigint | number
+            badgeAwards: bigint | number
+            recognizedLearners: bigint | number
+        }>>(Prisma.sql`
+            WITH series_scope AS (
+                SELECT ls."id"
+                FROM "learning_series" ls
+                ${seriesFilter}
+            ),
+            series_exam_links AS (
+                SELECT ss."id" AS "seriesId", e."id" AS "examId"
+                FROM series_scope ss
+                JOIN "exams" e ON e."learningSeriesId" = ss."id"
+            ),
+            star_counts AS (
+                SELECT sel."seriesId",
+                       COALESCE(SUM(sa."stars"), 0)::bigint AS "starAwards",
+                       COUNT(DISTINCT sa."userId")::bigint AS "starUsers"
+                FROM series_exam_links sel
+                JOIN "star_awards" sa ON sa."examId" = sel."examId"
+                GROUP BY sel."seriesId"
+            ),
+            badge_counts AS (
+                SELECT le."seriesId",
+                       COUNT(ba."id")::bigint AS "badgeAwards",
+                       COUNT(DISTINCT ba."userId")::bigint AS "badgeUsers"
+                FROM series_scope ss
+                JOIN "learning_events" le ON le."seriesId" = ss."id"
+                JOIN "badge_awards" ba ON ba."eventId" = le."id"
+                GROUP BY le."seriesId"
+            )
+            SELECT COALESCE(sc."seriesId", bc."seriesId") AS "seriesId",
+                   COALESCE(sc."starAwards", 0)::bigint AS "starAwards",
+                   COALESCE(bc."badgeAwards", 0)::bigint AS "badgeAwards",
+                   GREATEST(COALESCE(sc."starUsers", 0), COALESCE(bc."badgeUsers", 0))::bigint AS "recognizedLearners"
+            FROM star_counts sc
+            FULL OUTER JOIN badge_counts bc ON bc."seriesId" = sc."seriesId"
+        `)
+
+        return rows.map((row) => ({
+            seriesId: row.seriesId,
+            starAwards: Number(row.starAwards),
+            badgeAwards: Number(row.badgeAwards),
+            recognizedLearners: Number(row.recognizedLearners),
+        }))
+    }
+
     static async getLearningSeries(params: {
         page?: number
         limit?: number
@@ -1120,36 +1207,7 @@ export class TrainingOpsService {
                 WHERE e."seriesId" IS NOT NULL
                 ORDER BY e."seriesId", e."scheduledAt" DESC NULLS LAST, e."updatedAt" DESC
             `),
-            prisma.$queryRaw<Array<{ seriesId: string; starAwards: bigint | number; badgeAwards: bigint | number; recognizedLearners: bigint | number }>>(Prisma.sql`
-                WITH series_exam_links AS (
-                    SELECT ls."id" AS "seriesId", e."id" AS "examId"
-                    FROM "learning_series" ls
-                    JOIN "exams" e ON e."learningSeriesId" = ls."id"
-                ),
-                star_counts AS (
-                    SELECT sel."seriesId",
-                           COALESCE(SUM(sa."stars"), 0)::bigint AS "starAwards",
-                           COUNT(DISTINCT sa."userId")::bigint AS "starUsers"
-                    FROM series_exam_links sel
-                    JOIN "star_awards" sa ON sa."examId" = sel."examId"
-                    GROUP BY sel."seriesId"
-                ),
-                badge_counts AS (
-                    SELECT le."seriesId",
-                           COUNT(ba."id")::bigint AS "badgeAwards",
-                           COUNT(DISTINCT ba."userId")::bigint AS "badgeUsers"
-                    FROM "learning_events" le
-                    JOIN "badge_awards" ba ON ba."eventId" = le."id"
-                    WHERE le."seriesId" IS NOT NULL
-                    GROUP BY le."seriesId"
-                )
-                SELECT COALESCE(sc."seriesId", bc."seriesId") AS "seriesId",
-                       COALESCE(sc."starAwards", 0)::bigint AS "starAwards",
-                       COALESCE(bc."badgeAwards", 0)::bigint AS "badgeAwards",
-                       GREATEST(COALESCE(sc."starUsers", 0), COALESCE(bc."badgeUsers", 0))::bigint AS "recognizedLearners"
-                FROM star_counts sc
-                FULL OUTER JOIN badge_counts bc ON bc."seriesId" = sc."seriesId"
-            `),
+            this.getLearningSeriesRewardRows(),
         ])
 
         const recentEventBySeries = new Map(
@@ -1167,9 +1225,9 @@ export class TrainingOpsService {
             rewardRows.map((row) => [
                 row.seriesId,
                 {
-                    starAwards: Number(row.starAwards),
-                    badgeAwards: Number(row.badgeAwards),
-                    recognizedLearners: Number(row.recognizedLearners),
+                    starAwards: row.starAwards,
+                    badgeAwards: row.badgeAwards,
+                    recognizedLearners: row.recognizedLearners,
                 },
             ])
         )
@@ -1210,32 +1268,35 @@ export class TrainingOpsService {
     }
 
     static async getLearningSeriesById(id: string) {
-        const item = await prisma.learningSeries.findUnique({
-            where: { id },
-            include: {
-                domain: {
-                    select: {
-                        id: true,
-                        name: true,
-                        slug: true,
-                        track: true,
+        const [item, rewardRows] = await Promise.all([
+            prisma.learningSeries.findUnique({
+                where: { id },
+                include: {
+                    domain: {
+                        select: {
+                            id: true,
+                            name: true,
+                            slug: true,
+                            track: true,
+                        },
+                    },
+                    owner: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true,
+                        },
+                    },
+                    _count: {
+                        select: {
+                            events: true,
+                            exams: true,
+                        },
                     },
                 },
-                owner: {
-                    select: {
-                        id: true,
-                        name: true,
-                        email: true,
-                    },
-                },
-                _count: {
-                    select: {
-                        events: true,
-                        exams: true,
-                    },
-                },
-            },
-        })
+            }),
+            this.getLearningSeriesRewardRows(id),
+        ])
 
         if (!item) {
             throw new Error('LEARNING_SERIES_NOT_FOUND')
@@ -1257,8 +1318,42 @@ export class TrainingOpsService {
                 events: item._count.events,
                 exams: item._count.exams,
             },
+            rewards: rewardRows[0]
+                ? {
+                    starAwards: rewardRows[0].starAwards,
+                    badgeAwards: rewardRows[0].badgeAwards,
+                    recognizedLearners: rewardRows[0].recognizedLearners,
+                }
+                : {
+                    starAwards: 0,
+                    badgeAwards: 0,
+                    recognizedLearners: 0,
+                },
             createdAt: item.createdAt,
             updatedAt: item.updatedAt,
+        }
+    }
+
+    static async deleteUnassociatedLearningSeries(id: string) {
+        const existing = await prisma.learningSeries.findUnique({
+            where: { id },
+            select: { id: true },
+        })
+
+        if (!existing) {
+            throw new Error('LEARNING_SERIES_NOT_FOUND')
+        }
+
+        const result = await prisma.learningSeries.deleteMany({
+            where: {
+                id,
+                events: { none: {} },
+                exams: { none: {} },
+            },
+        })
+
+        if (result.count === 0) {
+            throw new Error('LEARNING_SERIES_HAS_ASSOCIATIONS')
         }
     }
 
@@ -1275,6 +1370,10 @@ export class TrainingOpsService {
         defaultStarValue?: number | null
         ownerId?: string | null
     }) {
+        if (payload.isActive && !payload.domainId) {
+            throw new Error('PROGRAM_DOMAIN_REQUIRED')
+        }
+
         const existing = await prisma.learningSeries.findUnique({
             where: { slug: payload.slug },
             select: { id: true },
@@ -1330,11 +1429,17 @@ export class TrainingOpsService {
     }) {
         const existingSeries = await prisma.learningSeries.findUnique({
             where: { id },
-            select: { id: true, slug: true },
+            select: { id: true, slug: true, isActive: true, domainId: true },
         })
 
         if (!existingSeries) {
             throw new Error('LEARNING_SERIES_NOT_FOUND')
+        }
+
+        const nextProgramActive = payload.isActive ?? existingSeries.isActive
+        const nextProgramDomainId = payload.domainId === undefined ? existingSeries.domainId : payload.domainId
+        if (nextProgramActive && !nextProgramDomainId) {
+            throw new Error('PROGRAM_DOMAIN_REQUIRED')
         }
 
         if (payload.slug && payload.slug !== existingSeries.slug) {
@@ -1355,6 +1460,20 @@ export class TrainingOpsService {
             })
             if (!domain) {
                 throw new Error('PRODUCT_DOMAIN_NOT_FOUND')
+            }
+        }
+
+        if (payload.domainId !== undefined && payload.domainId !== null) {
+            const [conflictingEvents, conflictingExams] = await Promise.all([
+                prisma.learningEvent.count({
+                    where: { seriesId: id, domainId: { not: null }, NOT: { domainId: payload.domainId } },
+                }),
+                prisma.exam.count({
+                    where: { learningSeriesId: id, productDomainId: { not: null }, NOT: { productDomainId: payload.domainId } },
+                }),
+            ])
+            if (conflictingEvents > 0 || conflictingExams > 0) {
+                throw new Error('SERIES_DOMAIN_CHANGE_CONFLICT')
             }
         }
 
@@ -1727,7 +1846,6 @@ export class TrainingOpsService {
             where.OR = [
                 { title: { contains: query, mode: 'insensitive' } },
                 { description: { contains: query, mode: 'insensitive' } },
-                { releaseVersion: { contains: query, mode: 'insensitive' } },
             ]
         }
 
@@ -1812,13 +1930,9 @@ export class TrainingOpsService {
         seriesId?: string | null
         domainId?: string | null
         description?: string | null
-        releaseVersion?: string | null
         scheduledAt?: Date | null
-        startsAt?: Date | null
-        endsAt?: Date | null
         isRequired: boolean
         countsTowardPerformance: boolean
-        starValue?: number | null
         hostId?: string | null
     }, createdById: string) {
         const creator = await prisma.user.findUnique({
@@ -1842,6 +1956,10 @@ export class TrainingOpsService {
         }
 
         const resolvedDomainId = payload.domainId ?? series?.domainId ?? null
+
+        if (!resolvedDomainId) {
+            throw new Error('EVENT_DOMAIN_REQUIRED')
+        }
 
         if (payload.domainId) {
             const domain = await prisma.productDomain.findUnique({
@@ -1869,18 +1987,6 @@ export class TrainingOpsService {
             }
         }
 
-        if (payload.scheduledAt && payload.endsAt && payload.endsAt < payload.scheduledAt) {
-            throw new Error('INVALID_EVENT_TIME_RANGE')
-        }
-
-        if (payload.status === LearningEventStatus.SCHEDULED && !payload.scheduledAt) {
-            throw new Error('SCHEDULED_EVENT_REQUIRES_DATE')
-        }
-
-        if (payload.startsAt && payload.endsAt && payload.endsAt < payload.startsAt) {
-            throw new Error('INVALID_EVENT_TIME_RANGE')
-        }
-
         this.assertEventFormatMatchesSeriesType({
             format: payload.format,
             seriesType: series?.type ?? null,
@@ -1894,13 +2000,9 @@ export class TrainingOpsService {
                 seriesId: payload.seriesId ?? null,
                 domainId: resolvedDomainId,
                 description: payload.description ?? null,
-                releaseVersion: payload.releaseVersion ?? null,
                 scheduledAt: payload.scheduledAt ?? null,
-                startsAt: payload.startsAt ?? null,
-                endsAt: payload.endsAt ?? null,
                 isRequired: payload.isRequired,
                 countsTowardPerformance: payload.countsTowardPerformance,
-                starValue: payload.starValue ?? null,
                 hostId: payload.hostId ?? null,
                 createdById,
             },
@@ -1965,13 +2067,9 @@ export class TrainingOpsService {
         seriesId?: string | null
         domainId?: string | null
         description?: string | null
-        releaseVersion?: string | null
         scheduledAt?: Date | null
-        startsAt?: Date | null
-        endsAt?: Date | null
         isRequired?: boolean
         countsTowardPerformance?: boolean
-        starValue?: number | null
         hostId?: string | null
     }) {
         const existing = await prisma.learningEvent.findUnique({
@@ -1984,13 +2082,9 @@ export class TrainingOpsService {
                 format: true,
                 status: true,
                 description: true,
-                releaseVersion: true,
                 scheduledAt: true,
-                startsAt: true,
-                endsAt: true,
                 isRequired: true,
                 countsTowardPerformance: true,
-                starValue: true,
                 hostId: true,
                 series: {
                     select: {
@@ -2048,20 +2142,9 @@ export class TrainingOpsService {
         }
 
         const nextScheduledAt = payload.scheduledAt === undefined ? existing.scheduledAt : payload.scheduledAt
-        const nextStartsAt = payload.startsAt === undefined ? existing.startsAt : payload.startsAt
-        const nextEndsAt = payload.endsAt === undefined ? existing.endsAt : payload.endsAt
 
-        if (nextScheduledAt && nextEndsAt && nextEndsAt < nextScheduledAt) {
-            throw new Error('INVALID_EVENT_TIME_RANGE')
-        }
-
-        const nextStatus = payload.status === undefined ? existing.status : payload.status
-        if (nextStatus === LearningEventStatus.SCHEDULED && !nextScheduledAt) {
-            throw new Error('SCHEDULED_EVENT_REQUIRES_DATE')
-        }
-
-        if (nextStartsAt && nextEndsAt && nextEndsAt < nextStartsAt) {
-            throw new Error('INVALID_EVENT_TIME_RANGE')
+        if (!resolvedDomainId) {
+            throw new Error('EVENT_DOMAIN_REQUIRED')
         }
 
         const nextFormat = payload.format === undefined ? existing.format : payload.format
@@ -2073,24 +2156,51 @@ export class TrainingOpsService {
                 existing.format === nextFormat,
         })
 
-        await prisma.learningEvent.update({
-            where: { id },
-            data: {
-                title: payload.title,
-                format: payload.format,
-                status: payload.status,
-                seriesId: nextSeriesId,
-                domainId: resolvedDomainId,
-                description: payload.description,
-                releaseVersion: payload.releaseVersion,
-                scheduledAt: nextScheduledAt,
-                startsAt: nextStartsAt,
-                endsAt: nextEndsAt,
-                isRequired: payload.isRequired,
-                countsTowardPerformance: payload.countsTowardPerformance,
-                starValue: payload.starValue,
-                hostId: nextHostId,
-            },
+        await prisma.$transaction(async (tx) => {
+            await tx.learningEvent.update({
+                where: { id },
+                data: {
+                    title: payload.title,
+                    format: payload.format,
+                    status: payload.status,
+                    seriesId: nextSeriesId,
+                    domainId: resolvedDomainId,
+                    description: payload.description,
+                    scheduledAt: nextScheduledAt,
+                    isRequired: payload.isRequired,
+                    countsTowardPerformance: payload.countsTowardPerformance,
+                    hostId: nextHostId,
+                },
+            })
+
+            if (existing.domainId !== resolvedDomainId || existing.seriesId !== nextSeriesId) {
+                const affectedCourses = await tx.course.findMany({
+                    where: { OR: [{ learningEventId: id }, { sourceLearningEventId: id }] },
+                    select: { id: true, status: true },
+                })
+                const affectedCourseIds = affectedCourses.map((course) => course.id)
+                const affectedExams = await tx.exam.findMany({
+                    where: {
+                        OR: [
+                            { learningEventId: id },
+                            { sourceLearningEventId: id },
+                            ...(affectedCourseIds.length > 0 ? [{ courseId: { in: affectedCourseIds } }] : []),
+                        ],
+                    },
+                    select: { id: true, status: true },
+                })
+
+                for (const course of affectedCourses) {
+                    if (course.status === CourseStatus.PUBLISHED) {
+                        assertPublishableDomain(await DomainGovernanceService.getCourseResolution(course.id, tx), 'COURSE')
+                    }
+                }
+                for (const exam of affectedExams) {
+                    if (exam.status !== ExamStatus.DRAFT) {
+                        assertPublishableDomain(await DomainGovernanceService.getExamResolution(exam.id, tx), 'EXAM')
+                    }
+                }
+            }
         })
 
         return this.getLearningEventById(id)
@@ -2259,7 +2369,7 @@ export class TrainingOpsService {
     static async attachCourseToEvent(eventId: string, courseId: string) {
         const event = await prisma.learningEvent.findUnique({
             where: { id: eventId },
-            select: { id: true },
+            select: { id: true, domainId: true, series: { select: { domainId: true } } },
         })
 
         if (!event) {
@@ -2287,6 +2397,13 @@ export class TrainingOpsService {
             throw new Error('COURSE_ALREADY_LINKED_TO_OTHER_EVENT')
         }
 
+        const courseDomainResolution = resolveDomainCandidates([
+            { domainId: event.domainId, source: 'course.event.domainId' },
+            { domainId: event.series?.domainId, source: 'course.event.program.domainId' },
+        ])
+        if (courseDomainResolution.status === 'CONFLICT') throw new Error('COURSE_DOMAIN_CONFLICT')
+        if (course.status === 'PUBLISHED') assertPublishableDomain(courseDomainResolution, 'COURSE')
+
         await prisma.course.update({
             where: { id: courseId },
             data: {
@@ -2309,7 +2426,12 @@ export class TrainingOpsService {
 
         const course = await prisma.course.findUnique({
             where: { id: courseId },
-            select: { id: true, learningEventId: true },
+            select: {
+                id: true,
+                status: true,
+                learningEventId: true,
+                sourceLearningEvent: { select: { domainId: true, series: { select: { domainId: true } } } },
+            },
         })
 
         if (!course) {
@@ -2318,6 +2440,13 @@ export class TrainingOpsService {
 
         if (course.learningEventId !== eventId) {
             throw new Error('COURSE_NOT_LINKED_TO_EVENT')
+        }
+
+        if (course.status === 'PUBLISHED') {
+            assertPublishableDomain(resolveDomainCandidates([
+                { domainId: course.sourceLearningEvent?.domainId, source: 'course.sourceEvent.domainId' },
+                { domainId: course.sourceLearningEvent?.series?.domainId, source: 'course.sourceEvent.program.domainId' },
+            ]), 'COURSE')
         }
 
         await prisma.course.update({
@@ -2371,12 +2500,18 @@ export class TrainingOpsService {
             throw new Error('EXAM_ALREADY_LINKED_TO_OTHER_EVENT')
         }
 
-        const resolvedDomainId = event.domainId ?? event.series?.domainId ?? null
-        const resolvedSeriesId = event.seriesId ?? null
+        const examDomainResolution = resolveDomainCandidates([
+            { domainId: event.domainId, source: 'exam.event.domainId' },
+            { domainId: event.series?.domainId, source: 'exam.event.program.domainId' },
+            { domainId: exam.productDomainId, source: 'exam.productDomainId', kind: 'COMPATIBILITY' },
+        ])
+        if (examDomainResolution.status === 'CONFLICT') throw new Error('EXAM_DOMAIN_MISMATCH')
+        if (exam.status !== ExamStatus.DRAFT) assertPublishableDomain(examDomainResolution, 'EXAM')
 
-        if (exam.productDomainId && resolvedDomainId && exam.productDomainId !== resolvedDomainId) {
-            throw new Error('EXAM_DOMAIN_MISMATCH')
-        }
+        const resolvedDomainId = examDomainResolution.status === 'SCOPED'
+            ? examDomainResolution.domainId
+            : null
+        const resolvedSeriesId = event.seriesId ?? null
 
         if (exam.learningSeriesId && resolvedSeriesId && exam.learningSeriesId !== resolvedSeriesId) {
             throw new Error('EXAM_SERIES_MISMATCH')
@@ -2384,15 +2519,15 @@ export class TrainingOpsService {
 
         await prisma.exam.update({
             where: { id: examId },
-            data: {
-                learningEventId: event.id,
-                learningSeriesId: exam.learningSeriesId ?? resolvedSeriesId,
-                productDomainId: exam.productDomainId ?? resolvedDomainId,
+            data: buildExamEventAssociationData({
+                eventId: event.id,
+                eventSeriesId: resolvedSeriesId,
+                eventDomainId: resolvedDomainId,
+                examSeriesId: exam.learningSeriesId,
+                examDomainId: exam.productDomainId,
                 assessmentKind: this.resolveAssessmentKindForEvent(event),
                 countsTowardPerformance: event.countsTowardPerformance,
-                awardsStars: event.starValue !== null && event.starValue !== undefined && event.starValue > 0,
-                starValue: event.starValue ?? null,
-            },
+            }),
         })
 
         return this.getLearningEventById(eventId)
@@ -2410,7 +2545,20 @@ export class TrainingOpsService {
 
         const exam = await prisma.exam.findUnique({
             where: { id: examId },
-            select: { id: true, learningEventId: true },
+            select: {
+                id: true,
+                status: true,
+                learningEventId: true,
+                productDomainId: true,
+                learningSeries: { select: { domainId: true } },
+                sourceLearningEvent: { select: { domainId: true, series: { select: { domainId: true } } } },
+                course: {
+                    select: {
+                        learningEvent: { select: { domainId: true, series: { select: { domainId: true } } } },
+                        sourceLearningEvent: { select: { domainId: true, series: { select: { domainId: true } } } },
+                    },
+                },
+            },
         })
 
         if (!exam) {
@@ -2419,6 +2567,19 @@ export class TrainingOpsService {
 
         if (exam.learningEventId !== eventId) {
             throw new Error('EXAM_NOT_LINKED_TO_EVENT')
+        }
+
+        if (exam.status !== ExamStatus.DRAFT) {
+            assertPublishableDomain(resolveDomainCandidates([
+                { domainId: exam.productDomainId, source: 'exam.productDomainId', kind: 'COMPATIBILITY' },
+                { domainId: exam.learningSeries?.domainId, source: 'exam.program.domainId', kind: 'COMPATIBILITY' },
+                { domainId: exam.sourceLearningEvent?.domainId, source: 'exam.sourceEvent.domainId' },
+                { domainId: exam.sourceLearningEvent?.series?.domainId, source: 'exam.sourceEvent.program.domainId' },
+                { domainId: exam.course?.learningEvent?.domainId, source: 'exam.course.event.domainId' },
+                { domainId: exam.course?.learningEvent?.series?.domainId, source: 'exam.course.event.program.domainId' },
+                { domainId: exam.course?.sourceLearningEvent?.domainId, source: 'exam.course.sourceEvent.domainId' },
+                { domainId: exam.course?.sourceLearningEvent?.series?.domainId, source: 'exam.course.sourceEvent.program.domainId' },
+            ]), 'EXAM')
         }
 
         await prisma.exam.update({
@@ -2705,7 +2866,6 @@ export class TrainingOpsService {
                 const haystack = [
                     event.title,
                     event.description ?? '',
-                    event.releaseVersion ?? '',
                     event.domain?.name ?? '',
                     event.series?.name ?? '',
                 ].join(' ').toLowerCase()
@@ -3245,13 +3405,9 @@ export class TrainingOpsService {
             seriesId?: string | null
             domainId?: string | null
             description?: string | null
-            releaseVersion?: string | null
             scheduledAt?: Date | null
-            startsAt?: Date | null
-            endsAt?: Date | null
             isRequired: boolean
             countsTowardPerformance: boolean
-            starValue?: number | null
             hostId?: string | null
         }
     ) {
@@ -3284,13 +3440,9 @@ export class TrainingOpsService {
             seriesId?: string | null
             domainId?: string | null
             description?: string | null
-            releaseVersion?: string | null
             scheduledAt?: Date | null
-            startsAt?: Date | null
-            endsAt?: Date | null
             isRequired?: boolean
             countsTowardPerformance?: boolean
-            starValue?: number | null
             hostId?: string | null
         }
     ) {
@@ -3449,6 +3601,29 @@ export class TrainingOpsService {
         await prisma.learningEvent.delete({
             where: { id: eventId },
         })
+    }
+
+    static async deleteUnassociatedLearningEvent(eventId: string) {
+        const existing = await prisma.learningEvent.findUnique({
+            where: { id: eventId },
+            select: { id: true },
+        })
+
+        if (!existing) {
+            throw new Error('LEARNING_EVENT_NOT_FOUND')
+        }
+
+        const result = await prisma.learningEvent.deleteMany({
+            where: {
+                id: eventId,
+                courses: { none: {} },
+                exams: { none: {} },
+            },
+        })
+
+        if (result.count === 0) {
+            throw new Error('LEARNING_EVENT_HAS_ASSOCIATIONS')
+        }
     }
 
     static async deleteScopedLearningEventForUser(

@@ -63,6 +63,14 @@ export const POST = withSmeOrAdminAuth(async (req: NextRequest, user, context: R
                     status: 409,
                     message: 'Course is already linked to another learning event',
                 },
+                COURSE_DOMAIN_REQUIRED: {
+                    status: 409,
+                    message: 'A published course must be linked to a Domain-scoped event',
+                },
+                COURSE_DOMAIN_CONFLICT: {
+                    status: 409,
+                    message: 'The event and Learning Program Domains conflict',
+                },
             }
 
             const mapped = mappedErrors[error.message]

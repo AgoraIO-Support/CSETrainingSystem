@@ -1,9 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { Award, CalendarDays, Loader2 } from 'lucide-react'
+import { Award, Loader2 } from 'lucide-react'
 import { BackButton } from '@/components/ui/back-button'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { ApiClient } from '@/lib/api-client'
 import { ProgramAssociationManager } from '@/components/training-ops/program-association-manager'
 import { ProgramSettingsCard } from '@/components/training-ops/program-settings-card'
-import type { BadgeMilestoneSummary, Exam, LearningEventSummary, LearningSeriesSummary } from '@/types'
+import type { BadgeMilestoneSummary, LearningEventSummary, LearningSeriesSummary } from '@/types'
 
 export default function TrainingOpsSeriesDetailPage() {
     const params = useParams<{ id: string }>()
@@ -20,16 +20,15 @@ export default function TrainingOpsSeriesDetailPage() {
     const [error, setError] = useState<string | null>(null)
     const [series, setSeries] = useState<LearningSeriesSummary | null>(null)
     const [events, setEvents] = useState<LearningEventSummary[]>([])
-    const [exams, setExams] = useState<Exam[]>([])
     const [badges, setBadges] = useState<BadgeMilestoneSummary[]>([])
+    const [badgeTotal, setBadgeTotal] = useState(0)
 
     const loadData = useCallback(async () => {
         try {
             setLoading(true)
-            const [seriesRes, eventsRes, examsRes] = await Promise.all([
+            const [seriesRes, eventsRes] = await Promise.all([
                 ApiClient.getTrainingOpsSeriesById(params.id),
                 ApiClient.getTrainingOpsEvents({ limit: 100, seriesId: params.id }),
-                ApiClient.getAdminExams({ limit: 200 }),
             ])
             const badgesRes = seriesRes.data.domain?.id
                 ? await ApiClient.getTrainingOpsBadgeMilestones({ limit: 100, domainId: seriesRes.data.domain.id })
@@ -37,8 +36,8 @@ export default function TrainingOpsSeriesDetailPage() {
 
             setSeries(seriesRes.data)
             setEvents(eventsRes.data)
-            setExams(examsRes.data.filter((exam) => exam.learningSeriesId === params.id))
             setBadges(badgesRes.data)
+            setBadgeTotal('pagination' in badgesRes ? badgesRes.pagination.total : 0)
             setError(null)
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to load learning Program workspace')
@@ -50,14 +49,6 @@ export default function TrainingOpsSeriesDetailPage() {
     useEffect(() => {
         void loadData()
     }, [loadData])
-
-    const recentEvents = useMemo(
-        () =>
-            [...events]
-                .sort((a, b) => new Date(b.scheduledAt ?? b.createdAt).getTime() - new Date(a.scheduledAt ?? a.createdAt).getTime())
-                .slice(0, 5),
-        [events]
-    )
 
     if (loading) {
         return (
@@ -107,7 +98,7 @@ export default function TrainingOpsSeriesDetailPage() {
                 {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
 
                 <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-                    <Card>
+                    <Card id="reward-output" className="scroll-mt-6">
                         <CardHeader>
                             <CardTitle>Program Overview</CardTitle>
                             <CardDescription>Default rules inherited by Events and Exams in this Program.</CardDescription>
@@ -154,10 +145,10 @@ export default function TrainingOpsSeriesDetailPage() {
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    <Card><CardHeader className="pb-2"><CardDescription>Events</CardDescription><CardTitle className="text-3xl">{events.length}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Events currently in this Program.</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2"><CardDescription>Linked Exams</CardDescription><CardTitle className="text-3xl">{exams.length}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Exams inheriting this Program mapping.</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2"><CardDescription>Domain Badges</CardDescription><CardTitle className="text-3xl">{badges.length}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Badges inherited from the Program&apos;s Domain.</p></CardContent></Card>
-                    <Card><CardHeader className="pb-2"><CardDescription>Last Reward Output</CardDescription><CardTitle className="text-3xl">{series.rewards?.recognizedLearners ?? 0}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Learners recognized through this Program.</p></CardContent></Card>
+                    <Card><CardHeader><CardDescription>Events</CardDescription><CardTitle className="text-3xl"><Link className="hover:text-primary hover:underline" href="#associations">{series.counts.events}</Link></CardTitle></CardHeader></Card>
+                    <Card><CardHeader><CardDescription>Linked Exams</CardDescription><CardTitle className="text-3xl"><Link className="hover:text-primary hover:underline" href="#associations">{series.counts.exams}</Link></CardTitle></CardHeader></Card>
+                    <Card><CardHeader><CardDescription>Domain Badges</CardDescription><CardTitle className="text-3xl"><Link className="hover:text-primary hover:underline" href="#domain-badges">{badgeTotal}</Link></CardTitle></CardHeader></Card>
+                    <Card><CardHeader><CardDescription>Last Reward Output</CardDescription><CardTitle className="text-3xl"><Link className="hover:text-primary hover:underline" href="#reward-output">{series.rewards?.recognizedLearners ?? 0}</Link></CardTitle></CardHeader></Card>
                 </div>
 
                 <ProgramAssociationManager
@@ -176,68 +167,28 @@ export default function TrainingOpsSeriesDetailPage() {
                     }}
                 />
 
-                <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Recent Events</CardTitle>
-                            <CardDescription>Latest sessions scheduled under this Program.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                            {recentEvents.length === 0 ? (
-                                <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">No Events scheduled for this Program yet.</div>
-                            ) : recentEvents.map((event) => (
-                                <div key={event.id} className="rounded-lg border p-4">
-                                    <div className="flex items-start justify-between gap-4">
-                                        <div>
-                                            <p className="font-medium">{event.title}</p>
-                                            <p className="mt-1 text-sm text-muted-foreground">{event.format} · {event.status}</p>
-                                            <p className="mt-2 text-sm text-muted-foreground"><CalendarDays className="mr-1 inline h-4 w-4" />{event.scheduledAt ? new Date(event.scheduledAt).toLocaleString() : 'Not scheduled'}</p>
-                                        </div>
-                                        <Link href={`/admin/training-ops/events/${event.id}`}>
-                                            <Button variant="outline">Open</Button>
-                                        </Link>
+                <Card id="domain-badges" className="scroll-mt-6">
+                    <CardHeader>
+                        <CardTitle>Relevant Domain Badges</CardTitle>
+                        <CardDescription>Recognition rules inherited from this Program&apos;s Domain.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        {badges.slice(0, 3).map((badge) => (
+                            <div key={badge.id} className="rounded-lg border p-4">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div>
+                                        <p className="font-medium">{badge.name}</p>
+                                        <p className="mt-1 text-sm text-muted-foreground">Unlocks at {badge.thresholdStars} stars · {badge.domain?.name ?? 'Unassigned domain'}</p>
                                     </div>
+                                    <Award className="h-5 w-5 text-[#006688]" />
                                 </div>
-                            ))}
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Relevant Domain Badges and Exams</CardTitle>
-                            <CardDescription>Recognition rules inherited from this Program&apos;s Domain alongside aligned Exam assets.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                            {badges.slice(0, 3).map((badge) => (
-                                <div key={badge.id} className="rounded-lg border p-4">
-                                    <div className="flex items-start justify-between gap-4">
-                                        <div>
-                                            <p className="font-medium">{badge.name}</p>
-                                            <p className="mt-1 text-sm text-muted-foreground">Unlocks at {badge.thresholdStars} stars · {badge.domain?.name ?? 'Unassigned domain'}</p>
-                                        </div>
-                                        <Award className="h-5 w-5 text-[#006688]" />
-                                    </div>
-                                </div>
-                            ))}
-                            {exams.slice(0, 3).map((exam) => (
-                                <div key={exam.id} className="rounded-lg border p-4">
-                                    <div className="flex items-start justify-between gap-4">
-                                        <div>
-                                            <p className="font-medium">{exam.title}</p>
-                                            <p className="mt-1 text-sm text-muted-foreground">{exam.status} · {exam.assessmentKind ?? 'UNCLASSIFIED'}</p>
-                                        </div>
-                                        <Link href={`/admin/exams/${exam.id}/edit`}>
-                                            <Button variant="outline">Exam</Button>
-                                        </Link>
-                                    </div>
-                                </div>
-                            ))}
-                            {badges.length === 0 && exams.length === 0 ? (
-                                <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">No Domain badges or Exams linked to this Program yet.</div>
-                            ) : null}
-                        </CardContent>
-                    </Card>
-                </div>
+                            </div>
+                        ))}
+                        {badges.length === 0 ? (
+                            <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">No Domain badges configured yet.</div>
+                        ) : null}
+                    </CardContent>
+                </Card>
             </div>
         </DashboardLayout>
     )

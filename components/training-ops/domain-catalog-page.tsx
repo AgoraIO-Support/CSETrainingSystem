@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { ApiClient } from '@/lib/api-client'
 import type { ProductDomainSummary } from '@/types'
-import { FileJson, Loader2, Plus } from 'lucide-react'
+import { FileJson, Loader2, Plus, Trash2 } from 'lucide-react'
 import { BackButton } from '@/components/ui/back-button'
 
 type DomainCatalogView = 'admin' | 'sme'
@@ -24,6 +24,7 @@ export function DomainCatalogPage({ view }: DomainCatalogPageProps) {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [search, setSearch] = useState('')
+    const [deletingDomainId, setDeletingDomainId] = useState<string | null>(null)
 
     useEffect(() => {
         const loadDomains = async () => {
@@ -50,6 +51,30 @@ export function DomainCatalogPage({ view }: DomainCatalogPageProps) {
         const rte = domains.filter((domain) => domain.category === 'RTE').length
         return { total: domains.length, active, ai, rte }
     }, [domains])
+
+    const hasDomainAssociations = (domain: ProductDomainSummary) =>
+        domain.counts.learningSeries > 0 ||
+        domain.counts.learningEvents > 0 ||
+        domain.counts.exams > 0 ||
+        domain.counts.badgeMilestones > 0 ||
+        (domain.rewards?.starAwards ?? 0) > 0 ||
+        (domain.rewards?.badgeAwards ?? 0) > 0
+
+    const deleteDomain = async (domain: ProductDomainSummary) => {
+        if (hasDomainAssociations(domain)) return
+        if (!window.confirm(`Delete Domain "${domain.name}"? This action cannot be undone.`)) return
+
+        try {
+            setDeletingDomainId(domain.id)
+            setError(null)
+            await ApiClient.deleteTrainingOpsDomain(domain.id)
+            setDomains((current) => current.filter((candidate) => candidate.id !== domain.id))
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to delete Product Domain')
+        } finally {
+            setDeletingDomainId(null)
+        }
+    }
 
     return (
         <DashboardLayout>
@@ -179,6 +204,23 @@ export function DomainCatalogPage({ view }: DomainCatalogPageProps) {
                                                     <Link href={`/admin/training-ops/domains/${domain.id}/edit`}>
                                                         <Button variant="outline">Edit</Button>
                                                     </Link>
+                                                    <Button
+                                                        variant="destructive"
+                                                        disabled={deletingDomainId === domain.id || hasDomainAssociations(domain)}
+                                                        title={
+                                                            hasDomainAssociations(domain)
+                                                                ? 'Remove all linked Programs, Events, Courses, Exams, Questions, Badges, and Rewards before deleting this Domain.'
+                                                                : 'Delete Domain'
+                                                        }
+                                                        onClick={() => void deleteDomain(domain)}
+                                                    >
+                                                        {deletingDomainId === domain.id ? (
+                                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                        ) : (
+                                                            <Trash2 className="mr-2 h-4 w-4" />
+                                                        )}
+                                                        Delete
+                                                    </Button>
                                                 </>
                                             ) : (
                                                 <>

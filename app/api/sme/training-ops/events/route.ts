@@ -22,11 +22,8 @@ const parseFormat = (value: string | null): LearningEventFormat | undefined => {
 
 const parseStatus = (value: string | null): LearningEventStatus | undefined => {
     if (
-        value === 'DRAFT' ||
-        value === 'SCHEDULED' ||
         value === 'IN_PROGRESS' ||
-        value === 'COMPLETED' ||
-        value === 'CANCELED'
+        value === 'COMPLETED'
     ) {
         return value
     }
@@ -68,13 +65,9 @@ export const POST = withSmeOrAdminAuth(async (req: NextRequest, user) => {
         const event = await TrainingOpsService.createScopedLearningEvent(user, {
             ...data,
             scheduledAt: data.scheduledAt ?? null,
-            startsAt: data.startsAt ?? null,
-            endsAt: data.endsAt ?? null,
             seriesId: data.seriesId ?? null,
             domainId: data.domainId ?? null,
             description: data.description ?? null,
-            releaseVersion: data.releaseVersion ?? null,
-            starValue: data.starValue ?? null,
             hostId: data.hostId ?? null,
         })
 

@@ -69,12 +69,12 @@ export default function SmeDashboardPage() {
         return {
             domains: domains.length,
             programs: series.filter((item) => item.isActive).length,
-            scheduledEvents: events.filter((item) => item.status === 'SCHEDULED' && item.scheduledAt).length,
-            needsScheduling: events.filter((item) => item.status === 'SCHEDULED' && !item.scheduledAt).length,
+            inProgressEvents: events.filter((item) => item.status === 'IN_PROGRESS').length,
+            eventsMissingDates: events.filter((item) => item.status === 'IN_PROGRESS' && !item.scheduledAt).length,
             atRiskDomains: effectiveness.filter((item) => item.status === 'AT_RISK').length,
             learnerGaps: meaningfulLearnerGaps.length,
             attentionItems:
-                events.filter((item) => item.status === 'SCHEDULED' && !item.scheduledAt).length +
+                events.filter((item) => item.status === 'IN_PROGRESS' && !item.scheduledAt).length +
                 meaningfulLearnerGaps.length +
                 effectiveness.filter((item) => item.status === 'AT_RISK').length,
         }
@@ -136,12 +136,12 @@ export default function SmeDashboardPage() {
                                 tone="positive"
                             />
                             <SignalCard
-                                label="Calendar ready"
-                                value={summary.scheduledEvents}
-                                denominator={`${summary.needsScheduling} need dates`}
-                                hint="Only scheduled events with an actual date count as calendar ready."
+                                label="In progress"
+                                value={summary.inProgressEvents}
+                                denominator={`${summary.eventsMissingDates} without dates`}
+                                hint="Active events remain in progress until explicitly completed."
                                 icon={CalendarClock}
-                                tone={summary.needsScheduling > 0 ? 'warning' : 'positive'}
+                                tone={summary.eventsMissingDates > 0 ? 'warning' : 'positive'}
                             />
                             <SignalCard
                                 label="Needs attention"
@@ -171,10 +171,10 @@ export default function SmeDashboardPage() {
                                 <Card className="border-amber-200 bg-amber-50/40 shadow-sm">
                                     <CardHeader>
                                         <CardTitle className="text-lg text-slate-950">Events missing dates</CardTitle>
-                                        <CardDescription>Marked scheduled but not actually on the calendar.</CardDescription>
+                                        <CardDescription>Active events without optional calendar information.</CardDescription>
                                     </CardHeader>
                                     <CardContent>
-                                        <p className="text-4xl font-semibold tracking-[-0.05em] text-amber-800">{summary.needsScheduling}</p>
+                                        <p className="text-4xl font-semibold tracking-[-0.05em] text-amber-800">{summary.eventsMissingDates}</p>
                                         <Link href="/sme/training-ops/events"><Button variant="outline" className="mt-5 w-full border-amber-200 bg-white">Review events</Button></Link>
                                     </CardContent>
                                 </Card>
@@ -286,9 +286,7 @@ export default function SmeDashboardPage() {
                                                         <p className="font-semibold text-slate-950">{event.title}</p>
                                                         <p className="mt-1 text-sm text-slate-500">{event.domain?.name ?? 'No domain'} · {event.series?.name ?? 'Standalone event'}</p>
                                                     </div>
-                                                    <Badge variant="outline" className={event.status === 'SCHEDULED' && !event.scheduledAt ? 'border-amber-200 bg-amber-50 text-amber-700' : ''}>
-                                                        {event.status === 'SCHEDULED' && !event.scheduledAt ? 'NEEDS DATE' : event.status}
-                                                    </Badge>
+                                                    <Badge variant="outline">{event.status}</Badge>
                                                 </div>
                                                 <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-600">
                                                     <span>{formatDateTime(event.scheduledAt)}</span><span>·</span><span>{event.exams.length} exams</span><span>·</span><span>{event.courses.length} courses</span>

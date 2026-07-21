@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { BookOpen, CalendarPlus, FileCheck2, Link2, Loader2 } from 'lucide-react'
 import { ApiClient } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
@@ -19,6 +20,7 @@ type AssociationView = 'admin' | 'sme'
 type ResourceType = 'event' | 'course' | 'exam'
 type CourseCandidate = Pick<TrainingOpsCourseSummary, 'id' | 'title' | 'status' | 'learningEventId'>
 type ExamCandidate = Pick<TrainingOpsExamSummary, 'id' | 'title' | 'status' | 'learningEventId' | 'learningSeriesId'>
+const ASSOCIATED_PAGE_SIZE = 5
 
 export function ProgramAssociationManager({
     view,
@@ -42,6 +44,9 @@ export function ProgramAssociationManager({
     const [saving, setSaving] = useState<ResourceType | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [message, setMessage] = useState<string | null>(null)
+    const [eventPage, setEventPage] = useState(1)
+    const [coursePage, setCoursePage] = useState(1)
+    const [examPage, setExamPage] = useState(1)
 
     const loadCandidates = useCallback(async () => {
         setLoading(true)
@@ -49,7 +54,7 @@ export function ProgramAssociationManager({
             if (view === 'admin') {
                 const [eventsResponse, coursesResponse, examsResponse] = await Promise.all([
                     ApiClient.getTrainingOpsEvents({ limit: 200 }),
-                    ApiClient.getAdminCourses({ limit: 200 }),
+                    ApiClient.getAdminCourses({ limit: 200, status: 'ALL' }),
                     ApiClient.getAdminExams({ limit: 200 }),
                 ])
                 setAllEvents(eventsResponse.data)
@@ -88,6 +93,12 @@ export function ProgramAssociationManager({
         void loadCandidates()
     }, [loadCandidates, program.id])
 
+    useEffect(() => {
+        setEventPage(1)
+        setCoursePage(1)
+        setExamPage(1)
+    }, [program.id])
+
     const availableEvents = useMemo(
         () => allEvents.filter((event) =>
             !event.series &&
@@ -100,6 +111,28 @@ export function ProgramAssociationManager({
         [allCourses]
     )
     const programEventIds = useMemo(() => new Set(programEvents.map((event) => event.id)), [programEvents])
+    const associatedEvents = useMemo(
+        () => Array.from(new Map(
+            [...programEvents, ...allEvents.filter((event) => event.series?.id === program.id)]
+                .map((event) => [event.id, event])
+        ).values()),
+        [allEvents, program.id, programEvents]
+    )
+    const associatedEventIds = useMemo(
+        () => new Set([...programEventIds, ...associatedEvents.map((event) => event.id)]),
+        [associatedEvents, programEventIds]
+    )
+    const associatedCourses = useMemo(
+        () => allCourses.filter((course) => course.learningEventId && associatedEventIds.has(course.learningEventId)),
+        [allCourses, associatedEventIds]
+    )
+    const associatedExams = useMemo(
+        () => allExams.filter((exam) =>
+            exam.learningSeriesId === program.id ||
+            Boolean(exam.learningEventId && associatedEventIds.has(exam.learningEventId))
+        ),
+        [allExams, associatedEventIds, program.id]
+    )
     const availableExams = useMemo(
         () => allExams.filter((exam) =>
             !exam.learningSeriesId &&
@@ -136,7 +169,7 @@ export function ProgramAssociationManager({
     }
 
     return (
-        <Card id="associations" className="overflow-hidden border-[#006688]/20">
+        <Card id="associations" className="scroll-mt-6 overflow-hidden border-[#006688]/20">
             <CardHeader className="border-b bg-[linear-gradient(120deg,rgba(0,102,136,0.08),rgba(247,144,9,0.06))]">
                 <div className="flex items-start gap-3">
                     <div className="rounded-xl bg-[#006688] p-2.5 text-white shadow-sm">
@@ -159,52 +192,182 @@ export function ProgramAssociationManager({
                         <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading available content...
                     </div>
                 ) : (
-                    <div className="grid gap-4 xl:grid-cols-3">
-                        <AssociationCell
-                            icon={<CalendarPlus className="h-5 w-5" />}
-                            index="01"
-                            title="Existing Event"
-                            description="Assign an unowned Event directly to this Program."
-                        >
-                            <Label htmlFor="program-event">Event</Label>
-                            <ResourceSelect id="program-event" value={eventId} onChange={setEventId} emptyLabel="Select an Event" items={availableEvents} />
-                            <Button className="w-full" disabled={!eventId || saving !== null} onClick={() => void associate('event')}>
-                                {saving === 'event' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Associate Event
-                            </Button>
-                        </AssociationCell>
+                    <div className="space-y-6">
+                        <div>
+                            <div className="mb-3">
+                                <h3 className="font-semibold">Currently Associated</h3>
+                                <p className="text-sm text-muted-foreground">Content already connected to this Program.</p>
+                            </div>
+                            <div className="grid gap-4 xl:grid-cols-3">
+                                <AssociatedResourceList
+                                    title="Events"
+                                    items={associatedEvents}
+                                    page={eventPage}
+                                    onPageChange={setEventPage}
+                                    emptyLabel="No Events associated yet."
+                                    renderItem={(event) => ({
+                                        title: event.title,
+                                        detail: `${event.format} · ${event.status}`,
+                                        href: `/${view === 'admin' ? 'admin' : 'sme'}/training-ops/events/${event.id}`,
+                                    })}
+                                />
+                                <AssociatedResourceList
+                                    title="Courses"
+                                    items={associatedCourses}
+                                    page={coursePage}
+                                    onPageChange={setCoursePage}
+                                    emptyLabel="No Courses associated yet."
+                                    renderItem={(course) => ({
+                                        title: course.title,
+                                        detail: course.status,
+                                        href: `/admin/courses/${course.id}/edit${view === 'sme' ? '?sme=1' : ''}`,
+                                    })}
+                                />
+                                <AssociatedResourceList
+                                    title="Exams"
+                                    items={associatedExams}
+                                    page={examPage}
+                                    onPageChange={setExamPage}
+                                    emptyLabel="No Exams associated yet."
+                                    renderItem={(exam) => ({
+                                        title: exam.title,
+                                        detail: exam.status,
+                                        href: `/admin/exams/${exam.id}/edit${view === 'sme' ? '?sme=1' : ''}`,
+                                    })}
+                                />
+                            </div>
+                        </div>
 
-                        <AssociationCell
-                            icon={<BookOpen className="h-5 w-5" />}
-                            index="02"
-                            title="Existing Course"
-                            description="Courses belong through an Event; choose both records."
-                        >
-                            <Label htmlFor="program-course">Course</Label>
-                            <ResourceSelect id="program-course" value={courseId} onChange={setCourseId} emptyLabel="Select a Course" items={availableCourses} />
-                            <Label htmlFor="course-program-event">Target Program Event</Label>
-                            <ResourceSelect id="course-program-event" value={courseEventId} onChange={setCourseEventId} emptyLabel="Select an Event" items={programEvents} />
-                            {programEvents.length === 0 ? <p className="text-xs text-amber-700">Associate or create an Event first.</p> : null}
-                            <Button className="w-full" disabled={!courseId || !courseEventId || saving !== null} onClick={() => void associate('course')}>
-                                {saving === 'course' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Associate Course
-                            </Button>
-                        </AssociationCell>
+                        <div className="border-t pt-6">
+                            <div className="mb-3">
+                                <h3 className="font-semibold">Add Existing Content</h3>
+                                <p className="text-sm text-muted-foreground">Select another resource to associate with this Program.</p>
+                            </div>
+                            <div className="grid gap-4 xl:grid-cols-3">
+                                <AssociationCell
+                                    icon={<CalendarPlus className="h-5 w-5" />}
+                                    index="01"
+                                    title="Existing Event"
+                                    description="Assign an unowned Event directly to this Program."
+                                >
+                                    <Label htmlFor="program-event">Event</Label>
+                                    <ResourceSelect id="program-event" value={eventId} onChange={setEventId} emptyLabel="Select an Event" items={availableEvents} />
+                                    <Button className="w-full" disabled={!eventId || saving !== null} onClick={() => void associate('event')}>
+                                        {saving === 'event' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Associate Event
+                                    </Button>
+                                </AssociationCell>
 
-                        <AssociationCell
-                            icon={<FileCheck2 className="h-5 w-5" />}
-                            index="03"
-                            title="Existing Exam"
-                            description="Map a standalone or Program-event Exam directly to this Program."
-                        >
-                            <Label htmlFor="program-exam">Exam</Label>
-                            <ResourceSelect id="program-exam" value={examId} onChange={setExamId} emptyLabel="Select an Exam" items={availableExams} />
-                            <Button className="w-full" disabled={!examId || saving !== null} onClick={() => void associate('exam')}>
-                                {saving === 'exam' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Associate Exam
-                            </Button>
-                        </AssociationCell>
+                                <AssociationCell
+                                    icon={<BookOpen className="h-5 w-5" />}
+                                    index="02"
+                                    title="Existing Course"
+                                    description="Courses belong through an Event; choose both records."
+                                >
+                                    <Label htmlFor="program-course">Course</Label>
+                                    <ResourceSelect id="program-course" value={courseId} onChange={setCourseId} emptyLabel="Select a Course" items={availableCourses} />
+                                    <Label htmlFor="course-program-event">Target Program Event</Label>
+                                    <ResourceSelect id="course-program-event" value={courseEventId} onChange={setCourseEventId} emptyLabel="Select an Event" items={programEvents} />
+                                    {programEvents.length === 0 ? <p className="text-xs text-amber-700">Associate or create an Event first.</p> : null}
+                                    <Button className="w-full" disabled={!courseId || !courseEventId || saving !== null} onClick={() => void associate('course')}>
+                                        {saving === 'course' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Associate Course
+                                    </Button>
+                                </AssociationCell>
+
+                                <AssociationCell
+                                    icon={<FileCheck2 className="h-5 w-5" />}
+                                    index="03"
+                                    title="Existing Exam"
+                                    description="Map a standalone or Program-event Exam directly to this Program."
+                                >
+                                    <Label htmlFor="program-exam">Exam</Label>
+                                    <ResourceSelect id="program-exam" value={examId} onChange={setExamId} emptyLabel="Select an Exam" items={availableExams} />
+                                    <Button className="w-full" disabled={!examId || saving !== null} onClick={() => void associate('exam')}>
+                                        {saving === 'exam' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Associate Exam
+                                    </Button>
+                                </AssociationCell>
+                            </div>
+                        </div>
                     </div>
                 )}
             </CardContent>
         </Card>
+    )
+}
+
+function AssociatedResourceList<T extends { id: string }>({
+    title,
+    items,
+    page,
+    onPageChange,
+    emptyLabel,
+    renderItem,
+}: {
+    title: string
+    items: T[]
+    page: number
+    onPageChange: (page: number) => void
+    emptyLabel: string
+    renderItem: (item: T) => { title: string; detail: string; href: string }
+}) {
+    const totalPages = Math.max(1, Math.ceil(items.length / ASSOCIATED_PAGE_SIZE))
+    const currentPage = Math.min(page, totalPages)
+    const visibleItems = items.slice(
+        (currentPage - 1) * ASSOCIATED_PAGE_SIZE,
+        currentPage * ASSOCIATED_PAGE_SIZE
+    )
+
+    return (
+        <section className="rounded-xl border bg-slate-50/70 p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+                <h4 className="font-semibold">{title}</h4>
+                <span className="rounded-full border bg-white px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                    {items.length}
+                </span>
+            </div>
+            <div className="space-y-2">
+                {visibleItems.length === 0 ? (
+                    <div className="rounded-lg border border-dashed bg-white p-4 text-sm text-muted-foreground">
+                        {emptyLabel}
+                    </div>
+                ) : visibleItems.map((item) => {
+                    const display = renderItem(item)
+                    return (
+                        <div key={item.id} className="flex items-center justify-between gap-3 rounded-lg border bg-white p-3">
+                            <div className="min-w-0">
+                                <p className="truncate text-sm font-medium">{display.title}</p>
+                                <p className="mt-0.5 truncate text-xs text-muted-foreground">{display.detail}</p>
+                            </div>
+                            <Button asChild variant="outline" size="sm" className="shrink-0">
+                                <Link href={display.href}>Open</Link>
+                            </Button>
+                        </div>
+                    )
+                })}
+            </div>
+            {totalPages > 1 ? (
+                <div className="mt-3 flex items-center justify-between border-t pt-3">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={currentPage === 1}
+                        onClick={() => onPageChange(currentPage - 1)}
+                    >
+                        Previous
+                    </Button>
+                    <span className="text-xs text-muted-foreground">
+                        Page {currentPage} of {totalPages}
+                    </span>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={currentPage === totalPages}
+                        onClick={() => onPageChange(currentPage + 1)}
+                    >
+                        Next
+                    </Button>
+                </div>
+            ) : null}
+        </section>
     )
 }
 

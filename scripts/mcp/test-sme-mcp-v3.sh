@@ -283,8 +283,7 @@ CREATE_EVENT_JSON=$(call_sme_mcp "create_event" "{
   \"format\":\"CASE_STUDY\",
   \"host\":\"current_user\",
   \"description\":\"Event created by SME MCP v3 smoke.\",
-  \"countsTowardPerformance\":false,
-  \"starValue\":2
+  \"countsTowardPerformance\":false
 }")
 printf '%s' "$CREATE_EVENT_JSON" | assert_success "create_event"
 print_response "$CREATE_EVENT_JSON"

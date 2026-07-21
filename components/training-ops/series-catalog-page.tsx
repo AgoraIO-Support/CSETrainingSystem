@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { ApiClient } from '@/lib/api-client'
 import type { LearningSeriesSummary } from '@/types'
-import { FileJson, Loader2, Plus } from 'lucide-react'
+import { FileJson, Loader2, Plus, Trash2 } from 'lucide-react'
 import { BackButton } from '@/components/ui/back-button'
 
 type SeriesCatalogView = 'admin' | 'sme'
@@ -24,6 +24,7 @@ export function SeriesCatalogPage({ view }: SeriesCatalogPageProps) {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [search, setSearch] = useState('')
+    const [deletingSeriesId, setDeletingSeriesId] = useState<string | null>(null)
 
     useEffect(() => {
         const loadSeries = async () => {
@@ -48,6 +49,22 @@ export function SeriesCatalogPage({ view }: SeriesCatalogPageProps) {
         const active = series.filter((item) => item.isActive).length
         return { total: series.length, active }
     }, [series])
+
+    const deleteSeries = async (item: LearningSeriesSummary) => {
+        if (item.counts.events > 0 || item.counts.exams > 0) return
+        if (!window.confirm(`Delete Program "${item.name}"? This action cannot be undone.`)) return
+
+        try {
+            setDeletingSeriesId(item.id)
+            setError(null)
+            await ApiClient.deleteTrainingOpsSeries(item.id)
+            setSeries((current) => current.filter((candidate) => candidate.id !== item.id))
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to delete Learning Program')
+        } finally {
+            setDeletingSeriesId(null)
+        }
+    }
 
     return (
         <DashboardLayout>
@@ -168,6 +185,27 @@ export function SeriesCatalogPage({ view }: SeriesCatalogPageProps) {
                                                     <Link href={`/admin/training-ops/events/new?seriesId=${item.id}`}>
                                                         <Button variant="outline">Create Event</Button>
                                                     </Link>
+                                                    <Button
+                                                        variant="destructive"
+                                                        disabled={
+                                                            deletingSeriesId === item.id ||
+                                                            item.counts.events > 0 ||
+                                                            item.counts.exams > 0
+                                                        }
+                                                        title={
+                                                            item.counts.events > 0 || item.counts.exams > 0
+                                                                ? 'Remove all linked Events, Courses, and Exams before deleting this Program.'
+                                                                : 'Delete Program'
+                                                        }
+                                                        onClick={() => void deleteSeries(item)}
+                                                    >
+                                                        {deletingSeriesId === item.id ? (
+                                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                        ) : (
+                                                            <Trash2 className="mr-2 h-4 w-4" />
+                                                        )}
+                                                        Delete
+                                                    </Button>
                                                 </>
                                             ) : (
                                                 <>

@@ -280,7 +280,7 @@ export interface TrainingOpsBridge {
         activeProductDomains: number | null
         learningSeries: number | null
         activeLearningSeries: number | null
-        scheduledEvents: number | null
+        inProgressEvents: number | null
         completedEvents: number | null
         migrated: boolean
         previewDomains: Array<{
@@ -686,15 +686,11 @@ export interface LearningEventSummary {
         | 'QUIZ_REVIEW'
         | 'FINAL_EXAM'
         | 'WORKSHOP'
-    status: 'DRAFT' | 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELED'
+    status: 'IN_PROGRESS' | 'COMPLETED'
     description?: string | null
-    releaseVersion?: string | null
     scheduledAt?: string | Date | null
-    startsAt?: string | Date | null
-    endsAt?: string | Date | null
     isRequired: boolean
     countsTowardPerformance: boolean
-    starValue?: number | null
     domain?: {
         id: string
         name: string
@@ -955,7 +951,6 @@ export interface LearnerTrainingOverview {
         format: string
         status: string
         scheduledAt?: string | Date | null
-        startsAt?: string | Date | null
         isRequired: boolean
         domain?: {
             id: string

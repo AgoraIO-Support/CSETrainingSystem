@@ -315,9 +315,6 @@ function SmeTrainingOpsEventDetailPageContent() {
                                     <p className="mt-2 font-medium">
                                         {event.scheduledAt ? new Date(event.scheduledAt).toLocaleString() : 'Not scheduled'}
                                     </p>
-                                    <p className="text-sm text-muted-foreground">
-                                        {event.releaseVersion ? `Release ${event.releaseVersion}` : 'No release tag'}
-                                    </p>
                                 </div>
                             </div>
 

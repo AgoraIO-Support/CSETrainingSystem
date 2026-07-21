@@ -75,11 +75,8 @@ enum LearningEventFormat {
 }
 
 enum LearningEventStatus {
-  DRAFT
-  SCHEDULED
   IN_PROGRESS
   COMPLETED
-  CANCELED
 }
 
 enum AssessmentKind {
@@ -217,12 +214,29 @@ model ProductDomain {
   starAwards      StarAward[]
   badgeMilestones BadgeMilestone[]
   badgeAwards     BadgeAward[]
+  aliases         ProductDomainAlias[]
 
   @@index([slug])
   @@index([category])
   @@index([track])
   @@index([primarySmeId])
   @@map("product_domains")
+}
+
+model ProductDomainAlias {
+  id String @id @default(uuid())
+
+  domainId String
+  domain   ProductDomain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  alias           String
+  normalizedAlias String @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([domainId])
+  @@map("product_domain_aliases")
 }
 
 model LearningSeries {
@@ -264,7 +278,7 @@ model LearningEvent {
 
   title  String
   format LearningEventFormat
-  status LearningEventStatus @default(DRAFT)
+  status LearningEventStatus @default(IN_PROGRESS)
 
   seriesId String?
   series   LearningSeries? @relation(fields: [seriesId], references: [id], onDelete: SetNull)
@@ -272,15 +286,12 @@ model LearningEvent {
   domainId String?
   domain   ProductDomain? @relation(fields: [domainId], references: [id], onDelete: SetNull)
 
-  description    String?   @db.Text
-  releaseVersion String?
-  scheduledAt    DateTime?
-  startsAt       DateTime?
-  endsAt         DateTime?
+  description String?   @db.Text
+  scheduledAt DateTime?
 
   isRequired              Boolean @default(false)
   countsTowardPerformance Boolean @default(false)
-  starValue               Int?
+  starValue               Int? // Deprecated: Exam owns reward configuration; remove in a follow-up migration.
 
   hostId      String?
   host        User?   @relation("LearningEventHost", fields: [hostId], references: [id], onDelete: SetNull)

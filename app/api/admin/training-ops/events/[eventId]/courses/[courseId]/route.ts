@@ -23,6 +23,8 @@ export const DELETE = withAdminAuth(async (_req: NextRequest, _user, context: Ro
                 LEARNING_EVENT_NOT_FOUND: { status: 404, message: 'Learning event not found' },
                 COURSE_NOT_FOUND: { status: 404, message: 'Course not found' },
                 COURSE_NOT_LINKED_TO_EVENT: { status: 400, message: 'Course is not linked to this learning event' },
+                COURSE_DOMAIN_REQUIRED: { status: 409, message: 'A published course must remain linked to a Domain-scoped event' },
+                COURSE_DOMAIN_CONFLICT: { status: 409, message: 'The remaining Course event scope has conflicting Domains' },
             }
 
             const match = mapped[error.message]

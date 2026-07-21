@@ -147,6 +147,19 @@ export const POST = withSmeOrAdminAuth(
             { status: 400 }
           );
         }
+
+        if (['EXAM_DOMAIN_REQUIRED', 'EXAM_DOMAIN_CONFLICT'].includes(error.message)) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: {
+                code: error.message,
+                message: 'Exam approval or publication requires one unambiguous Event Domain scope.',
+              },
+            },
+            { status: 409 }
+          );
+        }
       }
 
       return NextResponse.json(

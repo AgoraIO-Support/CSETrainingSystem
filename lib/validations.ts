@@ -87,23 +87,19 @@ const optionalNullableDateInput = () =>
 const productDomainCategories = ['RTE', 'AI'] as const
 const productTracks = ['AGILE', 'MASTERY', 'RELEASE', 'FINAL'] as const
 const smeKpiModes = ['DELTA', 'RETENTION', 'READINESS'] as const
-const learningEventStatuses = ['DRAFT', 'SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELED'] as const
+const learningEventStatuses = ['IN_PROGRESS', 'COMPLETED'] as const
 const assessmentKinds = ['PRACTICE', 'READINESS', 'FORMAL'] as const
 
 export const createLearningEventSchema = z.object({
     title: z.string().trim().min(1, 'Title is required').max(200, 'Title is too long'),
     format: z.enum(LEARNING_EVENT_FORMATS),
-    status: z.enum(learningEventStatuses).default('DRAFT'),
+    status: z.enum(learningEventStatuses).default('IN_PROGRESS'),
     seriesId: z.string().uuid().optional().nullable(),
     domainId: z.string().uuid().optional().nullable(),
     description: z.string().trim().optional().nullable(),
-    releaseVersion: z.string().trim().max(120, 'Release version is too long').optional().nullable(),
     scheduledAt: optionalNullableDateInput(),
-    startsAt: optionalNullableDateInput(),
-    endsAt: optionalNullableDateInput(),
     isRequired: z.boolean().default(false),
     countsTowardPerformance: z.boolean().default(false),
-    starValue: z.number().int().min(0).max(20).optional().nullable(),
     hostId: z.string().uuid().optional().nullable(),
 })
 
@@ -343,17 +339,18 @@ export const createExamSchema = z.object({
     showResultsImmediately: z.boolean().default(true),
     allowReview: z.boolean().default(true),
     maxAttempts: z.number().int().positive().default(1),
-    assessmentKind: z.enum(assessmentKinds).optional(),
+    assessmentKind: z.enum(assessmentKinds).default('PRACTICE'),
     productDomainId: z.string().uuid().optional().nullable(),
     learningSeriesId: z.string().uuid().optional().nullable(),
     learningEventId: z.string().uuid().optional().nullable(),
-    awardsStars: z.boolean().optional(),
-    starValue: z.number().int().min(0).max(20).optional().nullable(),
-    countsTowardPerformance: z.boolean().optional(),
+    awardsStars: z.boolean().default(true),
+    starValue: z.number().int().min(0).max(20).default(3),
+    countsTowardPerformance: z.boolean().default(false),
 })
 
 export const updateExamSchema = z.object({
     courseId: z.string().uuid().optional().nullable(),
+    learningEventId: z.string().uuid().optional().nullable(),
     title: z.string().min(1, 'Title is required').max(200, 'Title is too long').optional(),
     description: z.string().optional().nullable(),
     instructions: z.string().optional().nullable(),

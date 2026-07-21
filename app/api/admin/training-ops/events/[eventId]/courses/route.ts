@@ -43,6 +43,8 @@ export const POST = withAdminAuth(async (req: NextRequest, _user, context: Route
                 COURSE_NOT_FOUND: { status: 404, message: 'Course not found' },
                 COURSE_ARCHIVED: { status: 400, message: 'Archived courses cannot be linked to learning events' },
                 COURSE_ALREADY_LINKED_TO_OTHER_EVENT: { status: 409, message: 'Course is already linked to another learning event' },
+                COURSE_DOMAIN_REQUIRED: { status: 409, message: 'A published course must remain linked to a Domain-scoped event' },
+                COURSE_DOMAIN_CONFLICT: { status: 409, message: 'The event and Learning Program Domains conflict' },
             }
 
             const match = mapped[error.message]

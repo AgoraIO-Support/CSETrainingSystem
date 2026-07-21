@@ -66,3 +66,45 @@ export const PATCH = withAdminAuth(async (req: NextRequest, _user, context: Rout
         )
     }
 })
+
+export const DELETE = withAdminAuth(async (_req: NextRequest, _user, context: RouteContext) => {
+    try {
+        const { id } = await context.params
+        await TrainingOpsService.deleteUnassociatedDomain(id)
+
+        return NextResponse.json({
+            success: true,
+            data: { id },
+        })
+    } catch (error) {
+        console.error('Delete training-op domain error:', error)
+
+        if (error instanceof Error && error.message === 'PRODUCT_DOMAIN_NOT_FOUND') {
+            return NextResponse.json({
+                success: false,
+                error: {
+                    code: 'DOMAIN_NOT_FOUND',
+                    message: 'Product Domain not found',
+                },
+            }, { status: 404 })
+        }
+
+        if (error instanceof Error && error.message === 'PRODUCT_DOMAIN_HAS_ASSOCIATIONS') {
+            return NextResponse.json({
+                success: false,
+                error: {
+                    code: 'DOMAIN_HAS_ASSOCIATIONS',
+                    message: 'Remove all linked Programs, Events, Courses, Exams, Questions, Badges, and Rewards before deleting this Domain.',
+                },
+            }, { status: 409 })
+        }
+
+        return NextResponse.json({
+            success: false,
+            error: {
+                code: 'SYSTEM_001',
+                message: 'Failed to delete Product Domain',
+            },
+        }, { status: 500 })
+    }
+})

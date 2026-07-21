@@ -47,6 +47,9 @@ export const POST = withAdminAuth(async (req, _user, { params }: { params: Promi
         if (error instanceof Error && error.message === 'COURSE_NOT_FOUND') {
             return NextResponse.json({ success: false, error: { code: 'NOT_FOUND' } }, { status: 404 })
         }
+        if (error instanceof Error && ['COURSE_DOMAIN_REQUIRED', 'COURSE_DOMAIN_CONFLICT'].includes(error.message)) {
+            return NextResponse.json({ success: false, error: { code: error.message } }, { status: 409 })
+        }
         return NextResponse.json({ success: false, error: { code: 'SYSTEM_ERROR' } }, { status: 500 })
     }
 })

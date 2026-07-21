@@ -13,6 +13,7 @@ import { WecomWebhookService } from '@/lib/services/wecom-webhook.service'
 import { TrainingOpsRewardService } from '@/lib/services/training-ops-reward.service'
 import { AuthUser } from '@/lib/auth-middleware'
 import { DEFAULT_EXAM_TIMEZONE } from '@/lib/exam-timezone'
+import { DomainGovernanceService, DomainAssignment } from '@/lib/services/domain-governance.service'
 import {
     AIPromptUseCase,
     AssessmentKind,
@@ -308,7 +309,7 @@ export class SmeMcpService {
                 const matchesDomain = !domainId || (event.domain?.id ? domainIds.has(event.domain.id) : false)
                 const matchesSeries = !domainId || (event.series?.id ? seriesIds.has(event.series.id) : false)
                 const matchesScope = !domainId || matchesDomain || matchesSeries
-                return matchesScope && event.status !== 'COMPLETED' && event.status !== 'CANCELED'
+                return matchesScope && event.status === 'IN_PROGRESS'
             })
             .slice(0, 10)
 
@@ -689,6 +690,12 @@ export class SmeMcpService {
         const data = workspace.data
         const eventScheduleGaps = data.pendingEvents.filter((event) => !event.scheduledAt)
         const learnerGaps = data.learnerGaps.filter((learner) => learner.passRate < 70)
+        const domainGovernance = user.role === 'ADMIN'
+            ? await DomainGovernanceService.audit(user)
+            : null
+        const domainAssociationGaps = domainGovernance?.records.filter((record) =>
+            record.resolution.status !== 'SCOPED'
+        ) ?? []
 
         const recommendedActions = [
             ...(eventScheduleGaps.length > 0
@@ -702,6 +709,9 @@ export class SmeMcpService {
                 : []),
             ...(data.weakTopics.length > 0
                 ? [`Prioritize refresher content for ${data.weakTopics.slice(0, 3).map((topic) => topic.topic).filter(Boolean).join(', ')}.`]
+                : []),
+            ...(domainAssociationGaps.length > 0
+                ? [`Review ${domainAssociationGaps.length} missing, suggested, or conflicting Domain association${domainAssociationGaps.length === 1 ? '' : 's'}.`]
                 : []),
         ]
 
@@ -718,9 +728,12 @@ export class SmeMcpService {
                     missRate: topic.answered > 0 ? Math.round((topic.misses / topic.answered) * 100) : 0,
                 })),
                 domainsNeedingAttention: data.atRiskDomains,
+                domainAssociationGaps,
                 recommendedActions,
             },
-            nextActions: ['get_domain_health', 'create_event', 'create_course', 'create_exam'],
+            nextActions: domainAssociationGaps.length > 0
+                ? ['audit_domain_associations', 'get_domain_health', 'create_event', 'create_course', 'create_exam']
+                : ['get_domain_health', 'create_event', 'create_course', 'create_exam'],
         }
     }
 
@@ -760,6 +773,95 @@ export class SmeMcpService {
         }
     }
 
+    static async auditDomainAssociations(user: MappableUser): Promise<ToolResult<Record<string, unknown>>> {
+        const audit = await DomainGovernanceService.audit(user)
+        return {
+            success: true,
+            tool: 'audit_domain_associations',
+            summary: `Audited ${audit.records.length} Programs, Events, Courses, and Exams for Domain coverage.`,
+            data: audit,
+            nextActions: ['propose_domain_assignments'],
+        }
+    }
+
+    static async proposeDomainAssignments(user: MappableUser): Promise<ToolResult<Record<string, unknown>>> {
+        const proposal = await DomainGovernanceService.proposeAssignments(user)
+        return {
+            success: true,
+            tool: 'propose_domain_assignments',
+            summary: `Proposed ${proposal.summary.total} Program/Event assignments and ${proposal.summary.associationSuggestions} Course/Exam Event-association suggestions.`,
+            data: proposal,
+            nextActions: proposal.summary.total > 0 ? ['apply_domain_assignments'] : ['audit_domain_associations'],
+            warnings: ['Course and Exam suggestions are never written as direct Domain assignments; attach them to a reviewed Event.'],
+        }
+    }
+
+    static async applyDomainAssignments(
+        user: MappableUser,
+        input: {
+            assignments: DomainAssignment[]
+            dryRun?: boolean
+            confirm?: boolean
+            confirmationToken?: string
+            idempotencyKey?: string
+        }
+    ): Promise<ToolResult<Record<string, unknown>>> {
+        if (input.dryRun !== false || input.confirm !== true) {
+            const preview = await DomainGovernanceService.previewAssignments(user, input.assignments)
+            return {
+                success: true,
+                tool: 'apply_domain_assignments',
+                summary: `Dry run prepared ${preview.changes.length} version-checked Domain assignments.`,
+                data: { dryRun: true, ...preview, idempotencyKey: input.idempotencyKey ?? null },
+                nextActions: ['apply_domain_assignments'],
+                warnings: ['No data was changed. Re-submit the exact assignments with dryRun=false, confirm=true, and this confirmationToken.'],
+            }
+        }
+
+        if (!input.confirmationToken) throw new Error('DOMAIN_ASSIGNMENT_CONFIRMATION_REQUIRED')
+        const result = await DomainGovernanceService.applyAssignments(user, input.assignments, input.confirmationToken)
+        return {
+            success: true,
+            tool: 'apply_domain_assignments',
+            summary: `Applied ${result.updated} Domain assignments; ${result.unchanged} were already current.`,
+            data: { dryRun: false, ...result, idempotencyKey: input.idempotencyKey ?? null },
+            nextActions: ['audit_domain_associations'],
+        }
+    }
+
+    static async manageDomainAlias(
+        user: MappableUser,
+        input: {
+            domainId: string
+            alias: string
+            dryRun?: boolean
+            confirm?: boolean
+            confirmationToken?: string
+        }
+    ): Promise<ToolResult<Record<string, unknown>>> {
+        if (input.dryRun !== false || input.confirm !== true) {
+            const preview = await DomainGovernanceService.previewAlias(user, input)
+            return {
+                success: true,
+                tool: 'manage_domain_alias',
+                summary: preview.noOp ? 'The normalized alias already maps to this Domain.' : 'Domain alias preview is ready.',
+                data: { dryRun: true, ...preview },
+                nextActions: preview.noOp ? ['propose_domain_assignments'] : ['manage_domain_alias'],
+                warnings: preview.noOp ? undefined : ['No data was changed. Confirm with the returned token to create this exact alias.'],
+            }
+        }
+
+        if (!input.confirmationToken) throw new Error('DOMAIN_ALIAS_CONFIRMATION_REQUIRED')
+        const result = await DomainGovernanceService.applyAlias(user, input, input.confirmationToken)
+        return {
+            success: true,
+            tool: 'manage_domain_alias',
+            summary: result.created ? 'Created the managed Domain alias.' : 'The Domain alias was already current.',
+            data: { dryRun: false, ...result },
+            nextActions: ['propose_domain_assignments'],
+        }
+    }
+
     static async createEvent(
         user: MappableUser,
         input: {
@@ -773,7 +875,6 @@ export class SmeMcpService {
             description?: string | null
             scheduledAt?: Date | null
             countsTowardPerformance?: boolean
-            starValue?: number | null
         }
     ): Promise<ToolResult<{
         event: Awaited<ReturnType<typeof TrainingOpsService.createScopedLearningEvent>>
@@ -809,16 +910,13 @@ export class SmeMcpService {
         const event = await TrainingOpsService.createScopedLearningEvent(user, {
             title: input.title.trim(),
             format: input.format,
-            status: input.status ?? LearningEventStatus.DRAFT,
+            status: input.status ?? LearningEventStatus.IN_PROGRESS,
             domainId: explicitDomain?.id ?? series?.domain?.id ?? null,
             seriesId: series?.id ?? null,
             description: optionalText(input.description),
             scheduledAt: input.scheduledAt ?? null,
-            startsAt: input.scheduledAt ?? null,
-            endsAt: null,
             isRequired: false,
             countsTowardPerformance: input.countsTowardPerformance ?? false,
-            starValue: input.starValue ?? null,
             hostId: host.id,
         })
 
@@ -977,7 +1075,10 @@ export class SmeMcpService {
             event?: string | null
             description?: string | null
             instructions?: string | null
-            examType: AssessmentKind
+            examType?: AssessmentKind
+            awardsStars?: boolean
+            starValue?: number
+            countsTowardPerformance?: boolean
             totalScore: number
             passingScore: number
             maxAttempts: number
@@ -1005,6 +1106,10 @@ export class SmeMcpService {
             showResultsImmediately: boolean
             allowReview: boolean
             timezone: string
+            assessmentKind: AssessmentKind
+            awardsStars: boolean
+            starValue: number
+            countsTowardPerformance: boolean
         }
     }>> {
         const resolvedEvent = input.event ? await this.resolveEventReference(user, input.event) : null
@@ -1017,6 +1122,10 @@ export class SmeMcpService {
         const randomizeOptions = input.options?.randomizeOptions ?? false
         const showResultsImmediately = input.options?.showResultsImmediately ?? true
         const allowReview = input.options?.allowReview ?? true
+        const assessmentKind = input.examType ?? AssessmentKind.PRACTICE
+        const awardsStars = input.awardsStars ?? true
+        const starValue = input.starValue ?? (awardsStars ? 3 : 0)
+        const countsTowardPerformance = input.countsTowardPerformance ?? false
 
         const exam = await ExamService.createExam(
             {
@@ -1032,7 +1141,10 @@ export class SmeMcpService {
                 randomizeOptions,
                 showResultsImmediately,
                 allowReview,
-                assessmentKind: input.examType,
+                assessmentKind,
+                awardsStars,
+                starValue,
+                countsTowardPerformance,
                 learningEventId: resolvedEvent?.id ?? null,
                 sourceLearningEventId: resolvedEvent?.id ?? null,
             },
@@ -1064,6 +1176,10 @@ export class SmeMcpService {
                     showResultsImmediately,
                     allowReview,
                     timezone: DEFAULT_EXAM_TIMEZONE,
+                    assessmentKind,
+                    awardsStars,
+                    starValue,
+                    countsTowardPerformance,
                 },
             },
             nextActions: resolvedEvent ? ['review_event_status', 'publish_exam_for_learners'] : ['list_my_workspace'],
@@ -2712,6 +2828,8 @@ export class SmeMcpService {
         if (exam.status !== ExamStatus.APPROVED) {
             throw new Error('EXAM_NOT_APPROVED')
         }
+
+        await DomainGovernanceService.assertExamPublishable(input.examId)
 
         const activeQuestionCount = await prisma.examQuestion.count({
             where: { examId: input.examId, archivedAt: null },

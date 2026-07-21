@@ -12,6 +12,7 @@ import { publishExamSchema } from '@/lib/validations'
 import { ExamStatus } from '@prisma/client'
 import { z } from 'zod'
 import { WecomWebhookService } from '@/lib/services/wecom-webhook.service'
+import { DomainGovernanceService } from '@/lib/services/domain-governance.service'
 
 type RouteContext = {
     params: Promise<{ examId: string }>
@@ -57,6 +58,8 @@ export const POST = withSmeOrAdminAuth(async (req: NextRequest, user, context: R
                 { status: 400 }
             )
         }
+
+        await DomainGovernanceService.assertExamPublishable(examId)
 
         const activeQuestionCount = await prisma.examQuestion.count({
             where: { examId, archivedAt: null },
@@ -193,7 +196,9 @@ export const POST = withSmeOrAdminAuth(async (req: NextRequest, user, context: R
                 notificationsSent: notificationResults.sent,
                 notificationsFailed: notificationResults.failed,
                 retroactiveStarAwardsIssued: rewardBackfill.starAwardsIssued,
+                retroactiveStarAwardsAdjusted: rewardBackfill.starAwardsAdjusted,
                 retroactiveStarsGranted: rewardBackfill.starsGranted,
+                retroactiveStarsRevoked: rewardBackfill.starsRevoked,
                 retroactiveBadgesUnlocked: rewardBackfill.newBadges,
                 // backward compatibility for older clients
                 emailsSent: notificationResults.sent,
@@ -227,6 +232,13 @@ export const POST = withSmeOrAdminAuth(async (req: NextRequest, user, context: R
                     },
                 },
                 { status: 403 }
+            )
+        }
+
+        if (error instanceof Error && ['EXAM_DOMAIN_REQUIRED', 'EXAM_DOMAIN_CONFLICT'].includes(error.message)) {
+            return NextResponse.json(
+                { success: false, error: { code: error.message, message: 'Exam publication requires one unambiguous Event Domain scope.' } },
+                { status: 409 }
             )
         }
 

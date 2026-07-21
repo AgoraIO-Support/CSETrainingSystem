@@ -79,8 +79,8 @@ function CreateExamPageContent() {
         availableFrom: '',
         deadline: '',
         assessmentKind: 'PRACTICE' as AssessmentKindOption,
-        awardsStars: false,
-        starValue: '0',
+        awardsStars: true,
+        starValue: '3',
         countsTowardPerformance: false,
         certificateEnabled: false,
         certificateTitle: '',
@@ -143,8 +143,6 @@ function CreateExamPageContent() {
                         format: response.data.format,
                         seriesType: response.data.series?.type,
                     }, { allowFormal: !isSmeMode }),
-                    awardsStars: (response.data.starValue ?? 0) > 0,
-                    starValue: response.data.starValue?.toString() ?? '0',
                     countsTowardPerformance: isSmeMode ? false : response.data.countsTowardPerformance,
                 }))
             } catch (err) {

@@ -2,6 +2,7 @@ import prisma from '@/lib/prisma'
 import { CourseLevel, CourseStatus, Prisma } from '@prisma/client'
 import { FileService } from './file.service'
 import { getActiveTranscriptTracks, getDefaultSubtitleTrack, getTranscriptLabel } from '@/lib/transcript-tracks'
+import { assertPublishableDomain, resolveDomainCandidates } from '@/lib/domain-governance'
 
 const ABSOLUTE_URL_REGEX = /^https?:\/\//i
 const isAbsoluteUrl = (value?: string | null) => typeof value === 'string' && ABSOLUTE_URL_REGEX.test(value)
@@ -315,27 +316,40 @@ export class CourseService {
             }
         }
 
-        if (data.learningEventId) {
-            const linkedEvent = await prisma.learningEvent.findUnique({
+        const linkedEvent = data.learningEventId
+            ? await prisma.learningEvent.findUnique({
                 where: { id: data.learningEventId },
-                select: { id: true },
+                select: { id: true, domainId: true, series: { select: { domainId: true } } },
             })
+            : null
 
+        if (data.learningEventId) {
             if (!linkedEvent) {
                 throw new Error('LEARNING_EVENT_NOT_FOUND')
             }
         }
 
-        if (data.sourceLearningEventId) {
-            const sourceEvent = await prisma.learningEvent.findUnique({
+        const sourceEvent = data.sourceLearningEventId
+            ? await prisma.learningEvent.findUnique({
                 where: { id: data.sourceLearningEventId },
-                select: { id: true },
+                select: { id: true, domainId: true, series: { select: { domainId: true } } },
             })
+            : null
 
+        if (data.sourceLearningEventId) {
             if (!sourceEvent) {
                 throw new Error('LEARNING_EVENT_NOT_FOUND')
             }
         }
+
+        const domainResolution = resolveDomainCandidates([
+            { domainId: linkedEvent?.domainId, source: 'course.event.domainId' },
+            { domainId: linkedEvent?.series?.domainId, source: 'course.event.program.domainId' },
+            { domainId: sourceEvent?.domainId, source: 'course.sourceEvent.domainId' },
+            { domainId: sourceEvent?.series?.domainId, source: 'course.sourceEvent.program.domainId' },
+        ])
+        if (domainResolution.status === 'CONFLICT') throw new Error('COURSE_DOMAIN_CONFLICT')
+        if (data.status === CourseStatus.PUBLISHED) assertPublishableDomain(domainResolution, 'COURSE')
 
         return await prisma.course.create({
             data: {
@@ -372,7 +386,19 @@ export class CourseService {
         instructorId: string
         learningOutcomes: string[]
         requirements: string[]
+        learningEventId: string | null
     }>) {
+        const existingCourse = await prisma.course.findUnique({
+            where: { id },
+            select: {
+                id: true,
+                status: true,
+                learningEventId: true,
+                sourceLearningEvent: { select: { domainId: true, series: { select: { domainId: true } } } },
+            },
+        })
+        if (!existingCourse) throw new Error('COURSE_NOT_FOUND')
+
         if (data.slug) {
             const existing = await prisma.course.findFirst({
                 where: {
@@ -384,6 +410,30 @@ export class CourseService {
             if (existing) {
                 throw new Error('SLUG_EXISTS')
             }
+        }
+
+        const nextEventId = data.learningEventId === undefined ? existingCourse.learningEventId : data.learningEventId
+        const nextEvent = nextEventId
+            ? await prisma.learningEvent.findUnique({
+                where: { id: nextEventId },
+                select: { id: true, domainId: true, series: { select: { domainId: true } } },
+            })
+            : null
+        if (nextEventId && !nextEvent) throw new Error('LEARNING_EVENT_NOT_FOUND')
+
+        const domainResolution = resolveDomainCandidates([
+            { domainId: nextEvent?.domainId, source: 'course.event.domainId' },
+            { domainId: nextEvent?.series?.domainId, source: 'course.event.program.domainId' },
+            { domainId: existingCourse.sourceLearningEvent?.domainId, source: 'course.sourceEvent.domainId' },
+            { domainId: existingCourse.sourceLearningEvent?.series?.domainId, source: 'course.sourceEvent.program.domainId' },
+        ])
+        if (domainResolution.status === 'CONFLICT') throw new Error('COURSE_DOMAIN_CONFLICT')
+        const nextStatus = data.status ?? existingCourse.status
+        if (
+            nextStatus === CourseStatus.PUBLISHED &&
+            (existingCourse.status !== CourseStatus.PUBLISHED || data.learningEventId !== undefined)
+        ) {
+            assertPublishableDomain(domainResolution, 'COURSE')
         }
 
         return await prisma.course.update({

@@ -26,6 +26,13 @@ export const DELETE = withSmeOrAdminAuth(async (_req: NextRequest, user, context
             }, { status: 403 })
         }
 
+        if (error instanceof Error && ['COURSE_DOMAIN_REQUIRED', 'COURSE_DOMAIN_CONFLICT'].includes(error.message)) {
+            return NextResponse.json({
+                success: false,
+                error: { code: error.message, message: 'A published course must retain one unambiguous Event Domain scope.' },
+            }, { status: 409 })
+        }
+
         return NextResponse.json({
             success: false,
             error: {
